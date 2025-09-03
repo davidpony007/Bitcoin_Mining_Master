@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".ui.Referral.ReferralFragment">
+
+<!--    <TextView-->
+<!--        android:layout_width="match_parent"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:layout_marginStart="8dp"-->
+<!--        android:layout_marginTop="8dp"-->
+<!--        android:layout_marginEnd="8dp"-->
+<!--        android:textAlignment="center"-->
+<!--        android:textSize="20sp"-->
+<!--        app:layout_constraintBottom_toBottomOf="parent"-->
+<!--        app:layout_constraintEnd_toEndOf="parent"-->
+<!--        app:layout_constraintStart_toStartOf="parent"-->
+<!--        app:layout_constraintTop_toTopOf="parent" />-->
+
+    <TextView
+        android:id="@+id/text_referral"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/title_referral"
+        android:textSize="30sp"
+        android:textStyle="bold"
+        android:textColor="@color/black"
+        android:layout_marginStart="12dp"
+        android:layout_marginTop="48dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+    <!--Referral-->
+
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/referral_steps_card"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="20dp"
+        app:layout_constraintTop_toBottomOf="@id/text_referral"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:cardBackgroundColor="@color/background1"
+        app:cardCornerRadius="4dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <de.hdodenhof.circleimageview.CircleImageView
+                android:id="@+id/circleImageView1"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/black_circle"
+                android:layout_marginTop="12dp"
+                android:layout_marginStart="12dp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <TextView
+                android:id="@+id/textView1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:gravity="center"
+                app:layout_constraintTop_toTopOf="@+id/circleImageView1"
+                app:layout_constraintBottom_toBottomOf="@+id/circleImageView1"
+                app:layout_constraintStart_toStartOf="@+id/circleImageView1"
+                app:layout_constraintEnd_toEndOf="@+id/circleImageView1" />
+
+            <TextView
+                android:id="@+id/textView_share_app"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:text="Share the APP with friends"
+                android:textColor="@color/black"
+                android:background="@drawable/referral_step_background"
+                android:textSize="16sp"
+                android:layout_marginStart="10dp"
+                android:paddingStart="12dp"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="20dp"
+                app:layout_constraintTop_toTopOf="@+id/circleImageView1"
+                app:layout_constraintBottom_toBottomOf="@+id/circleImageView1"
+                app:layout_constraintStart_toEndOf="@+id/circleImageView1"
+                app:layout_constraintEnd_toEndOf="parent"/>
+
+            <de.hdodenhof.circleimageview.CircleImageView
+                android:id="@+id/circleImageView2"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/black_circle"
+                android:layout_marginTop="14dp"
+                android:layout_marginStart="12dp"
+                app:layout_constraintTop_toBottomOf="@id/circleImageView1"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <TextView
+                android:id="@+id/textView2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:gravity="center"
+                app:layout_constraintTop_toTopOf="@+id/circleImageView2"
+                app:layout_constraintBottom_toBottomOf="@+id/circleImageView2"
+                app:layout_constraintStart_toStartOf="@+id/circleImageView2"
+                app:layout_constraintEnd_toEndOf="@+id/circleImageView2" />
+
+            <TextView
+                android:id="@+id/textView_earn_btc"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:text="Earn BTC for successful registration"
+                android:textColor="@color/black"
+                android:background="@drawable/referral_step_background"
+                android:textSize="16sp"
+                android:layout_marginStart="10dp"
+                android:paddingStart="12dp"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="20dp"
+                app:layout_constraintTop_toTopOf="@+id/circleImageView2"
+                app:layout_constraintBottom_toBottomOf="@+id/circleImageView2"
+                app:layout_constraintStart_toEndOf="@+id/circleImageView2"
+                app:layout_constraintEnd_toEndOf="parent"/>
+
+            <de.hdodenhof.circleimageview.CircleImageView
+                android:id="@+id/circleImageView3"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/bitcoin_1"
+                android:layout_marginTop="14dp"
+                android:layout_marginStart="12dp"
+                app:layout_constraintTop_toBottomOf="@id/circleImageView2"
+                app:layout_constraintStart_toStartOf="parent" />
+
+            <TextView
+                android:id="@+id/get_20_percent_of_friends_earnings"
+                android:layout_width="0dp"
+                android:layout_height="28dp"
+                android:text="Get 20% of friends' earnings"
+                android:textColor="@color/black"
+                android:background="@drawable/referral_step_background"
+                android:textSize="16sp"
+                android:layout_marginStart="10dp"
+                android:paddingStart="12dp"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="20dp"
+                app:layout_constraintTop_toTopOf="@+id/circleImageView3"
+                app:layout_constraintBottom_toBottomOf="@+id/circleImageView3"
+                app:layout_constraintStart_toEndOf="@+id/circleImageView3"
+                app:layout_constraintEnd_toEndOf="parent"/>
+
+            <Button
+                android:id="@+id/button_Invite_Now"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:text="INVITE NOW"
+                android:textAllCaps="false"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                app:backgroundTint="#EC7D01"
+                android:background="@drawable/middle_section_background"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="20dp"
+                android:textSize="26sp"
+                android:gravity="center"
+                android:layout_marginTop="16dp"
+                app:layout_constraintTop_toBottomOf="@id/get_20_percent_of_friends_earnings"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
+    <!--referral cardview-->
+
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/referral_reward_card"
+        android:layout_width="match_parent"
+        android:layout_height="100dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/referral_steps_card"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:cardBackgroundColor="@color/background1"
+        app:cardCornerRadius="4dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/tittle_referral_reward"
+                android:layout_width="match_parent"
+                android:layout_height="28dp"
+                android:text="Referral Reward"
+                android:textColor="@color/black"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginStart="12dp"
+                android:paddingStart="0dp"
+                android:gravity="center_vertical"
+                android:layout_marginEnd="20dp"
+                android:layout_marginTop="12dp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+            <!--Referral Reward Title-->
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/tittle_referral_reward_bitcoin"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="20dp"
+                android:layout_marginTop="4dp"
+                app:cardBackgroundColor="#E1F5FE"
+                app:cardCornerRadius="4dp"
+                app:layout_constraintTop_toBottomOf="@id/tittle_referral_reward"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <ImageView
+                        android:id="@+id/bitcoin_icon"
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/bitcoin_1"
+                        android:layout_marginStart="12dp"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintStart_toStartOf="parent" />
+                    <!--Bitcoin icon-->
+
+                    <TextView
+                        android:id="@+id/bitcoin_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bitcoin"
+                        android:textColor="@color/black"
+                        android:textSize="16sp"
+                        android:layout_marginStart="4dp"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintStart_toEndOf="@id/bitcoin_icon" />
+                    <!--Bitcoin text-->
+
+                    <TextView
+                        android:id="@+id/referral_reward_bitcoin_amount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/referral_reward_bitcoin_amount"
+                        android:textStyle="bold"
+                        android:textColor="#E27906"
+                        android:textSize="18sp"
+                        android:layout_marginEnd="12dp"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent" />
+                    <!--Referral Reward bitcoin amount-->
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+            </androidx.cardview.widget.CardView>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.cardview.widget.CardView>
+    <!--referral reward cardview-->
+
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/referral_reward_card"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:cardBackgroundColor="@color/background1"
+        app:cardCornerRadius="4dp"
+        android:layout_gravity="center_vertical">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="140dp"
+                android:layout_height="28dp"
+                android:text="My Invitation Code"
+                android:textColor="@color/black"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:layout_marginStart="12dp"
+                android:paddingStart="0dp"
+                android:layout_gravity="center_vertical"
+                android:gravity="center_vertical"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent" />
+            <!--My Invitation Code Title-->
+
+            <ImageButton
+                android:id="@+id/button_copy"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/icon_copy"
+                android:background="@android:color/transparent"
+                android:scaleType="centerInside"
+                android:padding="0dp"
+                android:layout_marginEnd="14dp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+            <!--Copy Button-->
+
+            <TextView
+                android:id="@+id/invitation_code_default"
+                android:layout_width="wrap_content"
+                android:layout_height="28dp"
+                android:text="@string/invitation_code_default"
+                android:textColor="@color/black"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginEnd="12dp"
+                android:gravity="center_vertical"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toStartOf="@id/button_copy" />
+            <!--280242540-->
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.cardview.widget.CardView>
+    <!--my invitation code cardview-->
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>

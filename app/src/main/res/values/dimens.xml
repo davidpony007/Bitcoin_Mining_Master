@@ -1,0 +1,19 @@
+<resources>
+    <!-- Default screen margins, per the Android Design guidelines. -->
+    <dimen name="activity_horizontal_margin">16dp</dimen>
+    <dimen name="activity_vertical_margin">16dp</dimen>
+
+    <dimen name="textsize9">9sp</dimen>
+    <dimen name="textsize10">10sp</dimen>
+    <dimen name="textsize12">12sp</dimen>
+    <dimen name="textsize14">14sp</dimen>
+    <dimen name="textsize16">16sp</dimen>
+    <dimen name="textsize18">18sp</dimen>
+    <dimen name="textsize24">24sp</dimen>
+
+    <dimen name="battery_width">18dp</dimen>
+    <dimen name="battery_height">32dp</dimen>
+
+
+
+</resources>

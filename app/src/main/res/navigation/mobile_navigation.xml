@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@+id/navigation_dashboard">
+    <!-- 声明 android 命名空间 -->
+    <!-- 声明 app 命名空间 -->
+    <!-- 声明 tools 命名空间 -->
+    <!-- 为导航图设置唯一 id -->
+    <!-- 设置导航的起始目的地 -->
+
+    <fragment
+        android:id="@+id/navigation_dashboard"
+        android:name="com.cloudminingtool.bitcoinminingmaster.ui.Dashboard.DashboardFragment"
+        android:label="@string/title_dashboard"
+        tools:layout="@layout/fragment_dashboard" />
+    <!-- Dashboard Fragment 的唯一 id -->
+    <!-- Fragment 类名 -->
+    <!-- Fragment 标题（可用于导航栏） -->
+    <!-- 设计预览时使用的布局 -->
+
+    <fragment
+        android:id="@+id/navigation_contracts"
+        android:name="com.cloudminingtool.bitcoinminingmaster.ui.Contracts.ContractsFragment"
+        android:label="@string/title_contracts"
+        tools:layout="@layout/fragment_contracts" />
+
+    <fragment
+        android:id="@+id/navigation_referral"
+        android:name="com.cloudminingtool.bitcoinminingmaster.ui.Referral.ReferralFragment"
+        android:label="@string/title_referral"
+        tools:layout="@layout/fragment_referral" />
+
+    <fragment
+        android:id="@+id/navigation_wallet"
+        android:name="com.cloudminingtool.bitcoinminingmaster.ui.Wallet.WalletFragment"
+        android:label="@string/title_wallet"
+        tools:layout="@layout/fragment_wallet" />
+</navigation>

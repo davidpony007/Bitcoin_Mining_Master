@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Bitcoin Mining Master</string>
+    <string name="title_dashboard">Dashboard</string>
+    <string name="title_contracts">Contracts</string>
+    <string name="title_referral">Referral</string>
+    <string name="title_wallet">Wallet</string>
+
+    <string name="title_free_contract">Free Contract</string>
+    <string name="title_active_contracts">Active Contracts</string>
+    <string name="title_mining_1_hour"> = Mining 1 hour</string>
+    <string name="title_popular_contract">Popular Contract</string>
+    <string name="title_nickname">Bitcoin  Mining Master</string>
+
+    <string name="remaining_time_5.5Gh">13h 39m 26s</string>
+    <string name="remaining_time_7.5Gh">1h 27m 6s</string>
+
+    <string name="referral_reward_bitcoin_amount">0.000000000000000</string>
+    <string name="invitation_code_default">Loading...</string>
+
+</resources>

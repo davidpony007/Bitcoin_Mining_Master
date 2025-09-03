@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <!-- 根布局，使用 ConstraintLayout 进行约束布局 -->
+    <!-- 声明 android 命名空间 -->
+    <!-- 声明 app 命名空间 -->
+    <!-- 给根布局设置 id -->
+    <!-- 宽度填满父布局 -->
+    <!-- 高度填满父布局 -->
+
+    <com.google.android.material.bottomnavigation.BottomNavigationView
+        android:id="@+id/nav_view"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="0dp"
+        android:layout_marginEnd="0dp"
+        android:background="?android:attr/windowBackground"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:menu="@menu/bottom_nav_menu" />
+    <!-- 底部导航栏控件 -->
+    <!-- 设置导航栏 id -->
+    <!-- 宽度由约束决定（match constraints） -->
+    <!-- 高度自适应内容 -->
+    <!-- 左侧外边距为 0 -->
+    <!-- 右侧外边距为 0 -->
+    <!-- 背景为窗口默认背景 -->
+    <!-- 底部对齐父布局底部 -->
+    <!-- 左侧对齐父布局左侧 -->
+    <!-- 右侧对齐父布局右侧 -->
+    <!-- 指定底部菜单资源 -->
+
+
+    <androidx.fragment.app.FragmentContainerView
+        android:id="@+id/nav_host_fragment_activity_main"
+        android:name="androidx.navigation.fragment.NavHostFragment"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:defaultNavHost="true"
+        app:layout_constraintBottom_toTopOf="@id/nav_view"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:navGraph="@navigation/mobile_navigation" />
+    <!-- 设置 Fragment 容器 id -->
+    <!-- 指定 Fragment 类型为导航宿主 -->
+    <!-- 宽度填满父布局 -->
+    <!-- 高度填满父布局 -->
+    <!-- 设置为默认导航宿主 -->
+    <!-- 底部对齐导航栏顶部 -->
+    <!-- 左侧对齐父布局左侧 -->
+    <!-- 右侧对齐父布局右侧 -->
+    <!-- 顶部对齐父布局顶部 -->
+    <!-- 指定导航图资源 -->
+
+</androidx.constraintlayout.widget.ConstraintLayout>

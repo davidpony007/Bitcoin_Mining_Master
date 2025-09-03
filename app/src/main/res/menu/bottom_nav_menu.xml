@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/navigation_dashboard"
+        android:icon="@drawable/icon_dashboard_selected"
+        android:title="@string/title_dashboard" />
+    <!-- 菜单项 id，唯一标识 -->
+    <!-- 菜单项图标资源 -->
+    <!-- 菜单项标题 -->
+
+    <item
+        android:id="@+id/navigation_contracts"
+        android:icon="@drawable/icon_contracts_selected"
+        android:title="@string/title_contracts" />
+
+    <item
+        android:id="@+id/navigation_referral"
+        android:icon="@drawable/icon_referral_selected"
+        android:title="@string/title_referral" />
+
+    <item
+        android:id="@+id/navigation_wallet"
+        android:icon="@drawable/icon_wallet_selected"
+        android:title="@string/title_wallet" />
+
+</menu>
