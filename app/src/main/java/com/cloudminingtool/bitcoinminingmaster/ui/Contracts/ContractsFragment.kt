@@ -22,7 +22,8 @@ import kotlinx.coroutines.launch
 class ContractsFragment : Fragment() {
 
     private var _binding: FragmentContractsBinding? = null
-    private val binding get() = _binding!!
+    // 修复binding的get方法，添加安全检查
+    private val binding get() = _binding ?: throw IllegalStateException("Fragment binding is null")
 
     private val userRepository = UserRepository()
 
@@ -48,35 +49,32 @@ class ContractsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // 使用 Glide 加载 GIF 动画
-        val imageView2 = binding.root.findViewById<ImageView>(R.id.gifImageView2)
-        Glide.with(this)
-            .asGif()
-            .load(R.drawable.download2)
-            .into(imageView2)
+        // 使用安全的binding访问
+        _binding?.let { binding ->
+            // 使用 Glide 加载 GIF 动画
+            val imageView2 = binding.root.findViewById<ImageView>(R.id.gifImageView2)
+            Glide.with(this)
+                .asGif()
+                .load(R.drawable.download2)
+                .into(imageView2)
 
-        val imageView3 = binding.root.findViewById<ImageView>(R.id.gifImageView3)
-        Glide.with(this)
-            .asGif()
-            .load(R.drawable.download3)
-            .into(imageView3)
+            val imageView3 = binding.root.findViewById<ImageView>(R.id.gifImageView3)
+            Glide.with(this)
+                .asGif()
+                .load(R.drawable.download3)
+                .into(imageView3)
 
-        val imageViewkuangji = binding.root.findViewById<ImageView>(R.id.gifImageViewkuangji)
-        Glide.with(this)
-            .asGif()
-            .load(R.drawable.kuangji)
-            .into(imageViewkuangji)
+            val imageViewkuangji = binding.root.findViewById<ImageView>(R.id.gifImageViewkuangji)
+            Glide.with(this)
+                .asGif()
+                .load(R.drawable.kuangji)
+                .into(imageViewkuangji)
+        }
 
-        // 初始化用户ID显示
+        // 初始化各种观察者
         setupUserIdObserver()
-
-        // 初始化比特币价格显示
         setupBitcoinPriceObserver()
-
-        // 初始化比特币余额显示
         setupBitcoinBalanceObserver()
-
-        // 初始化合约倒计时显示
         setupContractCountdownObserver()
 
         // 初始化倒计时管理器
@@ -100,91 +98,108 @@ class ContractsFragment : Fragment() {
     }
 
     private fun setupUserIdObserver() {
-        val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
-
-        // 监听用户ID状态变化
         lifecycleScope.launch {
             UserDataManager.userId.collect { userId ->
-                if (userId != null) {
-                    userIdTextView.text = userId
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
+                    if (userId != null) {
+                        userIdTextView?.text = userId
+                    }
                 }
             }
         }
 
-        // 监听加载状态
         lifecycleScope.launch {
             UserDataManager.isLoading.collect { isLoading ->
-                if (isLoading) {
-                    userIdTextView.text = "Loading..."
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
+                    if (isLoading) {
+                        userIdTextView?.text = "Loading..."
+                    }
                 }
             }
         }
     }
 
     private fun setupBitcoinPriceObserver() {
-        val priceTextView = binding.root.findViewById<TextView>(R.id.id_price)
-
-        // 监听比特币价格变化，与Dashboard页面同步
         lifecycleScope.launch {
             BitcoinPriceManager.bitcoinPrice.collect { price ->
-                if (price != null) {
-                    priceTextView.text = price
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val priceTextView = binding.root.findViewById<TextView>(R.id.id_price)
+                    if (price != null) {
+                        priceTextView?.text = price
+                    }
                 }
             }
         }
 
-        // 监听价格加载状态
         lifecycleScope.launch {
             BitcoinPriceManager.isLoading.collect { isLoading ->
-                if (isLoading && BitcoinPriceManager.getCurrentPrice() == null) {
-                    priceTextView.text = "Loading..."
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val priceTextView = binding.root.findViewById<TextView>(R.id.id_price)
+                    if (isLoading && BitcoinPriceManager.getCurrentPrice() == null) {
+                        priceTextView?.text = "Loading..."
+                    }
                 }
             }
         }
     }
 
     private fun setupBitcoinBalanceObserver() {
-        val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
-
-        // 监听比特币余额变化，与Dashboard页面同步
         lifecycleScope.launch {
             BitcoinBalanceManager.bitcoinBalance.collect { balance ->
-                if (balance != null) {
-                    balanceTextView.text = balance
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
+                    if (balance != null) {
+                        balanceTextView?.text = balance
+                    }
                 }
             }
         }
 
-        // 监听余额加载状态
         lifecycleScope.launch {
             BitcoinBalanceManager.isLoading.collect { isLoading ->
-                if (isLoading && BitcoinBalanceManager.getCurrentBalance() == null) {
-                    balanceTextView.text = "Loading..."
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
+                    if (isLoading && BitcoinBalanceManager.getCurrentBalance() == null) {
+                        balanceTextView?.text = "Loading..."
+                    }
                 }
             }
         }
     }
 
     private fun setupContractCountdownObserver() {
-        val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_7_5Gh)
-
-        // 监听倒计时文本变化
         lifecycleScope.launch {
             ContractCountdownManager.countdownText.collect { text ->
-                countdownTextView.text = text
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_7_5Gh)
+                    countdownTextView?.text = text
+                }
             }
         }
 
-        // 监听激活状态变化，切换绿点/红点
         lifecycleScope.launch {
             ContractCountdownManager.isActive.collect { isActive ->
-                // 根据激活状态切换drawable
-                val drawable = if (isActive) {
-                    R.drawable.green_dot // 激活状态显示绿点
-                } else {
-                    R.drawable.red_dot   // 非激活状态显示红点
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_7_5Gh)
+                    countdownTextView?.let { textView ->
+                        val drawable = if (isActive) {
+                            R.drawable.green_dot // 激活状态显示绿点
+                        } else {
+                            R.drawable.red_dot   // 非激活状态显示红点
+                        }
+                        textView.setCompoundDrawablesWithIntrinsicBounds(drawable, 0, 0, 0)
+                    }
                 }
-                countdownTextView.setCompoundDrawablesWithIntrinsicBounds(drawable, 0, 0, 0)
             }
         }
     }
@@ -194,13 +209,19 @@ class ContractsFragment : Fragment() {
             try {
                 val result = userRepository.fetchUserId()
                 result.onFailure { exception ->
-                    val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
-                    userIdTextView.text = "Failed to load"
+                    // 添加安全的binding检查
+                    _binding?.let { binding ->
+                        val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
+                        userIdTextView?.text = "Failed to load"
+                    }
                     exception.printStackTrace()
                 }
             } catch (e: Exception) {
-                val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
-                userIdTextView.text = "Network error"
+                // 添加安全的binding检查
+                _binding?.let { binding ->
+                    val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
+                    userIdTextView?.text = "Network error"
+                }
                 e.printStackTrace()
             }
         }
@@ -211,13 +232,19 @@ class ContractsFragment : Fragment() {
             try {
                 val result = userRepository.fetchBitcoinBalance()
                 result.onFailure { exception ->
-                    val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
-                    balanceTextView.text = "Failed to load"
+                    // 添加安全的binding检查
+                    _binding?.let { binding ->
+                        val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
+                        balanceTextView?.text = "Failed to load"
+                    }
                     exception.printStackTrace()
                 }
             } catch (e: Exception) {
-                val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
-                balanceTextView.text = "Network error"
+                // 添加安全的binding检查
+                _binding?.let { binding ->
+                    val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
+                    balanceTextView?.text = "Network error"
+                }
                 e.printStackTrace()
             }
         }
