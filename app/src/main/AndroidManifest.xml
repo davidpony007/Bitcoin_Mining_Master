@@ -44,6 +44,12 @@
 
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.SettingActivity"
+            android:exported="false"
+            android:label="Settings" />
+
     </application>
 
 </manifest>
