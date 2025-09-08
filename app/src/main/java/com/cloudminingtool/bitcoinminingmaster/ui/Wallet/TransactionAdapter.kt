@@ -27,7 +27,8 @@ class TransactionAdapter(private val transactions: List<Transaction>) :
             val transaction = transactions[position]
             holder.transactionType?.text = transaction.type
             holder.transactionTime?.text = transaction.time
-            holder.transactionAmount?.text = transaction.amount
+            // 在金额前添加 "+ "
+            holder.transactionAmount?.text = "+ ${transaction.amount}"
         }
     }
 

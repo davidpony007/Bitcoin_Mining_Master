@@ -132,11 +132,12 @@
                 app:layout_constraintStart_toEndOf="@+id/circleImageView2"
                 app:layout_constraintEnd_toEndOf="parent"/>
 
-            <de.hdodenhof.circleimageview.CircleImageView
+            <ImageView
                 android:id="@+id/circleImageView3"
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:src="@drawable/bitcoin_1"
+                android:background="@drawable/bitcoin_circle_background"
                 android:layout_marginTop="14dp"
                 android:layout_marginStart="12dp"
                 app:layout_constraintTop_toBottomOf="@id/circleImageView2"
@@ -206,7 +207,7 @@
                 android:layout_height="28dp"
                 android:text="Referral Reward"
                 android:textColor="@color/black"
-                android:textSize="15sp"
+                android:textSize="20sp"
                 android:textStyle="bold"
                 android:layout_marginStart="12dp"
                 android:paddingStart="0dp"
@@ -240,6 +241,7 @@
                         android:layout_width="28dp"
                         android:layout_height="28dp"
                         android:src="@drawable/bitcoin_1"
+                        android:background="@drawable/bitcoin_circle_background"
                         android:layout_marginStart="12dp"
                         app:layout_constraintTop_toTopOf="parent"
                         app:layout_constraintBottom_toBottomOf="parent"
@@ -301,11 +303,11 @@
             android:layout_height="match_parent">
 
             <TextView
-                android:layout_width="140dp"
+                android:layout_width="180dp"
                 android:layout_height="28dp"
                 android:text="My Invitation Code"
                 android:textColor="@color/black"
-                android:textSize="15sp"
+                android:textSize="20sp"
                 android:textStyle="bold"
                 android:layout_marginStart="12dp"
                 android:paddingStart="0dp"

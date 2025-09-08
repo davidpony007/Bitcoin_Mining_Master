@@ -188,11 +188,12 @@
         </androidx.cardview.widget.CardView>
         <!-- 右侧竖条，BTC价格右侧 -->
 
-        <de.hdodenhof.circleimageview.CircleImageView
+        <ImageView
             android:id="@+id/bitcoin"
             android:layout_width="30dp"
             android:layout_height="30dp"
             android:src="@drawable/bitcoin_1"
+            android:background="@drawable/bitcoin_circle_background"
             app:layout_constraintTop_toTopOf="@id/id_BTC_price"
             app:layout_constraintBottom_toBottomOf="@id/id_BTC_price"
             app:layout_constraintEnd_toEndOf="parent"
@@ -725,7 +726,7 @@
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginTop="338dp"
         android:layout_marginStart="12dp"
-        android:textSize="15sp" />
+        android:textSize="20sp" />
     <!--Free Contract-->
 
     <ImageView
@@ -808,7 +809,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="7.5Gh/s"
-            android:textSize="14sp"
+            android:textSize="20sp"
             android:textColor="@color/black"
             android:textAllCaps="false"
             android:minHeight="0dp"
@@ -886,7 +887,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:text="5.5Gh/s"
-            android:textSize="14sp"
+            android:textSize="20sp"
             android:textColor="@color/black"
             android:textAllCaps="false"
             android:minHeight="0dp"
@@ -916,7 +917,7 @@
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginTop="18dp"
         android:layout_marginStart="12dp"
-        android:textSize="15sp" />
+        android:textSize="20sp" />
     <!--Popular Contract-->
 
     <androidx.core.widget.NestedScrollView

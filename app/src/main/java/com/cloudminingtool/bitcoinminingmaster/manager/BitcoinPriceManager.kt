@@ -42,14 +42,24 @@ object BitcoinPriceManager {
         }
 
         priceUpdateJob = scope.launch {
-            while (isActive) {
-                try {
-                    fetchBitcoinPrice()
-                    delay(REFRESH_INTERVAL_MS)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in price update loop", e)
-                    delay(60000) // 出错时1分钟后重试
+            try {
+                while (coroutineContext.isActive) {
+                    try {
+                        fetchBitcoinPrice()
+                        delay(REFRESH_INTERVAL_MS)
+                    } catch (e: CancellationException) {
+                        Log.d(TAG, "Price update cancelled")
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in price update loop", e)
+                        delay(60000) // 出错时1分钟后重试
+                    }
                 }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Price updates stopped")
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Fatal error in price updates", e)
             }
         }
 
@@ -60,9 +70,13 @@ object BitcoinPriceManager {
      * 停止定时更新
      */
     fun stopPriceUpdates() {
-        priceUpdateJob?.cancel()
-        priceUpdateJob = null
-        Log.d(TAG, "Stopped Bitcoin price updates")
+        try {
+            priceUpdateJob?.cancel()
+            priceUpdateJob = null
+            Log.d(TAG, "Stopped Bitcoin price updates")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping price updates", e)
+        }
     }
 
     /**
@@ -70,7 +84,11 @@ object BitcoinPriceManager {
      */
     fun fetchBitcoinPriceNow() {
         scope.launch {
-            fetchBitcoinPrice()
+            try {
+                fetchBitcoinPrice()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching price now", e)
+            }
         }
     }
 
@@ -100,7 +118,7 @@ object BitcoinPriceManager {
         } catch (e: Exception) {
             Log.e(TAG, "Exception while fetching Bitcoin price", e)
             if (_bitcoinPrice.value == null) {
-                _bitcoinPrice.value = "Network Error"
+                _bitcoinPrice.value = "Error"
             }
         } finally {
             _isLoading.value = false
@@ -112,5 +130,12 @@ object BitcoinPriceManager {
      */
     fun getCurrentPrice(): String? {
         return _bitcoinPrice.value
+    }
+
+    /**
+     * 清理资源
+     */
+    fun cleanup() {
+        stopPriceUpdates()
     }
 }

@@ -116,7 +116,7 @@
 
                 <!-- 顶部数字 -->
                 <TextView
-                    android:id="@+id/bitcoin_balance"
+                    android:id="@+id/bitcoinBalance"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="0.000000281831800"
@@ -166,11 +166,12 @@
         </androidx.cardview.widget.CardView>
         <!-- 右侧竖条，BTC价格右侧 -->
 
-        <de.hdodenhof.circleimageview.CircleImageView
+        <ImageView
             android:id="@+id/bitcoin"
             android:layout_width="30dp"
             android:layout_height="30dp"
             android:src="@drawable/bitcoin_1"
+            android:background="@drawable/bitcoin_circle_background"
             app:layout_constraintTop_toTopOf="@id/id_BTC_price"
             app:layout_constraintBottom_toBottomOf="@id/id_BTC_price"
             app:layout_constraintEnd_toEndOf="parent"
@@ -232,7 +233,7 @@
         app:layout_constraintStart_toStartOf="parent"
         android:layout_marginTop="338dp"
         android:layout_marginStart="12dp"
-        android:textSize="15sp" />
+        android:textSize="20sp" />
     <!-- Active Contract -->
 
     <androidx.core.widget.NestedScrollView

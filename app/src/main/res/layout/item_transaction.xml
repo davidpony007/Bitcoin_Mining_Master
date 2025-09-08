@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:padding="16dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="16dp"
     android:gravity="center_vertical">
 
     <!-- Bitcoin 图标 -->
@@ -11,7 +12,7 @@
         android:id="@+id/transactionIcon"
         android:layout_width="40dp"
         android:layout_height="40dp"
-        android:src="@android:drawable/ic_media_play"
+        android:src="@drawable/bitcoin_1"
         android:background="@drawable/bitcoin_circle_background"
         android:contentDescription="Bitcoin Icon" />
 
@@ -29,7 +30,7 @@
             android:layout_height="wrap_content"
             android:text="Mining Contract"
             android:textColor="@android:color/black"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <TextView
@@ -38,7 +39,7 @@
             android:layout_height="wrap_content"
             android:text="2025-04-20 21:00:00"
             android:textColor="#999999"
-            android:textSize="14sp" />
+            android:textSize="12sp" />
 
     </LinearLayout>
 

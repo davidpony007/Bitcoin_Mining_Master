@@ -35,7 +35,7 @@ object ContractCountdownManager {
     private val _canActivate = MutableStateFlow(true)
     val canActivate: StateFlow<Boolean> = _canActivate.asStateFlow()
 
-    // 协程相关
+    // 协程相关 - 使用应用级别的作用域
     private var countdownJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -46,8 +46,16 @@ object ContractCountdownManager {
      * 初始化倒计时管理器
      */
     fun initialize(context: Context) {
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        checkCurrentState()
+        try {
+            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            checkCurrentState()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing ContractCountdownManager", e)
+            // 设置默认状态
+            _countdownText.value = "Not Active"
+            _isActive.value = false
+            _canActivate.value = true
+        }
     }
 
     /**
@@ -88,13 +96,13 @@ object ContractCountdownManager {
         if (lastActivation == 0L) {
             // 从未激活过，可以激活
             _canActivate.value = true
-            _countdownText.value = "Ready to activate"
+            _countdownText.value = "Not Active"
         } else {
             val elapsed = now - lastActivation
             if (elapsed >= COOLDOWN_DURATION_MS) {
                 // 冷却期已过，可以激活
                 _canActivate.value = true
-                _countdownText.value = "Ready to activate"
+                _countdownText.value = "Not Active"
             } else {
                 // 仍在冷却期，显示剩余时间
                 _canActivate.value = false
@@ -159,20 +167,28 @@ object ContractCountdownManager {
         countdownJob = scope.launch {
             var remaining = duration
 
-            while (remaining > 0 && isActive) {
-                val hours = TimeUnit.MILLISECONDS.toHours(remaining)
-                val minutes = TimeUnit.MILLISECONDS.toMinutes(remaining) % 60
-                val seconds = TimeUnit.MILLISECONDS.toSeconds(remaining) % 60
+            try {
+                while (remaining > 0 && _isActive.value) {
+                    val hours = TimeUnit.MILLISECONDS.toHours(remaining)
+                    val minutes = TimeUnit.MILLISECONDS.toMinutes(remaining) % 60
+                    val seconds = TimeUnit.MILLISECONDS.toSeconds(remaining) % 60
 
-                _countdownText.value = String.format("%02d:%02d:%02d", hours, minutes, seconds)
+                    _countdownText.value = String.format(Locale.getDefault(), "%02dh %02dm %02ds", hours, minutes, seconds)
 
-                delay(1000L)
-                remaining -= 1000L
-            }
+                    delay(1000L)
+                    remaining -= 1000L
+                }
 
-            if (remaining <= 0) {
-                // 倒计时结束，进入冷却期
-                onContractExpired()
+                if (remaining <= 0) {
+                    // 倒计时结束，进入冷却期
+                    onContractExpired()
+                }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Active countdown cancelled")
+                throw e // 重新抛出CancellationException以正确处理协程取消
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in active countdown", e)
+                setInactive()
             }
         }
     }
@@ -187,21 +203,30 @@ object ContractCountdownManager {
         countdownJob = scope.launch {
             var remaining = duration
 
-            while (remaining > 0 && !_canActivate.value) {
-                val hours = TimeUnit.MILLISECONDS.toHours(remaining)
-                val minutes = TimeUnit.MILLISECONDS.toMinutes(remaining) % 60
-                val seconds = TimeUnit.MILLISECONDS.toSeconds(remaining) % 60
+            try {
+                while (remaining > 0 && !_canActivate.value) {
+                    val hours = TimeUnit.MILLISECONDS.toHours(remaining)
+                    val minutes = TimeUnit.MILLISECONDS.toMinutes(remaining) % 60
+                    val seconds = TimeUnit.MILLISECONDS.toSeconds(remaining) % 60
 
-                _countdownText.value = String.format("Cooldown %02d:%02d:%02d", hours, minutes, seconds)
+                    _countdownText.value = String.format(Locale.getDefault(), "Cooldown %02d:%02d:%02d", hours, minutes, seconds)
 
-                delay(1000L)
-                remaining -= 1000L
-            }
+                    delay(1000L)
+                    remaining -= 1000L
+                }
 
-            if (remaining <= 0) {
-                // 冷却期结束，可以重新激活
+                if (remaining <= 0) {
+                    // 冷却期结束，可以重新激活
+                    _canActivate.value = true
+                    _countdownText.value = "Not Active"
+                }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Cooldown countdown cancelled")
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in cooldown countdown", e)
                 _canActivate.value = true
-                _countdownText.value = "Ready to activate"
+                _countdownText.value = "Not Active"
             }
         }
     }
@@ -218,7 +243,7 @@ object ContractCountdownManager {
             startCooldownCountdown(cooldownTime)
         } else {
             _canActivate.value = true
-            _countdownText.value = "Ready to activate"
+            _countdownText.value = "Not Active"
         }
 
         Log.d(TAG, "Contract expired, cooldown period started")
@@ -242,7 +267,18 @@ object ContractCountdownManager {
      * 停止倒计时
      */
     fun stop() {
-        countdownJob?.cancel()
+        try {
+            countdownJob?.cancel()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping countdown", e)
+        }
+    }
+
+    /**
+     * 清理资源
+     */
+    fun cleanup() {
+        stop()
     }
 
     /**

@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.ImageView
+import android.widget.Button
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -16,6 +17,7 @@ import com.cloudminingtool.bitcoinminingmaster.manager.UserDataManager
 import com.cloudminingtool.bitcoinminingmaster.manager.BitcoinPriceManager
 import com.cloudminingtool.bitcoinminingmaster.manager.BitcoinBalanceManager
 import com.cloudminingtool.bitcoinminingmaster.manager.ContractCountdownManager
+import com.cloudminingtool.bitcoinminingmaster.manager.Contract5_5GhManager
 import com.bumptech.glide.Glide
 import kotlinx.coroutines.launch
 
@@ -76,9 +78,11 @@ class ContractsFragment : Fragment() {
         setupBitcoinPriceObserver()
         setupBitcoinBalanceObserver()
         setupContractCountdownObserver()
+        setup5_5GhContractObserver()
 
         // 初始化倒计时管理器
         ContractCountdownManager.initialize(requireContext())
+        Contract5_5GhManager.initialize(requireContext())
 
         // 如果还没有用户ID，则从服务端获取
         if (UserDataManager.getCurrentUserId() == null) {
@@ -98,8 +102,11 @@ class ContractsFragment : Fragment() {
     }
 
     private fun setupUserIdObserver() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             UserDataManager.userId.collect { userId ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
@@ -110,8 +117,11 @@ class ContractsFragment : Fragment() {
             }
         }
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             UserDataManager.isLoading.collect { isLoading ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val userIdTextView = binding.root.findViewById<TextView>(R.id.user_id)
@@ -124,8 +134,11 @@ class ContractsFragment : Fragment() {
     }
 
     private fun setupBitcoinPriceObserver() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             BitcoinPriceManager.bitcoinPrice.collect { price ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val priceTextView = binding.root.findViewById<TextView>(R.id.id_price)
@@ -136,8 +149,11 @@ class ContractsFragment : Fragment() {
             }
         }
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             BitcoinPriceManager.isLoading.collect { isLoading ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val priceTextView = binding.root.findViewById<TextView>(R.id.id_price)
@@ -150,8 +166,11 @@ class ContractsFragment : Fragment() {
     }
 
     private fun setupBitcoinBalanceObserver() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             BitcoinBalanceManager.bitcoinBalance.collect { balance ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
@@ -162,8 +181,11 @@ class ContractsFragment : Fragment() {
             }
         }
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             BitcoinBalanceManager.isLoading.collect { isLoading ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val balanceTextView = binding.root.findViewById<TextView>(R.id.bitcoin_balance)
@@ -176,8 +198,11 @@ class ContractsFragment : Fragment() {
     }
 
     private fun setupContractCountdownObserver() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             ContractCountdownManager.countdownText.collect { text ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_7_5Gh)
@@ -186,11 +211,52 @@ class ContractsFragment : Fragment() {
             }
         }
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             ContractCountdownManager.isActive.collect { isActive ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
                 // 安全地访问binding和视图
                 _binding?.let { binding ->
                     val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_7_5Gh)
+                    countdownTextView?.let { textView ->
+                        val drawable = if (isActive) {
+                            R.drawable.green_dot // 激活状态显示绿点
+                        } else {
+                            R.drawable.red_dot   // 非激活状态显示红点
+                        }
+                        textView.setCompoundDrawablesWithIntrinsicBounds(drawable, 0, 0, 0)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 设置5.5Gh合约观察者
+     */
+    private fun setup5_5GhContractObserver() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            Contract5_5GhManager.countdownText.collect { text ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_5_5Gh)
+                    countdownTextView?.text = text
+                }
+            }
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            Contract5_5GhManager.isActive.collect { isActive ->
+                // 检查Fragment是否仍然活跃
+                if (!isAdded || _binding == null) return@collect
+
+                // 安全地访问binding和视图
+                _binding?.let { binding ->
+                    val countdownTextView = binding.root.findViewById<TextView>(R.id.remaining_time_5_5Gh)
                     countdownTextView?.let { textView ->
                         val drawable = if (isActive) {
                             R.drawable.green_dot // 激活状态显示绿点
