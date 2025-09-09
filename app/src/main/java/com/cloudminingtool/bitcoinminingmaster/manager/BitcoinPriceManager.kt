@@ -33,9 +33,31 @@ object BitcoinPriceManager {
     private val priceFormatter = DecimalFormat("#,##0.00")
 
     /**
+     * 检查是否在预览模式下运行
+     */
+    private fun isInEditMode(): Boolean {
+        return try {
+            // 检查是否在Layout预览模式下
+            val currentThread = Thread.currentThread()
+            currentThread.name.contains("RenderThread") ||
+            currentThread.name.contains("preview") ||
+            currentThread.name.contains("Layout")
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * 开始定时获取比特币价格
      */
     fun startPriceUpdates() {
+        // 如果在预览模式下，不启动网络更新
+        if (isInEditMode()) {
+            Log.d(TAG, "In preview mode, skipping price updates")
+            _bitcoinPrice.value = "Preview Mode"
+            return
+        }
+
         if (priceUpdateJob?.isActive == true) {
             Log.d(TAG, "Price updates already running")
             return
@@ -83,6 +105,13 @@ object BitcoinPriceManager {
      * 立即获取一次比特币价格
      */
     fun fetchBitcoinPriceNow() {
+        // 如果在预览模式下，不进行网络请求
+        if (isInEditMode()) {
+            Log.d(TAG, "In preview mode, skipping immediate price fetch")
+            _bitcoinPrice.value = "Preview Mode"
+            return
+        }
+
         scope.launch {
             try {
                 fetchBitcoinPrice()
@@ -97,6 +126,12 @@ object BitcoinPriceManager {
      */
     private suspend fun fetchBitcoinPrice() {
         try {
+            // 再次检查是否在预览模式下
+            if (isInEditMode()) {
+                _bitcoinPrice.value = "Preview Mode"
+                return
+            }
+
             _isLoading.value = true
             Log.d(TAG, "Fetching Bitcoin price...")
 

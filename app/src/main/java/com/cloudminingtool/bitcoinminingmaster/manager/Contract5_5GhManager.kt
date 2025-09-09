@@ -146,8 +146,9 @@ object Contract5_5GhManager {
      * 增加倒计时时间
      */
     private fun addCountdownTime(additionalTime: Long) {
-        val currentRemaining = getCurrentRemainingTime()
-        val newRemaining = currentRemaining + additionalTime
+        val currentRemaining = getRemainingTimeInMillis()
+        // 确保总时间不超过48小时
+        val newRemaining = minOf(currentRemaining + additionalTime, 48 * 60 * 60 * 1000L)
 
         prefs?.edit()?.apply {
             putLong(KEY_REMAINING_TIME, newRemaining)
@@ -160,7 +161,7 @@ object Contract5_5GhManager {
     /**
      * 获取当前剩余时间
      */
-    private fun getCurrentRemainingTime(): Long {
+    fun getRemainingTimeInMillis(): Long {
         return prefs?.getLong(KEY_REMAINING_TIME, 0L) ?: 0L
     }
 

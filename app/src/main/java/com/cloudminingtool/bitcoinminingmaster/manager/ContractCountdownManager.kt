@@ -158,6 +158,22 @@ object ContractCountdownManager {
     }
 
     /**
+     * 获取剩余激活时间（毫秒）
+     */
+    fun getRemainingActiveTimeInMillis(): Long {
+        if (!_isActive.value) {
+            return 0L
+        }
+        val now = System.currentTimeMillis()
+        val lastActivation = prefs?.getLong(KEY_LAST_ACTIVATION, 0L) ?: 0L
+        if (lastActivation == 0L) {
+            return 0L
+        }
+        val elapsed = now - lastActivation
+        return if (elapsed >= CONTRACT_DURATION_MS) 0L else CONTRACT_DURATION_MS - elapsed
+    }
+
+    /**
      * 开始激活状态倒计时（2小时）
      */
     private fun startActiveCountdown(duration: Long) {

@@ -215,7 +215,7 @@
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            android:layout_marginTop="110dp">
+            android:layout_marginTop="100dp">
 
             <ImageView
                 android:id="@+id/batteryCounterIcon"
@@ -239,13 +239,15 @@
             android:id="@+id/batterySlotCard"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
+            app:cardCornerRadius="10dp"
             app:cardElevation="2dp"
             app:cardBackgroundColor="@color/cardview_dark_background"
             app:layout_constraintTop_toBottomOf="@id/batteryCounterCard"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            android:layout_marginTop="-6dp">
+            app:layout_constraintBottom_toTopOf="@id/textView_title_popular_contract"
+            android:layout_marginTop="-6dp"
+            android:layout_marginBottom="30dp">
 
             <GridLayout
                 android:id="@+id/batterySlot"
@@ -257,10 +259,10 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="8dp"
-                android:layout_marginStart="6dp"
-                android:layout_marginEnd="6dp">
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="4dp"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp">
 
                 <!-- 第一行：battery1-battery12 -->
                 <FrameLayout
@@ -268,7 +270,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="0"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery1"
@@ -290,7 +292,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="1"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery2"
@@ -312,7 +314,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="2"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery3"
@@ -334,7 +336,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="3"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery4"
@@ -356,7 +358,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="4"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery5"
@@ -378,7 +380,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="5"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery6"
@@ -400,7 +402,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="6"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery7"
@@ -422,7 +424,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="7"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery8"
@@ -444,7 +446,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="8"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery9"
@@ -466,7 +468,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="9"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery10"
@@ -488,7 +490,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="10"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery11"
@@ -510,7 +512,7 @@
                     android:layout_height="@dimen/battery_height"
                     android:layout_row="0"
                     android:layout_column="11"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery12"
@@ -534,7 +536,7 @@
                     android:layout_row="1"
                     android:layout_column="0"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery13"
@@ -557,7 +559,7 @@
                     android:layout_row="1"
                     android:layout_column="1"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery14"
@@ -580,7 +582,7 @@
                     android:layout_row="1"
                     android:layout_column="2"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery15"
@@ -603,7 +605,7 @@
                     android:layout_row="1"
                     android:layout_column="3"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery16"
@@ -626,7 +628,7 @@
                     android:layout_row="1"
                     android:layout_column="4"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery17"
@@ -649,7 +651,7 @@
                     android:layout_row="1"
                     android:layout_column="5"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery18"
@@ -672,7 +674,7 @@
                     android:layout_row="1"
                     android:layout_column="6"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery19"
@@ -695,7 +697,7 @@
                     android:layout_row="1"
                     android:layout_column="7"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery20"
@@ -718,7 +720,7 @@
                     android:layout_row="1"
                     android:layout_column="8"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery21"
@@ -741,7 +743,7 @@
                     android:layout_row="1"
                     android:layout_column="9"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery22"
@@ -764,7 +766,7 @@
                     android:layout_row="1"
                     android:layout_column="10"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery23"
@@ -787,7 +789,7 @@
                     android:layout_row="1"
                     android:layout_column="11"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery24"
@@ -811,7 +813,7 @@
                     android:layout_row="2"
                     android:layout_column="0"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery25"
@@ -834,7 +836,7 @@
                     android:layout_row="2"
                     android:layout_column="1"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery26"
@@ -857,7 +859,7 @@
                     android:layout_row="2"
                     android:layout_column="2"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery27"
@@ -880,7 +882,7 @@
                     android:layout_row="2"
                     android:layout_column="3"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery28"
@@ -903,7 +905,7 @@
                     android:layout_row="2"
                     android:layout_column="4"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery29"
@@ -926,7 +928,7 @@
                     android:layout_row="2"
                     android:layout_column="5"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery30"
@@ -949,7 +951,7 @@
                     android:layout_row="2"
                     android:layout_column="6"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery31"
@@ -972,7 +974,7 @@
                     android:layout_row="2"
                     android:layout_column="7"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery32"
@@ -995,7 +997,7 @@
                     android:layout_row="2"
                     android:layout_column="8"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery33"
@@ -1018,7 +1020,7 @@
                     android:layout_row="2"
                     android:layout_column="9"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery34"
@@ -1041,7 +1043,7 @@
                     android:layout_row="2"
                     android:layout_column="10"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery35"
@@ -1064,7 +1066,7 @@
                     android:layout_row="2"
                     android:layout_column="11"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery36"
@@ -1088,7 +1090,7 @@
                     android:layout_row="3"
                     android:layout_column="0"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery37"
@@ -1111,7 +1113,7 @@
                     android:layout_row="3"
                     android:layout_column="1"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery38"
@@ -1134,7 +1136,7 @@
                     android:layout_row="3"
                     android:layout_column="2"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery39"
@@ -1157,7 +1159,7 @@
                     android:layout_row="3"
                     android:layout_column="3"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery40"
@@ -1180,7 +1182,7 @@
                     android:layout_row="3"
                     android:layout_column="4"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery41"
@@ -1203,7 +1205,7 @@
                     android:layout_row="3"
                     android:layout_column="5"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery42"
@@ -1226,7 +1228,7 @@
                     android:layout_row="3"
                     android:layout_column="6"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery43"
@@ -1249,7 +1251,7 @@
                     android:layout_row="3"
                     android:layout_column="7"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery44"
@@ -1272,7 +1274,7 @@
                     android:layout_row="3"
                     android:layout_column="8"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery45"
@@ -1295,7 +1297,7 @@
                     android:layout_row="3"
                     android:layout_column="9"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery46"
@@ -1318,7 +1320,7 @@
                     android:layout_row="3"
                     android:layout_column="10"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery47"
@@ -1341,7 +1343,7 @@
                     android:layout_row="3"
                     android:layout_column="11"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="1dp">
+                    android:layout_margin="0.5dp">
 
                     <ImageView
                         android:id="@+id/battery48"

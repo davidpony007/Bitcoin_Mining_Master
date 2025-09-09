@@ -12,6 +12,6 @@
     <dimen name="textsize24">24sp</dimen>
 
     <dimen name="battery_width">22dp</dimen>
-    <dimen name="battery_height">38dp</dimen>
+    <dimen name="battery_height">36dp</dimen>
 
 </resources>
