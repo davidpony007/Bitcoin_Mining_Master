@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="46dp"
+    android:viewportWidth="120"
+    android:viewportHeight="46">
+
+    <!-- 梯形路径，下边比上边长，四个角都有圆润效果 -->
+    <path
+        android:fillColor="@color/cardview_dark_background"
+        android:strokeColor="#40FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M20,9 L100,9 Q108,9 110,13 L115,33 Q115,37 111,37 L9,37 Q5,37 5,33 L10,13 Q12,9 20,9 Z" />
+
+</vector>

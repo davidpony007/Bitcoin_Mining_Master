@@ -200,7 +200,40 @@
             android:layout_marginEnd="12dp"/>
         <!-- 右上方比特币图标 -->
 
+        <!-- 电池计数器 -->
+        <LinearLayout
+            android:id="@+id/batteryCounterCard"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:background="@drawable/trapezoid_background"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingStart="26dp"
+            android:paddingEnd="26dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="14dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            android:layout_marginTop="110dp">
 
+            <ImageView
+                android:id="@+id/batteryCounterIcon"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/icon_battery_full"
+                android:layout_marginEnd="6dp"/>
+
+            <TextView
+                android:id="@+id/batteryCounterText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="X 14"
+                android:textColor="@color/white"
+                android:textSize="14sp"
+                android:textStyle="bold"/>
+
+        </LinearLayout>
 
         <androidx.cardview.widget.CardView
             android:id="@+id/batterySlotCard"
@@ -209,11 +242,10 @@
             app:cardCornerRadius="12dp"
             app:cardElevation="2dp"
             app:cardBackgroundColor="@color/cardview_dark_background"
-            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/batteryCounterCard"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent"
-            android:layout_marginTop="120dp">
+            android:layout_marginTop="-6dp">
 
             <GridLayout
                 android:id="@+id/batterySlot"
@@ -225,482 +257,1106 @@
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintBottom_toBottomOf="parent"
-                android:layout_marginTop="6dp"
-                android:layout_marginBottom="6dp"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp">
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp">
 
                 <!-- 第一行：battery1-battery12 -->
-                <ImageView
-                    android:id="@+id/battery1"
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="0"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery2"
+                    <ImageView
+                        android:id="@+id/battery1"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery1_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="1"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery3"
+                    <ImageView
+                        android:id="@+id/battery2"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery2_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="2"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery4"
+                    <ImageView
+                        android:id="@+id/battery3"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery3_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="3"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery5"
+                    <ImageView
+                        android:id="@+id/battery4"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery4_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="4"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery6"
+                    <ImageView
+                        android:id="@+id/battery5"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery5_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="5"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery7"
+                    <ImageView
+                        android:id="@+id/battery6"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery6_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="6"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery8"
+                    <ImageView
+                        android:id="@+id/battery7"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery7_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="7"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery9"
+                    <ImageView
+                        android:id="@+id/battery8"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery8_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="8"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery10"
+                    <ImageView
+                        android:id="@+id/battery9"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery9_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="9"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery11"
+                    <ImageView
+                        android:id="@+id/battery10"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery10_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="10"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery12"
+                    <ImageView
+                        android:id="@+id/battery11"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery11_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="0"
                     android:layout_column="11"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
+
+                    <ImageView
+                        android:id="@+id/battery12"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery12_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
 
                 <!-- 第二行：battery13-24 -->
-                <ImageView
-                    android:id="@+id/battery13"
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="0"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery14"
+                    <ImageView
+                        android:id="@+id/battery13"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery13_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="1"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery15"
+                    <ImageView
+                        android:id="@+id/battery14"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery14_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="2"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery16"
+                    <ImageView
+                        android:id="@+id/battery15"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery15_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="3"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery17"
+                    <ImageView
+                        android:id="@+id/battery16"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery16_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="4"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery18"
+                    <ImageView
+                        android:id="@+id/battery17"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery17_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="5"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery19"
+                    <ImageView
+                        android:id="@+id/battery18"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery18_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="6"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery20"
+                    <ImageView
+                        android:id="@+id/battery19"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery19_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="7"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery21"
+                    <ImageView
+                        android:id="@+id/battery20"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery20_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="8"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery22"
+                    <ImageView
+                        android:id="@+id/battery21"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery21_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="9"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery23"
+                    <ImageView
+                        android:id="@+id/battery22"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery22_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="10"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery24"
+                    <ImageView
+                        android:id="@+id/battery23"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery23_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="1"
                     android:layout_column="11"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
+
+                    <ImageView
+                        android:id="@+id/battery24"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery24_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
 
                 <!-- 第三行：battery25-36 -->
-                <ImageView
-                    android:id="@+id/battery25"
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="0"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery26"
+                    <ImageView
+                        android:id="@+id/battery25"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery25_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="1"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery27"
+                    <ImageView
+                        android:id="@+id/battery26"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery26_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="2"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery28"
+                    <ImageView
+                        android:id="@+id/battery27"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery27_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="3"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery29"
+                    <ImageView
+                        android:id="@+id/battery28"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery28_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="4"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery30"
+                    <ImageView
+                        android:id="@+id/battery29"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery29_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="5"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery31"
+                    <ImageView
+                        android:id="@+id/battery30"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery30_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="6"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery32"
+                    <ImageView
+                        android:id="@+id/battery31"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery31_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="7"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery33"
+                    <ImageView
+                        android:id="@+id/battery32"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery32_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="8"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery34"
+                    <ImageView
+                        android:id="@+id/battery33"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery33_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="9"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery35"
+                    <ImageView
+                        android:id="@+id/battery34"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery34_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="10"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery36"
+                    <ImageView
+                        android:id="@+id/battery35"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery35_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="2"
                     android:layout_column="11"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
+
+                    <ImageView
+                        android:id="@+id/battery36"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery36_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
 
                 <!-- 第四行：battery37-48 -->
-                <ImageView
-                    android:id="@+id/battery37"
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="0"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery38"
+                    <ImageView
+                        android:id="@+id/battery37"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery37_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="1"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery39"
+                    <ImageView
+                        android:id="@+id/battery38"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery38_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="2"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery40"
+                    <ImageView
+                        android:id="@+id/battery39"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery39_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="3"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery41"
+                    <ImageView
+                        android:id="@+id/battery40"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery40_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="4"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery42"
+                    <ImageView
+                        android:id="@+id/battery41"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery41_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="5"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery43"
+                    <ImageView
+                        android:id="@+id/battery42"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery42_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="6"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery44"
+                    <ImageView
+                        android:id="@+id/battery43"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery43_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="7"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery45"
+                    <ImageView
+                        android:id="@+id/battery44"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery44_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="8"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery46"
+                    <ImageView
+                        android:id="@+id/battery45"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery45_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="9"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery47"
+                    <ImageView
+                        android:id="@+id/battery46"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery46_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="10"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
 
-                <ImageView
-                    android:id="@+id/battery48"
+                    <ImageView
+                        android:id="@+id/battery47"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery47_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <FrameLayout
                     android:layout_width="@dimen/battery_width"
                     android:layout_height="@dimen/battery_height"
-                    android:src="@drawable/icon_battery_empty"
                     android:layout_row="3"
                     android:layout_column="11"
                     android:layout_marginTop="2dp"
-                    android:layout_margin="0dp"/>
+                    android:layout_margin="1dp">
+
+                    <ImageView
+                        android:id="@+id/battery48"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/icon_battery_empty" />
+
+                    <ImageView
+                        android:id="@+id/battery48_flash"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/icon_flash"
+                        android:visibility="gone" />
+                </FrameLayout>
 
 
 

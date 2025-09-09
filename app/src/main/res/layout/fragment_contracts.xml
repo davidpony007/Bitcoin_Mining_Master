@@ -286,8 +286,8 @@
                         android:layout_height="wrap_content"
                         android:text="Watch Ads Reward"
                         android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginStart="0dp" />
+                        android:textSize="12sp"
+                        android:layout_marginStart="8dp" />
 
                     <Space
                         android:layout_width="0dp"
@@ -345,8 +345,8 @@
                         android:layout_height="wrap_content"
                         android:text="Daily Check-in Reward"
                         android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginStart="0dp" />
+                        android:textSize="12sp"
+                        android:layout_marginStart="8dp" />
 
                     <Space
                         android:layout_width="0dp"
