@@ -1,5 +1,7 @@
 package com.cloudminingtool.bitcoinminingmaster.ui.Dashboard
 
+import android.content.Context
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -24,6 +26,7 @@ import com.cloudminingtool.bitcoinminingmaster.repository.UserRepository
 import com.cloudminingtool.bitcoinminingmaster.R
 import android.widget.Toast
 import kotlinx.coroutines.launch
+import java.io.File
 
 class DashboardFragment : Fragment() {
 
@@ -58,10 +61,29 @@ class DashboardFragment : Fragment() {
                 }
             }
 
+            loadAvatar()
+
             return root
         } catch (e: Exception) {
             e.printStackTrace()
             return null
+        }
+    }
+
+    private fun loadAvatar() {
+        try {
+            val sharedPref = activity?.getSharedPreferences("user_settings", Context.MODE_PRIVATE)
+            val savedPath = sharedPref?.getString("avatar_path", null)
+
+            savedPath?.let { path ->
+                val file = File(path)
+                if (file.exists()) {
+                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    binding?.circleImageView?.setImageBitmap(bitmap)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -102,7 +124,7 @@ class DashboardFragment : Fragment() {
             // 设置7.5Gh/s按钮点击事件
             setupButton7_5GhClickListener()
 
-            // 设置5.5Gh/s按钮点击事件
+            // 设���5.5Gh/s按钮点击事件
             setupButton5_5GhClickListener()
 
             // 初始化倒计时管理器
@@ -422,7 +444,7 @@ class DashboardFragment : Fragment() {
 
                     _binding?.let { binding ->
                         val button7_5Gh = binding.root.findViewById<Button>(R.id.button_7_5Gh)
-                        // 保持按钮始终启用，让用户可以点击获得反馈
+                        // 保持按钮始终启用，让用户可以点击获得���馈
                         button7_5Gh?.isEnabled = true
                         // 根据冷却状态调整按钮透明度
                         button7_5Gh?.alpha = if (canActivate) 1.0f else 0.7f
@@ -621,6 +643,9 @@ class DashboardFragment : Fragment() {
         BitcoinPriceManager.fetchBitcoinPriceNow()
         // 根据合约剩余时间更新电池槽状态
         updateBatterySlotFromContractTimes()
+
+        loadAvatar()
+        loadNickname() // Load nickname when fragment is resumed
     }
 
     override fun onPause() {
@@ -704,4 +729,19 @@ class DashboardFragment : Fragment() {
             Log.e("DashboardFragment", "Failed to update battery slot from contract times", e)
         }
     }
+
+    private fun loadNickname() {
+        try {
+            val sharedPref = activity?.getSharedPreferences("user_settings", Context.MODE_PRIVATE)
+            val savedNickname = sharedPref?.getString("nickname", "Bitcoin Mining Master")
+
+            binding?.let { binding ->
+                val nicknameTextView = binding.root.findViewById<TextView>(R.id.nickname)
+                nicknameTextView?.text = savedNickname
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
+

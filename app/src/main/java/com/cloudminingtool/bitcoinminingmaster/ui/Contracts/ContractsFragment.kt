@@ -1,5 +1,7 @@
 package com.cloudminingtool.bitcoinminingmaster.ui.Contracts
 
+import android.content.Context
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -19,11 +21,12 @@ import com.cloudminingtool.bitcoinminingmaster.manager.ContractCountdownManager
 import com.cloudminingtool.bitcoinminingmaster.manager.Contract5_5GhManager
 import com.bumptech.glide.Glide
 import kotlinx.coroutines.launch
+import java.io.File
 
 class ContractsFragment : Fragment() {
 
     private var _binding: FragmentContractsBinding? = null
-    private val binding get() = _binding
+    private val binding get() = _binding!!
 
     private val userRepository = UserRepository()
 
@@ -38,10 +41,13 @@ class ContractsFragment : Fragment() {
             _binding = FragmentContractsBinding.inflate(inflater, container, false)
             val root: View = _binding?.root ?: return null
 
-            val textView: TextView = _binding!!.textContracts
+            val textView: TextView = binding.textContracts
             contractsViewModel.text.observe(viewLifecycleOwner) {
                 textView.text = it
             }
+
+            loadAvatar()
+            loadNickname() // Load nickname when fragment is created
 
             return root
         } catch (e: Exception) {
@@ -174,6 +180,35 @@ class ContractsFragment : Fragment() {
         super.onResume()
         // 页面可见时确保价格更新正在运行
         BitcoinPriceManager.startPriceUpdates()
+        loadAvatar() // Reload avatar when fragment is resumed
+        loadNickname() // Load nickname when fragment is resumed
+    }
+
+    private fun loadAvatar() {
+        val sharedPref = activity?.getSharedPreferences("user_settings", Context.MODE_PRIVATE)
+        val savedPath = sharedPref?.getString("avatar_path", null)
+
+        savedPath?.let { path ->
+            val file = File(path)
+            if (file.exists()) {
+                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                binding.circleImageView.setImageBitmap(bitmap)
+            }
+        }
+    }
+
+    private fun loadNickname() {
+        try {
+            val sharedPref = activity?.getSharedPreferences("user_settings", Context.MODE_PRIVATE)
+            val savedNickname = sharedPref?.getString("nickname", "Bitcoin Mining Master")
+
+            _binding?.let { binding ->
+                val nicknameTextView = binding.root.findViewById<TextView>(R.id.nickname)
+                nicknameTextView?.text = savedNickname
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun setupUserIdObserver() {

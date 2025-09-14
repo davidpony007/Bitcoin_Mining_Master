@@ -101,19 +101,22 @@
                     android:textSize="16sp" />
 
                 <ImageView
+                    android:id="@+id/userAvatarImage"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
-                    android:src="@drawable/icon_bittycoon"
+                    android:src="@drawable/icon_bitcoin_mining_master"
                     android:background="@drawable/bitcoin_circle_background"
-                    android:scaleType="centerCrop" />
+                    android:scaleType="centerCrop"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?android:attr/selectableItemBackgroundBorderless" />
 
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="12dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
-                    android:contentDescription="Arrow" />
+                    android:src="@drawable/icon_right"
+                    android:contentDescription="Change Avatar" />
 
             </LinearLayout>
 
@@ -154,9 +157,10 @@
                     android:textSize="16sp" />
 
                 <TextView
+                    android:id="@+id/nicknameDisplay"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="bitTycoon"
+                    android:text="Bitcoin Mining Master"
                     android:textColor="#888888"
                     android:textSize="14sp" />
 
@@ -164,8 +168,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="12dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -217,8 +220,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="12dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -265,9 +267,10 @@
                     android:textSize="16sp" />
 
                 <TextView
+                    android:id="@+id/googleAccountDisplay"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="lussiematine007@gmail.com"
+                    android:text="Binding"
                     android:textColor="#888888"
                     android:textSize="12sp"
                     android:maxLines="1"
@@ -277,8 +280,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="12dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -322,8 +324,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -372,8 +373,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -417,8 +417,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -462,8 +461,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -507,8 +505,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
@@ -553,8 +550,7 @@
                 <ImageView
                     android:layout_width="24dp"
                     android:layout_height="24dp"
-                    android:src="@android:drawable/ic_menu_send"
-                    android:rotation="180"
+                    android:src="@drawable/icon_right"
                     android:contentDescription="Arrow" />
 
             </LinearLayout>
