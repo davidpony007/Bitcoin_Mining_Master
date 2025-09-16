@@ -78,12 +78,16 @@ class SettingActivity : AppCompatActivity() {
 
             // Google 绑定
             findViewById<LinearLayout>(R.id.googleBinding)?.setOnClickListener {
-                showGoogleBindingDialog()
+                // 只有在未绑定时才响应点击
+                val sharedPref = getSharedPreferences("user_settings", MODE_PRIVATE)
+                if (sharedPref.getString("google_account", null) == null) {
+                    showBindGoogleDialog()
+                }
             }
 
             // Sign Out
             findViewById<LinearLayout>(R.id.signOutSetting)?.setOnClickListener {
-                Toast.makeText(this, "Sign out", Toast.LENGTH_SHORT).show()
+                showSignOutConfirmationDialog()
             }
 
             // Support us
@@ -108,7 +112,7 @@ class SettingActivity : AppCompatActivity() {
 
             // Delete account
             findViewById<LinearLayout>(R.id.deleteAccountSetting)?.setOnClickListener {
-                Toast.makeText(this, "Delete account", Toast.LENGTH_SHORT).show()
+                showDeleteAccountConfirmationDialog()
             }
 
         } catch (e: Exception) {
@@ -217,25 +221,31 @@ class SettingActivity : AppCompatActivity() {
     }
 
     private fun loadSavedGoogleAccount() {
+        updateGoogleBindingUI()
+    }
+
+    private fun updateGoogleBindingUI() {
         val sharedPref = getSharedPreferences("user_settings", MODE_PRIVATE)
         val savedGoogleAccount = sharedPref.getString("google_account", null)
+        val googleBindingLayout = findViewById<LinearLayout>(R.id.googleBinding)
+        val googleBindingArrow = findViewById<ImageView>(R.id.googleBindingArrow)
 
-        // 如果有保存的Google账号，则显示账号，否则显示"Binding"
-        googleAccountTextView.text = savedGoogleAccount ?: "Binding"
+        if (savedGoogleAccount != null) {
+            // 已绑定
+            googleAccountTextView.text = savedGoogleAccount
+            googleBindingArrow.visibility = android.view.View.GONE
+            googleBindingLayout.isClickable = false
+        } else {
+            // 未绑定
+            googleAccountTextView.text = "Binding"
+            googleBindingArrow.visibility = android.view.View.VISIBLE
+            googleBindingLayout.isClickable = true
+        }
     }
 
     private fun showGoogleBindingDialog() {
-        // 检查当前Google账号绑定状态
-        val sharedPref = getSharedPreferences("user_settings", MODE_PRIVATE)
-        val currentGoogleAccount = sharedPref.getString("google_account", null)
-
-        if (currentGoogleAccount != null) {
-            // 已绑定账号，显示解绑选项
-            showUnbindGoogleDialog(currentGoogleAccount)
-        } else {
-            // 未绑定，显示绑定对话框
-            showBindGoogleDialog()
-        }
+        // 此方法现在只用于显示绑定对话框
+        showBindGoogleDialog()
     }
 
     private fun showBindGoogleDialog() {
@@ -290,7 +300,7 @@ class SettingActivity : AppCompatActivity() {
             saveGoogleAccountToPreferences(selectedAccount)
 
             // 更新UI显示
-            googleAccountTextView.text = selectedAccount
+            updateGoogleBindingUI()
 
             Toast.makeText(this, "Google account bound successfully!", Toast.LENGTH_LONG).show()
         }, 1500)
@@ -304,8 +314,8 @@ class SettingActivity : AppCompatActivity() {
             apply()
         }
 
-        // 更新UI显示
-        googleAccountTextView.text = "Binding"
+        // 更新UI
+        updateGoogleBindingUI()
 
         Toast.makeText(this, "Google account unbound", Toast.LENGTH_SHORT).show()
     }
@@ -316,5 +326,62 @@ class SettingActivity : AppCompatActivity() {
             putString("google_account", googleAccount)
             apply()
         }
+    }
+
+    private fun showSignOutConfirmationDialog() {
+        // 创建确认对话框
+        AlertDialog.Builder(this)
+            .setTitle("Sign Out")
+            .setMessage("Are you sure you want to sign out?")
+            .setPositiveButton("Yes") { dialog, which ->
+                // 执行登出操作
+                performSignOut()
+            }
+            .setNegativeButton("No", null)
+            .show()
+    }
+
+    private fun performSignOut() {
+        // 登出Google账号
+        unbindGoogleAccount()
+
+        // 可以选择在这里添加其他登出逻辑，例如返回登录页
+        // finish()
+    }
+
+    private fun showDeleteAccountConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Delete account")
+            .setMessage("Destroying an account will delete all information and cannot be restored. Do you confirm the destruction?")
+            .setPositiveButton("Delete") { _, _ ->
+                performAccountDeletion()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performAccountDeletion() {
+        // Clear all user data from SharedPreferences
+        val sharedPref = getSharedPreferences("user_settings", MODE_PRIVATE)
+        with(sharedPref.edit()) {
+            clear()
+            apply()
+        }
+
+        // Optionally, delete the avatar file from internal storage
+        val avatarFile = File(filesDir, "avatar.png")
+        if (avatarFile.exists()) {
+            avatarFile.delete()
+        }
+
+        Toast.makeText(this, "Account deleted successfully", Toast.LENGTH_SHORT).show()
+
+        // Update UI to reflect the deletion
+        updateGoogleBindingUI()
+        loadSavedNickname()
+        loadSavedAvatar()
+
+        // Optionally, navigate the user away from the settings screen
+        // finish()
     }
 }

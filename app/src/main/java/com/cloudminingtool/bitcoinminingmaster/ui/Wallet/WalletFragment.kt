@@ -7,14 +7,17 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.cloudminingtool.bitcoinminingmaster.databinding.FragmentWalletBinding
 import com.cloudminingtool.bitcoinminingmaster.ui.SettingActivity
+import com.cloudminingtool.bitcoinminingmaster.ui.WithdrawActivity
 
 class WalletFragment : Fragment() {
 
     private var _binding: FragmentWalletBinding? = null
     private val binding get() = _binding!!
+    private lateinit var walletViewModel: WalletViewModel
     private lateinit var transactionAdapter: TransactionAdapter
 
     override fun onCreateView(
@@ -22,6 +25,7 @@ class WalletFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+        walletViewModel = ViewModelProvider(this)[WalletViewModel::class.java]
         _binding = FragmentWalletBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -29,58 +33,45 @@ class WalletFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupViews()
-        setupTransactionList()
+        setupTransactionRecyclerView()
+        observeViewModel()
     }
 
     private fun setupViews() {
-        // 使用安全的方式获取视图引用
-        _binding?.let { binding ->
-            // 设置按钮点击事件 - 添加空值检查
-            binding.root.findViewById<android.widget.ImageButton>(com.cloudminingtool.bitcoinminingmaster.R.id.btnSettings)?.let { btnSettings ->
-                btnSettings.setOnClickListener {
-                    try {
-                        val intent = Intent(requireContext(), SettingActivity::class.java)
-                        startActivity(intent)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        Toast.makeText(context, "无法打开设置页面", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
+        // Settings按钮点击事件
+        binding.btnSettings.setOnClickListener {
+            val intent = Intent(requireContext(), SettingActivity::class.java)
+            startActivity(intent)
+        }
 
-            // Withdraw按钮点击事件 - 添加空值检查
-            binding.root.findViewById<android.widget.Button>(com.cloudminingtool.bitcoinminingmaster.R.id.btnWithdraw)?.let { btnWithdraw ->
-                btnWithdraw.setOnClickListener {
-                    Toast.makeText(requireContext(), "Withdraw feature coming soon", Toast.LENGTH_SHORT).show()
-                }
-            }
+        // Withdraw按钮点击事件 - 跳转到Withdrawal页面
+        binding.btnWithdraw.setOnClickListener {
+            val intent = Intent(requireContext(), WithdrawActivity::class.java)
+            startActivity(intent)
         }
     }
 
-    private fun setupTransactionList() {
-        // 使用安全的方式设置RecyclerView
-        _binding?.let { binding ->
-            try {
-                // 创建模拟交易数据
-                val transactions = listOf(
-                    Transaction("Mining Contract", "2025-04-20 21:00:00", "0.000000005332448"),
-                    Transaction("Mining Contract", "2025-04-20 20:00:00", "0.000000005347389"),
-                    Transaction("Mining Contract", "2025-04-20 19:00:00", "0.000000005345507"),
-                    Transaction("Mining Contract", "2025-04-20 18:00:00", "0.000000005321536"),
-                    Transaction("Mining Contract", "2025-04-20 17:00:00", "0.000000005314699"),
-                    Transaction("Mining Contract", "2025-04-20 16:00:00", "0.000000005306130")
-                )
+    private fun setupTransactionRecyclerView() {
+        // 创建模拟交易数据
+        val transactions = listOf(
+            TransactionItem("Mining Reward", "2025-01-15", "+0.00000012 BTC", "completed"),
+            TransactionItem("Mining Reward", "2025-01-14", "+0.00000011 BTC", "completed"),
+            TransactionItem("Mining Reward", "2025-01-13", "+0.00000010 BTC", "completed"),
+            TransactionItem("Withdraw", "2025-01-12", "-0.00001000 BTC", "completed"),
+            TransactionItem("Mining Reward", "2025-01-11", "+0.00000009 BTC", "completed")
+        )
 
-                // 设置RecyclerView - 添加空值检查
-                binding.root.findViewById<androidx.recyclerview.widget.RecyclerView>(com.cloudminingtool.bitcoinminingmaster.R.id.transactionRecyclerView)?.let { recyclerView ->
-                    transactionAdapter = TransactionAdapter(transactions)
-                    recyclerView.layoutManager = LinearLayoutManager(requireContext())
-                    recyclerView.adapter = transactionAdapter
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                Toast.makeText(context, "初始化交易列表失败", Toast.LENGTH_SHORT).show()
-            }
+        transactionAdapter = TransactionAdapter(transactions)
+        binding.transactionRecyclerView.apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            adapter = transactionAdapter
+        }
+    }
+
+    private fun observeViewModel() {
+        // 观察比特币余额变化
+        walletViewModel.bitcoinBalance.observe(viewLifecycleOwner) { balance ->
+            binding.bitcoinBalance.text = "$balance BTC"
         }
     }
 

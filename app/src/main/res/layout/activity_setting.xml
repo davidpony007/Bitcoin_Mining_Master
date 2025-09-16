@@ -21,13 +21,12 @@
 
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/black_circle"
-            android:src="@android:drawable/ic_menu_revert"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/icon_left"
             android:contentDescription="Back"
             android:scaleType="centerInside"
-            android:padding="12dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent" />
@@ -277,6 +276,7 @@
                     android:ellipsize="end" />
 
                 <ImageView
+                    android:id="@+id/googleBindingArrow"
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="12dp"
