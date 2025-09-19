@@ -64,17 +64,21 @@ class ReferralFragment : Fragment() {
             adapter = historyAdapter
         }
 
-        // 检查是否有邀请记录，如果没有则显示空状态
-        updateInvitationHistoryView(historyList.isEmpty())
+        // 检查是否有邀请记录，控制底部按钮显示
+        updateInvitationHistoryView(historyList)
     }
 
-    private fun updateInvitationHistoryView(isEmpty: Boolean) {
+    private fun updateInvitationHistoryView(historyList: List<InvitationHistoryItem>) {
+        val isEmpty = historyList.isEmpty()
+
         if (isEmpty) {
-            // 隐藏RecyclerView，显示空状态
+            // 隐藏RecyclerView，显示底部邀请按钮
             binding.rvInvitationHistory.visibility = View.GONE
+            binding.bottomInviteSection.visibility = View.VISIBLE
         } else {
-            // 显示RecyclerView，隐藏空状态
+            // 显示RecyclerView，隐藏底部邀请按钮
             binding.rvInvitationHistory.visibility = View.VISIBLE
+            binding.bottomInviteSection.visibility = View.GONE
         }
     }
 
@@ -102,6 +106,15 @@ class ReferralFragment : Fragment() {
         clipboard.setPrimaryClip(clip)
 
         Toast.makeText(requireContext(), "Invitation code copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    // 当邀请历史数据更新时调用此方法
+    private fun onInvitationHistoryUpdated(newHistoryList: List<InvitationHistoryItem>) {
+        // 更新适配器数据
+        historyAdapter.updateData(newHistoryList)
+
+        // 根据数据状态控制按钮显示
+        updateInvitationHistoryView(newHistoryList)
     }
 
     override fun onDestroyView() {

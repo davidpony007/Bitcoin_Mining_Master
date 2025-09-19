@@ -3,75 +3,44 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/rounded_background"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:padding="16dp"
     android:layout_marginBottom="8dp">
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-        <ImageView
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:src="@drawable/bitcoin_1"
-            android:background="@drawable/bitcoin_circle_background"
-            android:layout_marginEnd="12dp" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tvFriendName"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Friend Name"
-                android:textColor="#333333"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvInviteDate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="2025-01-15"
-                android:textColor="#666666"
-                android:textSize="12sp"
-                android:layout_marginTop="2dp" />
-
-        </LinearLayout>
-
-        <LinearLayout
+        <TextView
+            android:id="@+id/tvUsername"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="end">
+            android:text="User123"
+            android:textColor="#333333"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/tvStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Success"
-                android:textColor="#4CAF50"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvReward"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="+0.00001 BTC"
-                android:textColor="#FF8C00"
-                android:textSize="12sp"
-                android:layout_marginTop="2dp" />
-
-        </LinearLayout>
+        <TextView
+            android:id="@+id/tvDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2024-01-15"
+            android:textColor="#666666"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
 
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvReward"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="+0.00000001 BTC"
+        android:textColor="#FF8C00"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_gravity="center_vertical" />
 
 </LinearLayout>

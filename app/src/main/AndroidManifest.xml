@@ -52,8 +52,15 @@
             android:theme="@style/Theme.BitcoinMiningMaster" />
 
         <activity
+            android:name=".ui.WithdrawalHistoryActivity"
+            android:exported="false"
+            android:label="Withdrawal History"
+            android:theme="@style/Theme.BitcoinMiningMaster" />
+
+        <activity
             android:name=".ui.WithdrawActivity"
             android:exported="false"
+            android:label="Withdraw"
             android:theme="@style/Theme.BitcoinMiningMaster" />
 
     </application>

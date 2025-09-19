@@ -5,13 +5,15 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.cloudminingtool.bitcoinminingmaster.databinding.FragmentWalletBinding
 import com.cloudminingtool.bitcoinminingmaster.ui.SettingActivity
 import com.cloudminingtool.bitcoinminingmaster.ui.WithdrawActivity
+import com.cloudminingtool.bitcoinminingmaster.manager.BitcoinBalanceManager
+import kotlinx.coroutines.launch
 
 class WalletFragment : Fragment() {
 
@@ -35,6 +37,7 @@ class WalletFragment : Fragment() {
         setupViews()
         setupTransactionRecyclerView()
         observeViewModel()
+        observeBitcoinBalance()
     }
 
     private fun setupViews() {
@@ -69,9 +72,18 @@ class WalletFragment : Fragment() {
     }
 
     private fun observeViewModel() {
-        // 观察比特币余额变化
-        walletViewModel.bitcoinBalance.observe(viewLifecycleOwner) { balance ->
-            binding.bitcoinBalance.text = "$balance BTC"
+        // 保留原有的 ViewModel 观察，但优先使用全局余额
+        // 这里可以保留其他业务逻辑
+    }
+
+    private fun observeBitcoinBalance() {
+        // 监听全局比特币余额变化
+        lifecycleScope.launch {
+            BitcoinBalanceManager.bitcoinBalance.collect { balance ->
+                balance?.let {
+                    binding.bitcoinBalance.text = "$it BTC"
+                }
+            }
         }
     }
 

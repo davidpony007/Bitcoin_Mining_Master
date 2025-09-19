@@ -13,9 +13,10 @@ import java.text.DecimalFormat
 object BitcoinBalanceManager {
 
     private const val TAG = "BitcoinBalanceManager"
+    private const val INITIAL_BALANCE = "0.000000000000001"
 
-    // 比特币余额状态管理
-    private val _bitcoinBalance = MutableStateFlow<String?>(null)
+    // 比特币余额状态管理 - 设置初始值
+    private val _bitcoinBalance = MutableStateFlow<String?>(INITIAL_BALANCE)
     val bitcoinBalance: StateFlow<String?> = _bitcoinBalance.asStateFlow()
 
     // 加载状态
@@ -61,5 +62,13 @@ object BitcoinBalanceManager {
      */
     fun clearBalance() {
         _bitcoinBalance.value = null
+    }
+
+    /**
+     * 初始化余额为默认值
+     */
+    fun initializeBalance() {
+        _bitcoinBalance.value = INITIAL_BALANCE
+        Log.d(TAG, "Bitcoin balance initialized: $INITIAL_BALANCE")
     }
 }

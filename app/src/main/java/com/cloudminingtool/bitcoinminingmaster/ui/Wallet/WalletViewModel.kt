@@ -3,20 +3,16 @@ package com.cloudminingtool.bitcoinminingmaster.ui.Wallet
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asLiveData
+import com.cloudminingtool.bitcoinminingmaster.manager.BitcoinBalanceManager
 
 class WalletViewModel : ViewModel() {
 
-    private val _bitcoinBalance = MutableLiveData<String>().apply {
-        value = "0.000000281865919"
-    }
-    val bitcoinBalance: LiveData<String> = _bitcoinBalance
+    // 使用全局的比特币余额管理器
+    val bitcoinBalance: LiveData<String?> = BitcoinBalanceManager.bitcoinBalance.asLiveData()
 
     private val _transactionHistory = MutableLiveData<List<TransactionItem>>()
     val transactionHistory: LiveData<List<TransactionItem>> = _transactionHistory
-
-    fun updateBalance(newBalance: String) {
-        _bitcoinBalance.value = newBalance
-    }
 
     fun addTransaction(transaction: TransactionItem) {
         val currentList = _transactionHistory.value?.toMutableList() ?: mutableListOf()

@@ -246,18 +246,13 @@
 
         <!-- Bottom Invite Section -->
         <LinearLayout
+            android:id="@+id/bottomInviteSection"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
             android:orientation="vertical"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:layout_marginBottom="80dp">
-
-            <ImageView
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:src="@drawable/icon_referral_selected"
-                android:layout_marginBottom="12dp" />
 
             <Button
                 android:id="@+id/btnInviteNowBottom"
