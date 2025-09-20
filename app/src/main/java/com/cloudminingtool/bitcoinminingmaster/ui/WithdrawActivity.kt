@@ -264,9 +264,9 @@ class WithdrawActivity : AppCompatActivity() {
             utcDateFormat.timeZone = TimeZone.getTimeZone("UTC")
             val utcDate = utcDateFormat.format(Date())
 
-            // 创建提取记录，包含钱包地址信息
+            // 创建提取记录，包含钱包地址信息 - 使用用户输入的原始提现金额
             val withdrawalItem = WithdrawalHistoryItem(
-                amount = "${amountReceived.setScale(12, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()} BTC",
+                amount = "${withdrawAmount.setScale(12, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()} BTC",
                 status = "Pending",
                 date = "$utcDate UTC",
                 transactionId = transactionId,
