@@ -1612,20 +1612,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -1664,20 +1671,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -1716,20 +1730,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -1768,20 +1789,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -1820,20 +1848,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -1872,20 +1907,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -1923,20 +1965,27 @@
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
-                    <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
-                        android:src="@drawable/icon_battery_full"
-                        android:layout_marginEnd="4dp"
-                        android:contentDescription="@string/battery_icon" />
-
-                    <TextView
+                    <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="+720"
-                        android:textColor="@color/black"
-                        android:textSize="14sp"
-                        android:layout_marginEnd="16dp" />
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginEnd="16dp">
+
+                        <ImageView
+                            android:layout_width="14dp"
+                            android:layout_height="14dp"
+                            android:src="@drawable/icon_battery_full"
+                            android:layout_marginEnd="4dp"
+                            android:contentDescription="@string/battery_icon" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="+720"
+                            android:textColor="@color/black"
+                            android:textSize="14sp" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
