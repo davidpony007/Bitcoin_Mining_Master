@@ -27,8 +27,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:paddingStart="24dp"
-            android:paddingEnd="24dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
             android:paddingBottom="24dp">
 
             <!-- Step 1 -->
@@ -38,7 +38,9 @@
                 android:background="@drawable/rounded_background"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="16dp"
+                android:paddingVertical="12dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:layout_marginBottom="12dp">
 
                 <TextView
@@ -58,7 +60,7 @@
                     android:layout_weight="1"
                     android:text="Share the APP with friends"
                     android:textColor="#333333"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
             </LinearLayout>
 
@@ -69,7 +71,9 @@
                 android:background="@drawable/rounded_background"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="16dp"
+                android:paddingVertical="12dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:layout_marginBottom="12dp">
 
                 <TextView
@@ -89,7 +93,7 @@
                     android:layout_weight="1"
                     android:text="Earn BTC for successful registrations"
                     android:textColor="#333333"
-                    android:textSize="16sp" />
+                    android:textSize="15sp" />
 
             </LinearLayout>
 
@@ -100,7 +104,9 @@
                 android:background="@drawable/rounded_background"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="16dp"
+                android:paddingVertical="12dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:layout_marginBottom="24dp">
 
                 <ImageView
@@ -122,14 +128,14 @@
                         android:layout_height="wrap_content"
                         android:text="Get "
                         android:textColor="#333333"
-                        android:textSize="16sp" />
+                        android:textSize="15sp" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="20%"
                         android:textColor="#FF8C00"
-                        android:textSize="16sp"
+                        android:textSize="15sp"
                         android:textStyle="bold" />
 
                     <TextView
@@ -137,7 +143,7 @@
                         android:layout_height="wrap_content"
                         android:text=" of friends' earnings"
                         android:textColor="#333333"
-                        android:textSize="16sp" />
+                        android:textSize="15sp" />
 
                 </LinearLayout>
 
@@ -151,19 +157,20 @@
                 android:background="@drawable/button_orange"
                 android:text="Invite now"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"
+                android:textSize="18sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="32dp" />
 
             <!-- Referral Reward Section -->
+
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
                 android:text="Referral reward"
                 android:textColor="#000000"
                 android:textSize="18sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="16dp" />
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -171,7 +178,9 @@
                 android:background="@drawable/rounded_background"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="16dp"
+                android:paddingVertical="12dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:layout_marginBottom="32dp">
 
                 <ImageView
@@ -206,7 +215,9 @@
                 android:background="@drawable/rounded_background"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:padding="16dp"
+                android:paddingVertical="12dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
                 android:layout_marginBottom="24dp">
 
                 <TextView
@@ -243,7 +254,8 @@
                 android:layout_height="wrap_content"
                 android:text="Invitation History"
                 android:textColor="#333333"
-                android:textSize="16sp"
+                android:textSize="18sp"
+                android:textStyle="bold"
                 android:layout_marginBottom="16dp" />
 
             <!-- Invitation History RecyclerView -->

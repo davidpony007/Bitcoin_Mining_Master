@@ -9,6 +9,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.cloudminingtool.bitcoinminingmaster.R
 import com.cloudminingtool.bitcoinminingmaster.databinding.FragmentWalletBinding
 import com.cloudminingtool.bitcoinminingmaster.ui.SettingActivity
 import com.cloudminingtool.bitcoinminingmaster.ui.WithdrawActivity
@@ -21,6 +22,7 @@ class WalletFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var walletViewModel: WalletViewModel
     private lateinit var transactionAdapter: TransactionAdapter
+    private var balanceListener: com.example.bitcoinminingmaster.util.BalanceManager.BalanceListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -37,7 +39,16 @@ class WalletFragment : Fragment() {
         setupViews()
         setupTransactionRecyclerView()
         observeViewModel()
-        observeBitcoinBalance()
+        // 余额联动
+        val balanceManager = com.example.bitcoinminingmaster.util.BalanceManager.instance
+        balanceListener = object : com.example.bitcoinminingmaster.util.BalanceManager.BalanceListener {
+            override fun onBalanceChanged(newBalance: String) {
+                binding.bitcoinBalance.text = getString(R.string.btc_with_unit, newBalance)
+            }
+        }
+        // 初始显示
+        binding.bitcoinBalance.text = getString(R.string.btc_with_unit, balanceManager.getBalance())
+        balanceManager.addListener(balanceListener!!)
     }
 
     private fun setupViews() {
@@ -76,18 +87,11 @@ class WalletFragment : Fragment() {
         // 这里可以保留其他业务逻辑
     }
 
-    private fun observeBitcoinBalance() {
-        // 监听全局比特币余额变化
-        lifecycleScope.launch {
-            BitcoinBalanceManager.bitcoinBalance.collect { balance ->
-                balance?.let {
-                    binding.bitcoinBalance.text = "$it BTC"
-                }
-            }
-        }
-    }
-
     override fun onDestroyView() {
+        // 移除余额监听，防止内存泄漏
+        val balanceManager = com.example.bitcoinminingmaster.util.BalanceManager.instance
+        balanceListener?.let { balanceManager.removeListener(it) }
+        balanceListener = null
         super.onDestroyView()
         _binding = null
     }

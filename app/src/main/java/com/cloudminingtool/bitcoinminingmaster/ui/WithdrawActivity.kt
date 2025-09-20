@@ -278,7 +278,8 @@ class WithdrawActivity : AppCompatActivity() {
 
             // 扣减比特币余额
             currentBalance = currentBalance.subtract(withdrawAmount)
-            updateBalanceDisplay()
+            // 同步更新全局比特币余额
+            com.cloudminingtool.bitcoinminingmaster.manager.BitcoinBalanceManager.updateBalance(currentBalance.toDouble())
 
             // 清空输入框
             etWithdrawAmount.setText("")

@@ -141,7 +141,6 @@
                     android:id="@+id/bitcoin_balance"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="0.000000000000001"
                     android:textColor="@color/black"
                     android:textSize="14sp"
                     android:textStyle="bold"
@@ -1606,25 +1605,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="176.3Gh/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -1632,18 +1630,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 4.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -1668,25 +1666,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="305.6Gh/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -1694,18 +1691,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 6.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -1730,25 +1727,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="611.2Gh/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -1756,18 +1752,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 9.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -1792,25 +1788,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="1326.4Gh/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -1818,18 +1813,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 19.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -1854,25 +1849,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="2915.6Gh/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -1880,18 +1874,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 49.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -1916,25 +1910,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="6122.7Gh/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -1942,18 +1935,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 99.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -1977,25 +1970,24 @@
                     <TextView
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
+                        android:layout_weight="2"
                         android:text="12.24Th/s"
                         android:textColor="@color/black"
                         android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <LinearLayout
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="match_parent"
+                        android:layout_weight="1"
                         android:orientation="horizontal"
-                        android:gravity="center"
-                        android:layout_marginEnd="16dp">
+                        android:gravity="center">
 
                         <ImageView
                             android:layout_width="14dp"
                             android:layout_height="14dp"
                             android:src="@drawable/icon_battery_full"
                             android:layout_marginEnd="4dp"
-                            android:layout_gravity="center_vertical"
                             android:contentDescription="@string/battery_icon" />
 
                         <TextView
@@ -2003,18 +1995,18 @@
                             android:layout_height="wrap_content"
                             android:text="+720"
                             android:textColor="@color/black"
-                            android:textSize="14sp"
-                            android:layout_gravity="center_vertical"
-                            android:gravity="center" />
+                            android:textSize="14sp" />
                     </LinearLayout>
 
                     <TextView
-                        android:layout_width="wrap_content"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="2"
                         android:text="US$ 199.99/month"
                         android:textColor="@color/black"
                         android:textSize="14sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        android:gravity="end" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 

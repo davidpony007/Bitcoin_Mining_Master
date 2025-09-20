@@ -30,6 +30,8 @@ class ContractsFragment : Fragment() {
 
     private val userRepository = UserRepository()
 
+    private var balanceListener: com.example.bitcoinminingmaster.util.BalanceManager.BalanceListener? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -95,6 +97,17 @@ class ContractsFragment : Fragment() {
             // 启动比特币价格更新
             BitcoinPriceManager.startPriceUpdates()
             BitcoinPriceManager.fetchBitcoinPriceNow()
+
+            // 余额联动
+            val balanceManager = com.example.bitcoinminingmaster.util.BalanceManager.instance
+            balanceListener = object : com.example.bitcoinminingmaster.util.BalanceManager.BalanceListener {
+                override fun onBalanceChanged(newBalance: String) {
+                    binding.bitcoinBalance.text = getString(R.string.btc_with_unit, newBalance)
+                }
+            }
+            // 初始显示
+            binding.bitcoinBalance.text = getString(R.string.btc_with_unit, balanceManager.getBalance())
+            balanceManager.addListener(balanceListener!!)
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -428,6 +441,10 @@ class ContractsFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // 移除余额监听，防止内存泄漏
+        val balanceManager = com.example.bitcoinminingmaster.util.BalanceManager.instance
+        balanceListener?.let { balanceManager.removeListener(it) }
+        balanceListener = null
         super.onDestroyView()
         _binding = null
     }

@@ -43,6 +43,9 @@ class DashboardFragment : Fragment() {
     // 呼吸闪烁动画
     private var breathingAnimation: Animation? = null
 
+    // 比特币余额监听器
+    private var balanceListener: com.example.bitcoinminingmaster.util.BalanceManager.BalanceListener? = null
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -138,6 +141,17 @@ class DashboardFragment : Fragment() {
             if (BitcoinBalanceManager.getCurrentBalance() == null) {
                 fetchBitcoinBalanceFromServer()
             }
+
+            // 比特币余额联动
+            val balanceManager = com.example.bitcoinminingmaster.util.BalanceManager.instance
+            balanceListener = object : com.example.bitcoinminingmaster.util.BalanceManager.BalanceListener {
+                override fun onBalanceChanged(newBalance: String) {
+                    binding?.bitcoinBalance?.text = newBalance
+                }
+            }
+            // 初始显示
+            binding?.bitcoinBalance?.text = balanceManager.getBalance()
+            balanceManager.addListener(balanceListener!!)
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(context, "初始化Dashboard失败", Toast.LENGTH_SHORT).show()
@@ -656,6 +670,10 @@ class DashboardFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // 移除余额监听，防止内存泄漏
+        val balanceManager = com.example.bitcoinminingmaster.util.BalanceManager.instance
+        balanceListener?.let { balanceManager.removeListener(it) }
+        balanceListener = null
         // 停止所有动画，避免内存泄漏
         for (i in batteryFlashImageViews.indices) {
             stopBatteryFlashAnimation(i)
