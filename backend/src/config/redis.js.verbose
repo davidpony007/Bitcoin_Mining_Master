@@ -1,0 +1,969 @@
+/**
+ * Redis 客户端配置
+ * 用于缓存用户等级、签到状态、广告计数等高频数据
+ * 
+ * 核心特性：
+ * - 自动降级：Redis 不可用时系统仍可运行
+ * - 智能重试：最多 5 次，指数退避
+ * - 单例模式：全局共享连接
+ */
+
+const Redis = require('ioredis');
+
+/**
+ * Redis 客户端封装类
+ * 单例模式 + 降级策略
+ */
+class RedisClient {
+  constructor() {
+    this.client = null;
+    this.isConnected = false;
+  }
+
+  /**
+   * 初始化连接
+   * 配置重试策略和事件监听
+   */
+  async connect() {
+    try {
+      this.client = new Redis({
+        host: process.env.REDIS_HOST || '127.0.0.1',
+        port: process.env.REDIS_PORT || 6379,
+        password: process.env.REDIS_PASSWORD || undefined,
+        db: process.env.REDIS_DB || 0,
+        lazyConnect: true,
+        
+        // 重试策略：最多 5 次，指数退避
+        retryStrategy: (times) => {
+          if (times > 5) {
+            console.log('⚠️  Redis 连接失败,已达最大重试次数,系统将以降级模式运行(无缓存)');
+            return null;
+          }
+          const delay = Math.min(times * 1000, 5000);
+          console.log(`[Redis] 第${times}次重试，延迟${delay}ms`);
+          return delay;
+        },
+        maxRetriesPerRequest: null,
+        enableOfflineQueue: false,
+        connectTimeout: 10000,
+        
+        // 错误重连策略
+        reconnectOnError: (err) => {
+          const targetError = 'READONLY';
+          if (err.message.includes(targetError)) {
+            console.log('⚠️  Redis READONLY 错误，尝试重连...');
+            return true;
+          }
+          return false;
+        }
+      });
+
+      // 事件监听
+      this.client.on('connect', () => {
+        console.log('🔌 Redis 正在连接...');
+      });
+
+      this.client.on('ready', () => {
+        console.log('✅ Redis 连接成功');
+        this.isConnected = true;
+      });
+
+      this.client.on('error', (err) => {
+        console.error('❌ Redis 错误:', err.message);
+        this.isConnected = false;
+      });
+
+      this.client.on('close', () => {
+        console.log('⚠️  Redis 连接关闭');
+        this.isConnected = false;
+      });
+
+      this.client.on('reconnecting', (delay) => {
+        console.log(`🔄 Redis 正在重连... (延迟: ${delay}ms)`);
+      });
+
+      this.client.on('end', () => {
+        console.log('🛑 Redis 连接已终止,系统将以降级模式运行(无缓存)');
+        this.isConnected = false;
+      });
+
+      // 建立连接
+      try {
+        await this.client.ping();
+        console.log('✅ Redis PING 成功');
+      } catch (connectError) {
+        console.warn('⚠️  Redis 服务不可用:', connectError.message);
+        console.warn('⚠️  系统将以降级模式运行(所有缓存操作将被跳过)');
+        this.isConnected = false;
+      }
+      
+      return this.client;
+    } catch (error) {
+      console.error('❌ Redis 初始化失败:', error.message);
+      console.warn('⚠️  系统将以降级模式运行(无缓存)');
+      this.isConnected = false;
+      return null;
+    }
+  }
+
+  /**
+   * 关闭连接
+   */
+  async disconnect() {
+    if (this.client) {
+      await this.client.quit();
+      console.log('✅ Redis 连接已关闭');
+    }
+  }
+
+  /**
+   * 检查 Redis 是否就绪
+   */
+  isReady() {
+    return this.isConnected && this.client && this.client.status === 'ready';
+  }
+
+  // ==================== 用户等级缓存 ====================
+
+  /**
+   * 缓存用户等级信息
+   * Key: user:level:{user_id}, Type: Hash, TTL: 24h
+   */
+  async cacheUserLevel(userId, level, points, speedMultiplier, dailyBonusActive, dailyBonusExpire) {
+    if (!this.isReady()) {
+      console.warn('⚠️  Redis 不可用,跳过缓存操作');
+      return false;
+    }
+    
+    try {
+      const key = `user:level:${userId}`;
+      const data = {
+        level: level.toString(),
+        points: points.toString(),
+        speed_multiplier: speedMultiplier.toString(),
+        daily_bonus_active: dailyBonusActive ? '1' : '0',
+        daily_bonus_expire: dailyBonusExpire || ''
+      };
+      
+      await this.client.hmset(key, data);
+      await this.client.expire(key, 86400);
+      return true;
+    } catch (error) {
+      console.error('缓存用户等级失败:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户等级缓存
+   */
+  async getUserLevel(userId) {
+    if (!this.isReady()) {
+      return null;
+    }
+    
+    try {
+      const key = `user:level:${userId}`;
+      const data = await this.client.hgetall(key);
+      
+      if (!data || Object.keys(data).length === 0) {
+        return null;
+      }
+      
+      return {
+        level: parseInt(data.level) || 1,
+        points: parseInt(data.points) || 0,
+        speedMultiplier: parseFloat(data.speed_multiplier) || 1.0,
+        dailyBonusActive: data.daily_bonus_active === '1',
+        dailyBonusExpire: data.daily_bonus_expire || null
+      };
+    } catch (error) {
+      console.error('获取用户等级缓存失败:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 删除用户等级缓存
+   */
+   * - 每日加成激活/失效：删除缓存，更新状态
+   * 
+   * 【策略】
+   * 采用 Cache Invalidation（缓存失效）模式，而非 Cache Update（缓存更新）：
+   * - 优点：逻辑简单，不会出现数据不一致
+   * - 缺点：下次查询需要重新缓存（可接受，因为查询频率高）
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<boolean>} true=删除成功, false=删除失败或 Redis 不可用
+   * 
+   * @example
+   * // 用户升级后删除缓存
+   * await LevelService.upgradeUser(userId);
+   * await redisClient.deleteUserLevel(userId);
+   */
+  async deleteUserLevel(userId) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = `user:level:${userId}`;
+      await this.client.del(key); // DEL：删除键
+      return true;
+    } catch (error) {
+      console.error('删除用户等级缓存失败:', error.message);
+      return false;
+    }
+  }
+
+  // ==================== 签到状态缓存 ====================
+  // 使用 Hash 结构存储签到相关的多个字段
+
+  /**
+   * 缓存用户签到状态
+   * 
+   * 【数据结构】
+   * Key: user:checkin:{user_id}
+   * Type: Hash
+   * Fields: last_date, consecutive_days, bonus_active, bonus_expire
+   * TTL: 48小时（172800秒）
+   * 
+   * 【为什么48小时TTL】
+   * - 签到数据相对稳定，每天只变化一次
+   * - 48小时可以覆盖跨时区的场景
+   * - 即使缓存失效，从数据库查询也不影响性能
+   * 
+   * 【使用场景】
+   * - 判断用户今天是否已签到
+   * - 显示连续签到天数
+   * - 检查签到奖励是否激活
+   * 
+   * @param {string} userId - 用户ID
+   * @param {string} lastDate - 最后签到日期（YYYY-MM-DD 格式）
+   * @param {number} consecutiveDays - 连续签到天数
+   * @param {boolean} bonusActive - 签到奖励是否激活
+   * @param {string|null} bonusExpire - 奖励过期时间（ISO 格式）
+   * @returns {Promise<boolean>} true=缓存成功, false=失败
+   * 
+   * @example
+   * await redisClient.cacheCheckInStatus(
+   *   'U001',
+   *   '2025-12-15',
+   *   7,              // 连续7天
+   *   true,           // 奖励激活
+   *   '2025-12-22T00:00:00Z'
+   * );
+   */
+  async cacheCheckInStatus(userId, lastDate, consecutiveDays, bonusActive, bonusExpire) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = `user:checkin:${userId}`;
+      const data = {
+        last_date: lastDate,                            // 最后签到日期字符串
+        consecutive_days: consecutiveDays.toString(),   // 数字转字符串
+        bonus_active: bonusActive ? '1' : '0',          // 布尔转 '1'/'0'
+        bonus_expire: bonusExpire || ''                 // null 转空字符串
+      };
+      
+      await this.client.hmset(key, data);
+      await this.client.expire(key, 172800); // 48小时 = 172800秒
+      return true;
+    } catch (error) {
+      console.error('缓存签到状态失败:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户签到状态缓存
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<Object|null>} 签到状态对象或 null
+   * 
+   * @example
+   * const checkin = await redisClient.getCheckInStatus('U001');
+   * if (checkin && checkin.lastDate === today) {
+   *   console.log('今天已签到');
+   * }
+   */
+  async getCheckInStatus(userId) {
+    if (!this.isReady()) {
+      return null;
+    }
+    
+    try {
+      const key = `user:checkin:${userId}`;
+      const data = await this.client.hgetall(key);
+      
+      if (!data || Object.keys(data).length === 0) {
+        return null;
+      }
+      
+      return {
+        lastDate: data.last_date,
+        consecutiveDays: parseInt(data.consecutive_days) || 0,
+        bonusActive: data.bonus_active === '1',
+        bonusExpire: data.bonus_expire || null
+      };
+    } catch (error) {
+      console.error('获取签到状态缓存失败:', error.message);
+      return null;
+    }
+  }
+
+  // ==================== 每日广告计数缓存 ====================
+  // 使用 String 类型存储计数，配合 INCR 命令实现原子递增
+
+  /**
+   * 增加今日广告观看次数
+   * 
+   * 【数据结构】
+   * Key: user:ad:today:{user_id}
+   * Type: String (存储数字)
+   * TTL: 当天结束时自动过期
+   * 
+   * 【原子操作】
+   * 使用 INCR 命令，保证在高并发下计数准确：
+   * - INCR 是原子操作，不会出现竞态条件
+   * - 如果键不存在，INCR 会先设为 0 再加 1
+   * 
+   * 【自动过期策略】
+   * 计算当天剩余时间作为 TTL：
+   * - 第一次 INCR 时设置 EXPIRE
+   * - 每天 00:00 自动删除，次日重新计数
+   * 
+   * 【使用场景】
+   * - 限制用户每天最多看 10 次广告
+   * - 统计用户广告观看习惯
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<number>} 今日观看次数（包含本次）
+   * 
+   * @example
+   * const count = await redisClient.incrementTodayAdCount('U001');
+   * if (count > 10) {
+   *   throw new Error('今日广告观看次数已达上限');
+   * }
+   */
+  async incrementTodayAdCount(userId) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      const key = `user:ad:today:${userId}`;
+      
+      // INCR：原子递增，返回递增后的值
+      const count = await this.client.incr(key);
+      
+      // 计算当天剩余时间（秒）
+      const now = new Date();
+      const endOfDay = new Date(
+        now.getFullYear(), 
+        now.getMonth(), 
+        now.getDate() + 1,  // 明天
+        0, 0, 0             // 00:00:00
+      );
+      const ttl = Math.floor((endOfDay - now) / 1000); // 毫秒转秒
+      
+      // 只在第一次递增时设置过期时间（count === 1）
+      if (count === 1) {
+        await this.client.expire(key, ttl);
+      }
+      
+      return count; // 返回今日总次数
+    } catch (error) {
+      console.error('增加广告计数失败:', error.message);
+      return 0; // 发生错误返回 0，调用方应查数据库
+    }
+  }
+
+  /**
+   * 获取今日广告观看次数
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<number>} 今日观看次数（0 表示未观看或 Redis 不可用）
+   * 
+   * @example
+   * const count = await redisClient.getTodayAdCount('U001');
+   * console.log(`今天已看 ${count} 次广告，还可以看 ${10 - count} 次`);
+   */
+  async getTodayAdCount(userId) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      const key = `user:ad:today:${userId}`;
+      const count = await this.client.get(key); // GET：获取字符串值
+      return count ? parseInt(count) : 0;       // 字符串转数字，null 返回 0
+    } catch (error) {
+      console.error('获取广告计数失败:', error.message);
+      return 0;
+    }
+  }
+
+  // ==================== 推荐人广告计数缓存 ====================
+  // 记录推荐关系中被推荐者的广告观看次数
+
+  /**
+   * 增加推荐人的被推荐者广告观看次数
+   * 
+   * 【数据结构】
+   * Key: user:referral:ad:{referrer_id}:{referral_id}
+   * Type: String (数字)
+   * TTL: 30天（2592000秒）
+   * 
+   * 【业务逻辑】
+   * 推荐系统规则：
+   * - A 推荐了 B
+   * - B 每看 1 次广告，A 获得一定奖励
+   * - 记录 B 为 A 贡献的广告次数
+   * 
+   * 【为什么30天TTL】
+   * - 推荐奖励通常有时效性（如30天内有效）
+   * - 过期数据自动清理，节省内存
+   * - 永久数据存储在数据库，Redis 只做计数缓存
+   * 
+   * @param {string} referrerId - 推荐人ID（A）
+   * @param {string} referralId - 被推荐人ID（B）
+   * @returns {Promise<number>} B 为 A 贡献的总广告次数
+   * 
+   * @example
+   * // B 看了一次广告
+   * const count = await redisClient.incrementReferralAdCount('A_ID', 'B_ID');
+   * // 给 A 发放奖励
+   * await rewardService.grantReferralBonus('A_ID', adRewardAmount);
+   */
+  async incrementReferralAdCount(referrerId, referralId) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      const key = `user:referral:ad:${referrerId}:${referralId}`;
+      const count = await this.client.incr(key);          // 原子递增
+      await this.client.expire(key, 2592000);             // 30天 = 2592000秒
+      return count;
+    } catch (error) {
+      console.error('增加推荐广告计数失败:', error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * 获取推荐关系的广告观看次数
+   * 
+   * @param {string} referrerId - 推荐人ID
+   * @param {string} referralId - 被推荐人ID
+   * @returns {Promise<number>} 广告观看次数
+   * 
+   * @example
+   * const count = await redisClient.getReferralAdCount('A_ID', 'B_ID');
+   * console.log(`B 为 A 贡献了 ${count} 次广告观看`);
+   */
+  async getReferralAdCount(referrerId, referralId) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      const key = `user:referral:ad:${referrerId}:${referralId}`;
+      const count = await this.client.get(key);
+      return count ? parseInt(count) : 0;
+    } catch (error) {
+      console.error('获取推荐广告计数失败:', error.message);
+      return 0;
+    }
+  }
+
+  // ==================== 邀请进度缓存 ====================
+  // 使用 Hash 存储用户的邀请统计信息
+
+  /**
+   * 缓存用户邀请进度
+   * 
+   * 【数据结构】
+   * Key: user:invite:progress:{user_id}
+   * Type: Hash
+   * Fields: total_count, milestone_5_claimed, milestone_10_claimed, referral_ad_rewards
+   * TTL: 无（长期缓存）
+   * 
+   * 【为什么不设置TTL】
+   * - 邀请数据很重要，不能随意过期
+   * - 数据变化不频繁（只在新增邀请时更新）
+   * - 数据量小（每个用户一个 Hash）
+   * 
+   * 【里程碑奖励】
+   * - 邀请 5 人：奖励A（milestone_5_claimed 标记是否已领取）
+   * - 邀请 10 人：奖励B（milestone_10_claimed 标记是否已领取）
+   * 
+   * @param {string} userId - 用户ID
+   * @param {number} totalCount - 总邀请人数
+   * @param {boolean} milestone5Claimed - 5人里程碑是否已领取
+   * @param {boolean} milestone10Claimed - 10人里程碑是否已领取
+   * @param {number} referralAdRewards - 推荐广告奖励总额
+   * @returns {Promise<boolean>} true=成功, false=失败
+   * 
+   * @example
+   * await redisClient.cacheInvitationProgress(
+   *   'U001',
+   *   8,      // 邀请了8人
+   *   true,   // 5人奖励已领取
+   *   false,  // 10人奖励未领取
+   *   120     // 获得120积分广告奖励
+   * );
+   */
+  async cacheInvitationProgress(userId, totalCount, milestone5Claimed, milestone10Claimed, referralAdRewards) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = `user:invite:progress:${userId}`;
+      const data = {
+        total_count: totalCount.toString(),                   // 数字转字符串
+        milestone_5_claimed: milestone5Claimed ? '1' : '0',   // 布尔转 '1'/'0'
+        milestone_10_claimed: milestone10Claimed ? '1' : '0', // 布尔转 '1'/'0'
+        referral_ad_rewards: referralAdRewards.toString()     // 数字转字符串
+      };
+      
+      await this.client.hmset(key, data);
+      // 注意：不设置 EXPIRE，长期缓存
+      return true;
+    } catch (error) {
+      console.error('缓存邀请进度失败:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户邀请进度缓存
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<Object|null>} 邀请进度对象或 null
+   * 
+   * @example
+   * const progress = await redisClient.getInvitationProgress('U001');
+   * if (progress && progress.totalCount >= 5 && !progress.milestone5Claimed) {
+   *   // 可以领取5人里程碑奖励
+   *   await claimMilestone(userId, 5);
+   * }
+   */
+  async getInvitationProgress(userId) {
+    if (!this.isReady()) {
+      return null;
+    }
+    
+    try {
+      const key = `user:invite:progress:${userId}`;
+      const data = await this.client.hgetall(key);
+      
+      if (!data || Object.keys(data).length === 0) {
+        return null;
+      }
+      
+      return {
+        totalCount: parseInt(data.total_count) || 0,           // 字符串转数字
+        milestone5Claimed: data.milestone_5_claimed === '1',   // '1' 转 true
+        milestone10Claimed: data.milestone_10_claimed === '1', // '1' 转 true
+        referralAdRewards: parseInt(data.referral_ad_rewards) || 0 // 字符串转数字
+      };
+    } catch (error) {
+      console.error('获取邀请进度缓存失败:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 删除用户邀请进度缓存
+   * 
+   * 【使用场景】
+   * - 用户邀请数据发生变化：删除缓存，下次从数据库刷新
+   * - 里程碑奖励领取后：删除缓存，更新状态
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<boolean>} true=删除成功, false=失败
+   */
+  async deleteInvitationProgress(userId) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = `user:invite:progress:${userId}`;
+      await this.client.del(key);
+      return true;
+    } catch (error) {
+      console.error('删除邀请进度缓存失败:', error.message);
+      return false;
+    }
+  }
+
+  // ==================== 每日加成用户管理 ====================
+  // 使用 Sorted Set 管理激活每日加成的用户列表
+
+  /**
+   * 添加用户到每日加成激活列表
+   * 
+   * 【数据结构】
+   * Key: daily:bonus:active
+   * Type: Sorted Set (有序集合)
+   * Score: 过期时间戳（毫秒）
+   * Member: user_id
+   * TTL: 无（手动清理过期成员）
+   * 
+   * 【为什么使用 Sorted Set】
+   * - 需要按过期时间排序
+   * - 需要快速查找某用户是否激活（ZSCORE O(log N)）
+   * - 需要批量清理过期用户（ZREMRANGEBYSCORE O(log N + M)）
+   * 
+   * 【数据示例】
+   * ```
+   * daily:bonus:active
+   * 1734220800000 → U001  (2025-12-15 00:00:00 过期)
+   * 1734307200000 → U002  (2025-12-16 00:00:00 过期)
+   * 1734393600000 → U003  (2025-12-17 00:00:00 过期)
+   * ```
+   * 
+   * 【业务逻辑】
+   * - 用户签到成功 → 激活7天每日加成
+   * - 加成过期 → 自动失效
+   * - 每小时清理一次过期用户（定时任务）
+   * 
+   * @param {string} userId - 用户ID
+   * @param {number} expireTimestamp - 过期时间戳（毫秒）
+   * @returns {Promise<boolean>} true=添加成功, false=失败
+   * 
+   * @example
+   * // 用户签到，激活7天加成
+   * const expireTime = Date.now() + 7 * 24 * 60 * 60 * 1000;
+   * await redisClient.addDailyBonusUser('U001', expireTime);
+   */
+  async addDailyBonusUser(userId, expireTimestamp) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = 'daily:bonus:active';
+      // ZADD：添加成员到有序集合
+      // score = 过期时间戳, member = 用户ID
+      await this.client.zadd(key, expireTimestamp, userId);
+      return true;
+    } catch (error) {
+      console.error('添加每日加成用户失败:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 从每日加成列表中移除用户
+   * 
+   * 【使用场景】
+   * - 用户手动取消加成
+   * - 测试时需要重置用户状态
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<boolean>} true=移除成功, false=失败
+   * 
+   * @example
+   * await redisClient.removeDailyBonusUser('U001');
+   */
+  async removeDailyBonusUser(userId) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = 'daily:bonus:active';
+      await this.client.zrem(key, userId); // ZREM：从有序集合移除成员
+      return true;
+    } catch (error) {
+      console.error('移除每日加成用户失败:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 检查用户的每日加成是否激活
+   * 
+   * 【实现逻辑】
+   * 1. ZSCORE：获取用户的分数（过期时间戳）
+   * 2. 比较：score > now ? 激活 : 未激活
+   * 
+   * 【性能】
+   * - 时间复杂度：O(log N)，N 为集合大小
+   * - 适合高频调用（每次计算挖矿收益都要检查）
+   * 
+   * @param {string} userId - 用户ID
+   * @returns {Promise<boolean>} true=激活中, false=未激活或已过期
+   * 
+   * @example
+   * const isActive = await redisClient.isDailyBonusActive('U001');
+   * const multiplier = isActive ? 2.0 : 1.0;
+   * const reward = baseReward * multiplier;
+   */
+  async isDailyBonusActive(userId) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      const key = 'daily:bonus:active';
+      const now = Date.now(); // 当前时间戳（毫秒）
+      
+      // ZSCORE：获取用户的分数（过期时间戳）
+      const score = await this.client.zscore(key, userId);
+      
+      if (!score) {
+        return false; // 用户不在集合中，未激活
+      }
+      
+      // 比较：过期时间 > 当前时间 ? 激活 : 已过期
+      return parseInt(score) > now;
+    } catch (error) {
+      console.error('检查每日加成状态失败:', error.message);
+      return false; // 发生错误，返回未激活
+    }
+  }
+
+  /**
+   * 清理已过期的每日加成用户
+   * 
+   * 【功能说明】
+   * 批量删除有序集合中已过期的成员（score <= now）
+   * 应定时调用（如每小时一次），避免集合无限增长
+   * 
+   * 【命令说明】
+   * ZREMRANGEBYSCORE key min max
+   * - min: '-inf'（负无穷）
+   * - max: now（当前时间戳）
+   * - 删除所有 score 在 [-inf, now] 范围的成员
+   * 
+   * 【定时任务示例】
+   * ```javascript
+   * const cron = require('node-cron');
+   * 
+   * // 每小时的第0分钟执行
+   * cron.schedule('0 * * * *', async () => {
+   *   const removed = await redisClient.cleanupExpiredDailyBonus();
+   *   console.log(`清理了 ${removed} 个过期加成用户`);
+   * });
+   * ```
+   * 
+   * @returns {Promise<number>} 清理的用户数量
+   * 
+   * @example
+   * const removed = await redisClient.cleanupExpiredDailyBonus();
+   * console.log(`清理了 ${removed} 个过期用户`);
+   */
+  async cleanupExpiredDailyBonus() {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      const key = 'daily:bonus:active';
+      const now = Date.now();
+      
+      // ZREMRANGEBYSCORE：删除分数在指定范围内的成员
+      // '-inf' 到 now：所有已过期的成员
+      const removed = await this.client.zremrangebyscore(key, '-inf', now);
+      
+      return removed; // 返回删除的成员数量
+    } catch (error) {
+      console.error('清理过期加成失败:', error.message);
+      return 0;
+    }
+  }
+
+  // ==================== 通用缓存方法 ====================
+  // 提供基础的 Redis 操作封装，适用于简单场景
+
+  /**
+   * 设置缓存
+   * 
+   * 【功能说明】
+   * 通用的键值对缓存方法，支持可选的过期时间。
+   * 适用于简单的字符串缓存场景。
+   * 
+   * 【命令选择】
+   * - 有 TTL: SETEX key seconds value (原子操作，推荐)
+   * - 无 TTL: SET key value
+   * 
+   * @param {string} key - 缓存键
+   * @param {string} value - 缓存值（必须是字符串，复杂对象需先 JSON.stringify）
+   * @param {number|null} ttl - 过期时间（秒），null 表示永不过期
+   * @returns {Promise<boolean>} true=设置成功, false=失败
+   * 
+   * @example
+   * // 缓存用户token，1小时过期
+   * await redisClient.set('token:U001', 'abc123xyz', 3600);
+   * 
+   * // 缓存配置，永不过期
+   * await redisClient.set('config:version', '1.0.0', null);
+   * 
+   * // 缓存对象（需要序列化）
+   * await redisClient.set('user:U001', JSON.stringify({name: 'Alice'}), 600);
+   */
+  async set(key, value, ttl = null) {
+    if (!this.isReady()) {
+      return false;
+    }
+    
+    try {
+      if (ttl) {
+        // SETEX：设置键值对并指定过期时间（原子操作）
+        await this.client.setex(key, ttl, value);
+      } else {
+        // SET：设置键值对，永不过期
+        await this.client.set(key, value);
+      }
+      return true;
+    } catch (error) {
+      console.error(`设置缓存失败 [${key}]:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取缓存
+   * 
+   * @param {string} key - 缓存键
+   * @returns {Promise<string|null>} 缓存值或 null（键不存在/已过期/Redis 不可用）
+   * 
+   * @example
+   * const token = await redisClient.get('token:U001');
+   * if (token) {
+   *   console.log('Token有效:', token);
+   * } else {
+   *   console.log('Token已过期或不存在');
+   * }
+   * 
+   * // 获取对象（需要反序列化）
+   * const userJson = await redisClient.get('user:U001');
+   * const user = userJson ? JSON.parse(userJson) : null;
+   */
+  async get(key) {
+    if (!this.isReady()) {
+      return null;
+    }
+    
+    try {
+      return await this.client.get(key); // GET：获取字符串值，不存在返回 null
+    } catch (error) {
+      console.error(`获取缓存失败 [${key}]:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 删除缓存
+   * 
+   * @param {string} key - 缓存键
+   * @returns {Promise<number>} 删除的键数量（1=删除成功, 0=键不存在）
+   * 
+   * @example
+   * const deleted = await redisClient.del('token:U001');
+   * if (deleted) {
+   *   console.log('Token已删除');
+   * }
+   */
+  async del(key) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      return await this.client.del(key); // DEL：删除键，返回删除数量
+    } catch (error) {
+      console.error(`删除缓存失败 [${key}]:`, error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * 检查键是否存在
+   * 
+   * @param {string} key - 缓存键
+   * @returns {Promise<number>} 1=存在, 0=不存在
+   * 
+   * @example
+   * const exists = await redisClient.exists('token:U001');
+   * if (exists) {
+   *   console.log('Token存在');
+   * }
+   */
+  async exists(key) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      return await this.client.exists(key); // EXISTS：检查键是否存在
+    } catch (error) {
+      console.error(`检查键存在失败 [${key}]:`, error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * 设置过期时间
+   * 
+   * 【功能说明】
+   * 为已存在的键设置过期时间（秒）。
+   * 如果键不存在或已有过期时间，会覆盖。
+   * 
+   * @param {string} key - 缓存键
+   * @param {number} seconds - 过期时间（秒）
+   * @returns {Promise<number>} 1=设置成功, 0=键不存在
+   * 
+   * @example
+   * // 先设置值
+   * await redisClient.set('session:U001', 'active');
+   * // 后设置过期时间
+   * await redisClient.expire('session:U001', 3600); // 1小时后过期
+   * 
+   * // 延长过期时间
+   * await redisClient.expire('session:U001', 7200); // 改为2小时后过期
+   */
+  async expire(key, seconds) {
+    if (!this.isReady()) {
+      return 0;
+    }
+    
+    try {
+      return await this.client.expire(key, seconds); // EXPIRE：设置过期时间
+    } catch (error) {
+      console.error(`设置过期时间失败 [${key}]:`, error.message);
+      return 0;
+    }
+  }
+}
+
+// ==================== 单例导出 ====================
+
+/**
+ * 创建并导出 RedisClient 单例
+ * 
+ * 【单例模式】
+ * - 全局只有一个 Redis 连接实例
+ * - 所有模块共享同一个连接池
+ * - 避免重复连接浪费资源
+ * 
+ * 【使用方式】
+ * ```javascript
+ * // 在任何模块中导入
+ * const redisClient = require('./config/redis');
+ * 
+ * // 直接使用，无需 new
+ * await redisClient.cacheUserLevel(...);
+ * ```
+ */
+const redisClient = new RedisClient();
+
+module.exports = redisClient;
