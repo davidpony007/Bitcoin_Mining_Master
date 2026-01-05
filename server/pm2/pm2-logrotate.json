@@ -1,0 +1,10 @@
+{
+  "max_size": "10M",
+  "retain": 7,
+  "compress": true,
+  "dateFormat": "YYYY-MM-DD",
+  "workerInterval": 30,
+  "rotateInterval": "0 0 * * *",
+  "rotateModule": true
+}
+

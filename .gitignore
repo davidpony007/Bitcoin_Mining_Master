@@ -1,15 +1,184 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+# ==========================================
+# Bitcoin Mining Master - .gitignore
+# ==========================================
+
+# ==========================================
+# Node.js 依赖
+# ==========================================
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# ==========================================
+# 环境变量（包含敏感信息，绝不上传！）
+# ==========================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*/.env
+**/.env
+
+# ==========================================
+# 日志文件
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+nohup.out
+pm2-*.log
+combined.log
+error.log
+
+# ==========================================
+# PM2
+# ==========================================
+.pm2/
+pids/
+*.pid
+*.pid.lock
+
+# ==========================================
+# 构建产物
+# ==========================================
+build/
+dist/
+*/build/
+*/dist/
+**/build/
+**/dist/
+
+# ==========================================
+# Android
+# ==========================================
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
 local.properties
+.gradle/
+gradle/
+captures/
+android_clent/Bitcoin_Mining_Master/build/
+android_clent/Bitcoin_Mining_Master/app/build/
+android_clent/Bitcoin_Mining_Master/.gradle/
+android_clent/Bitcoin_Mining_Master/gradle/
+android_clent/Bitcoin_Mining_Master/.idea/
+android_clent/Bitcoin_Mining_Master/local.properties
+
+# ==========================================
+# iOS
+# ==========================================
+*.xcworkspace
+*.xcuserdata
+*.xcuserdatad
+Pods/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+ios_client/Pods/
+ios_client/*.xcworkspace
+ios_client/build/
+
+# ==========================================
+# 编辑器和 IDE
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ==========================================
+# 系统文件
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# 测试覆盖率
+# ==========================================
+coverage/
+*.lcov
+.nyc_output/
+
+# ==========================================
+# 临时文件
+# ==========================================
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+
+# ==========================================
+# 数据库备份
+# ==========================================
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+backup/
+scripts/backup/*.sql
+
+# ==========================================
+# Docker
+# ==========================================
+.dockerignore
+docker-compose.override.yml
+
+# ==========================================
+# 证书和密钥（安全！）
+# ==========================================
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.jks
+*.keystore
+
+# ==========================================
+# 其他
+# ==========================================
+.cache/
+.parcel-cache/
+.next/
+out/
+.nuxt/
+.vercel
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*

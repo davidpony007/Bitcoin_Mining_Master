@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Mining Master - 服务管理面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .endpoint-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .endpoint-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .endpoint-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .endpoint-label {
+            font-weight: 600;
+            color: #333;
+            min-width: 150px;
+        }
+
+        .endpoint-url {
+            flex: 1;
+            color: #667eea;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .test-btn {
+            padding: 8px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .test-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-online {
+            background: #28a745;
+            box-shadow: 0 0 8px #28a745;
+        }
+
+        .status-offline {
+            background: #dc3545;
+            box-shadow: 0 0 8px #dc3545;
+        }
+
+        .status-checking {
+            background: #ffc107;
+            box-shadow: 0 0 8px #ffc107;
+        }
+
+        #health-status {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .response-box {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            margin-top: 10px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .action-btn {
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
+        }
+
+        .action-btn.secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .action-btn.success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Bitcoin Mining Master</h1>
+            <p>服务管理面板 - Service Management Dashboard</p>
+        </div>
+
+        <div class="card">
+            <h2>📊 服务状态</h2>
+            <div id="health-status">
+                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <span class="status-indicator status-checking"></span>
+                    <strong>状态：</strong><span id="status-text" style="margin-left: 10px;">检查中...</span>
+                </div>
+                <button class="test-btn" onclick="checkHealth()">🔄 刷新状态</button>
+                <div id="health-response" class="response-box" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🔗 API 端点</h2>
+            <div class="endpoint-list">
+                <div class="endpoint-item">
+                    <span class="endpoint-label">健康检查</span>
+                    <span class="endpoint-url">http://47.79.232.189:8888/api/health</span>
+                    <button class="test-btn" onclick="testEndpoint('/api/health')">测试</button>
+                </div>
+                <div class="endpoint-item">
+                    <span class="endpoint-label">用户路由</span>
+                    <span class="endpoint-url">http://47.79.232.189:8888/api/users</span>
+                    <button class="test-btn" onclick="openUrl('http://47.79.232.189:8888/api/users')">打开</button>
+                </div>
+                <div class="endpoint-item">
+                    <span class="endpoint-label">挖矿路由</span>
+                    <span class="endpoint-url">http://47.79.232.189:8888/api/mining</span>
+                    <button class="test-btn" onclick="openUrl('http://47.79.232.189:8888/api/mining')">打开</button>
+                </div>
+                <div class="endpoint-item">
+                    <span class="endpoint-label">认证路由</span>
+                    <span class="endpoint-url">http://47.79.232.189:8888/api/auth</span>
+                    <button class="test-btn" onclick="openUrl('http://47.79.232.189:8888/api/auth')">打开</button>
+                </div>
+                <div class="endpoint-item">
+                    <span class="endpoint-label">公共信息</span>
+                    <span class="endpoint-url">http://47.79.232.189:8888/api/public</span>
+                    <button class="test-btn" onclick="openUrl('http://47.79.232.189:8888/api/public')">打开</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>⚡ 快速操作</h2>
+            <div class="quick-actions">
+                <button class="action-btn" onclick="checkHealth()">
+                    🏥 健康检查
+                </button>
+                <button class="action-btn secondary" onclick="openPostman()">
+                    📮 打开 Postman
+                </button>
+                <button class="action-btn success" onclick="openDocs()">
+                    📚 查看文档
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://47.79.232.189:8888';
+
+        // 页面加载时自动检查健康状态
+        window.addEventListener('load', checkHealth);
+
+        async function checkHealth() {
+            const statusIndicator = document.querySelector('.status-indicator');
+            const statusText = document.getElementById('status-text');
+            const responseBox = document.getElementById('health-response');
+
+            statusIndicator.className = 'status-indicator status-checking';
+            statusText.textContent = '检查中...';
+            responseBox.style.display = 'none';
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/health`);
+                const data = await response.json();
+
+                if (data.status === 'ok') {
+                    statusIndicator.className = 'status-indicator status-online';
+                    statusText.innerHTML = '<span style="color: #28a745;">✅ 服务运行正常</span>';
+                } else {
+                    statusIndicator.className = 'status-indicator status-offline';
+                    statusText.innerHTML = '<span style="color: #dc3545;">❌ 服务异常</span>';
+                }
+
+                responseBox.textContent = JSON.stringify(data, null, 2);
+                responseBox.style.display = 'block';
+            } catch (error) {
+                statusIndicator.className = 'status-indicator status-offline';
+                statusText.innerHTML = '<span style="color: #dc3545;">❌ 无法连接到服务器</span>';
+                responseBox.textContent = `错误: ${error.message}`;
+                responseBox.style.display = 'block';
+            }
+        }
+
+        async function testEndpoint(path) {
+            const responseBox = document.getElementById('health-response');
+            responseBox.style.display = 'block';
+            responseBox.textContent = '正在请求...';
+
+            try {
+                const response = await fetch(`${BASE_URL}${path}`);
+                const data = await response.json();
+                responseBox.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                responseBox.textContent = `错误: ${error.message}`;
+            }
+        }
+
+        function openUrl(url) {
+            window.open(url, '_blank');
+        }
+
+        function openPostman() {
+            alert('请使用 Postman 导入集合文件：\n/Users/davidpony/Desktop/Bitcoin Mining Master/docs/postman/');
+        }
+
+        function openDocs() {
+            alert('文档位置：\n/Users/davidpony/Desktop/Bitcoin Mining Master/docs/\n\n包含：\n- API 文档\n- 设计文档\n- 启动指南');
+        }
+
+        // 每 30 秒自动刷新状态
+        setInterval(checkHealth, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,319 @@
+{
+  "info": {
+    "name": "Bitcoin Mining Master - User API",
+    "_postman_id": "bmm-user-api-001",
+    "description": "用户管理API测试集合\n包含创建用户的各种测试用例",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1️⃣ 创建用户 - 完整信息",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test(\"Response has success field\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('success');",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "});",
+              "",
+              "pm.test(\"User data is returned\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.data).to.have.property('user_id');",
+              "    pm.expect(jsonData.data).to.have.property('email');",
+              "    pm.expect(jsonData.data).to.have.property('country');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U1732702800001\",\n  \"invitation_code\": \"INV0000000001\",\n  \"email\": \"alice.wang@example.com\",\n  \"android_id\": \"abc123def456789012345678901234\",\n  \"gaid\": \"12345678-1234-5678-1234-123456789abc\",\n  \"register_ip\": \"47.79.232.189\",\n  \"country\": \"CN\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "创建一个包含所有字段的完整用户信息"
+      },
+      "response": []
+    },
+    {
+      "name": "2️⃣ 创建用户 - 动态时间戳",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// 生成唯一的user_id和email",
+              "const timestamp = Date.now();",
+              "pm.environment.set(\"dynamic_user_id\", `U${timestamp}`);",
+              "pm.environment.set(\"dynamic_email\", `test${timestamp}@example.com`);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"User created successfully\", function () {",
+              "    pm.response.to.have.status(201);",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "    ",
+              "    // 保存用户ID用于后续测试",
+              "    if (jsonData.data && jsonData.data.id) {",
+              "        pm.environment.set(\"last_user_id\", jsonData.data.id);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"{{dynamic_user_id}}\",\n  \"email\": \"{{dynamic_email}}\",\n  \"register_ip\": \"47.79.232.189\",\n  \"country\": \"CN\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "使用动态生成的时间戳创建用户，确保每次运行都是唯一的user_id"
+      },
+      "response": []
+    },
+    {
+      "name": "3️⃣ 创建用户 - 最小信息",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Minimum info user created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.data.email).to.be.null;",
+              "    pm.expect(jsonData.data.country).to.be.null;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U{{$timestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "只填写必填字段user_id，其他字段为null"
+      },
+      "response": []
+    },
+    {
+      "name": "4️⃣ 创建用户 - Android设备",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Android user created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.data.android_id).to.not.be.null;",
+              "    pm.expect(jsonData.data.gaid).to.not.be.null;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U{{$timestamp}}\",\n  \"email\": \"android{{$timestamp}}@gmail.com\",\n  \"android_id\": \"9774d56d682e549c\",\n  \"gaid\": \"38400000-8cf0-11bd-b23e-10b96e40000d\",\n  \"register_ip\": \"123.56.78.90\",\n  \"country\": \"CN\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "创建Android设备用户，包含android_id和gaid"
+      },
+      "response": []
+    },
+    {
+      "name": "5️⃣ 创建用户 - 带邀请码",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"User with invitation code created\", function () {",
+              "    pm.response.to.have.status(201);",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.data.invitation_code).to.not.be.null;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U{{$timestamp}}\",\n  \"invitation_code\": \"INV{{$timestamp}}\",\n  \"email\": \"invite{{$timestamp}}@outlook.com\",\n  \"register_ip\": \"203.208.60.1\",\n  \"country\": \"US\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "创建带有邀请码的用户"
+      },
+      "response": []
+    },
+    {
+      "name": "6️⃣ 错误测试 - 缺少必填字段",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Returns 400 for missing required field\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error message is correct\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.error).to.include('必填字段');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"error@example.com\",\n  \"country\": \"CN\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "测试缺少必填字段user_id的错误处理"
+      },
+      "response": []
+    },
+    {
+      "name": "7️⃣ 错误测试 - 重复user_id",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Returns error for duplicate user_id\", function () {",
+              "    pm.response.to.have.status(500);",
+              "});",
+              "",
+              "pm.test(\"Error contains validation message\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.error).to.exist;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U1732702800001\",\n  \"email\": \"duplicate@example.com\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "测试重复user_id的错误处理（需要先运行测试1）"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8888",
+      "type": "string"
+    }
+  ]
+}

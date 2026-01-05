@@ -1,0 +1,87 @@
+// mining_contracts 表的 Sequelize 模型
+// 用于存储用户的挖矿合约信息
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+const MiningContract = sequelize.define('mining_contracts', {
+  id: { 
+    type: DataTypes.INTEGER, 
+    primaryKey: true, 
+    autoIncrement: true,
+    comment: '挖矿合约主键ID'
+  },
+  user_id: { 
+    type: DataTypes.STRING(15), 
+    allowNull: false,
+    comment: '用户唯一标识符'
+  },
+  contract_type: { 
+    type: DataTypes.ENUM(
+      'ad free contract',
+      'daily sign-in free contract',
+      'invitation free contract',
+      'paid contract'
+    ),
+    allowNull: false,
+    comment: '合约类型: 广告免费合约/每日签到免费合约/邀请免费合约/付费合约'
+  },
+  contract_creation_time: { 
+    type: DataTypes.DATE, 
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    comment: '合约创建时间'
+  },
+  contract_end_time: { 
+    type: DataTypes.DATE, 
+    allowNull: false,
+    comment: '合约结束时间'
+  },
+  contract_duration: { 
+    type: DataTypes.TIME, 
+    allowNull: false,
+    comment: '合约持续时长'
+  },
+  hashrate: { 
+    type: DataTypes.DECIMAL(18, 18), 
+    allowNull: false,
+    comment: '算力(hashrate)'
+  },
+  mining_status: { 
+    type: DataTypes.ENUM('completed', 'mining', 'error'),
+    allowNull: false,
+    defaultValue: 'mining',
+    comment: '挖矿状态: completed=已完成, mining=挖矿中, error=错误'
+  }
+}, {
+  timestamps: false,
+  freezeTableName: true,
+  indexes: [
+    {
+      fields: ['user_id'],
+      name: 'idx_user_id'
+    },
+    {
+      fields: ['contract_type'],
+      name: 'idx_contract_type'
+    },
+    {
+      fields: ['mining_status'],
+      name: 'idx_mining_status'
+    },
+    {
+      fields: ['contract_creation_time'],
+      name: 'idx_contract_creation_time'
+    },
+    {
+      fields: ['contract_end_time'],
+      name: 'idx_contract_end_time'
+    },
+    {
+      fields: ['user_id', 'mining_status'],
+      name: 'idx_user_status'
+    }
+  ],
+  comment: '挖矿合约表'
+});
+
+module.exports = MiningContract;

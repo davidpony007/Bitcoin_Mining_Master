@@ -1,0 +1,132 @@
+# Docker Compose 生产部署配置
+# 包含 Nginx、多 Node 实例、Redis、MySQL
+
+version: '3.8'
+
+services:
+  # Nginx 反向代理与负载均衡
+  nginx:
+    image: nginx:alpine
+    container_name: bmm-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../../web_frontend/build:/var/www/bitcoin-mining-master/web_frontend/build:ro
+      - ./ssl:/etc/nginx/ssl:ro  # SSL 证书目录
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - backend-1
+      - backend-2
+    restart: unless-stopped
+    networks:
+      - bmm-network
+
+  # Node.js 后端实例 1
+  backend-1:
+    build:
+      context: ../../backend
+      dockerfile: ../server/docker/Dockerfile.backend
+    container_name: bmm-backend-1
+    environment:
+      - NODE_ENV=production
+      - PORT=8888
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=bitcoin_mining_master
+      - DB_USER=bitcoin_mining_master
+      - DB_PASS=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_KEY_PREFIX=bmm:
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+    networks:
+      - bmm-network
+
+  # Node.js 后端实例 2（负载均衡）
+  backend-2:
+    build:
+      context: ../../backend
+      dockerfile: ../server/docker/Dockerfile.backend
+    container_name: bmm-backend-2
+    environment:
+      - NODE_ENV=production
+      - PORT=8889
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=bitcoin_mining_master
+      - DB_USER=bitcoin_mining_master
+      - DB_PASS=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_KEY_PREFIX=bmm:
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+    networks:
+      - bmm-network
+
+  # Worker 进程（处理异步任务）
+  worker:
+    build:
+      context: ../../backend
+      dockerfile: ../server/docker/Dockerfile.worker
+    container_name: bmm-worker
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_NAME=bitcoin_mining_master
+      - DB_USER=bitcoin_mining_master
+      - DB_PASS=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_KEY_PREFIX=bmm:
+    depends_on:
+      - mysql
+      - redis
+    restart: unless-stopped
+    networks:
+      - bmm-network
+
+  # Redis（实时余额、队列、缓存）
+  redis:
+    image: redis:7-alpine
+    container_name: bmm-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - bmm-network
+
+  # MySQL（持久化存储）
+  mysql:
+    image: mysql:8.0
+    container_name: bmm-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=bitcoin_mining_master
+      - MYSQL_USER=bitcoin_mining_master
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+    networks:
+      - bmm-network
+
+volumes:
+  redis-data:
+  mysql-data:
+
+networks:
+  bmm-network:
+    driver: bridge
