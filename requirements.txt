@@ -1,0 +1,7 @@
+# Bitcoin_Mining_Master 的核心依赖项
+# 请根据您的项目需求添加或删除包
+
+# 示例依赖项:
+requests>=2.25.0
+python-bitcoinlib>=0.11.0
+

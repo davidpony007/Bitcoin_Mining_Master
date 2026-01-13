@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const LevelService = require('../services/levelService');
 const authenticate = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/role');
 
 /**
  * @route   GET /api/points/history
@@ -55,7 +56,7 @@ router.get('/history', authenticate, async (req, res) => {
  * @body    points - 积分数量
  * @body    reason - 原因说明
  */
-router.post('/add', authenticate, async (req, res) => {
+router.post('/add', authenticate, requireAdmin, async (req, res) => {
   try {
     const { user_id, points, reason } = req.body;
 
@@ -65,11 +66,6 @@ router.post('/add', authenticate, async (req, res) => {
         message: '缺少参数: user_id, points, reason'
       });
     }
-
-    // TODO: 添加管理员权限检查
-    // if (req.user.role !== 'admin') {
-    //   return res.status(403).json({ success: false, message: '无权限' });
-    // }
 
     const result = await LevelService.addPoints(
       user_id,

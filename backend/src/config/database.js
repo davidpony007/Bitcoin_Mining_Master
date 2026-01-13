@@ -6,12 +6,13 @@ const { Sequelize } = require('sequelize');
 
 // 创建 Sequelize 实例，配置数据库连接参数
 // 优先使用环境变量，便于不同环境部署和安全管理
+// 安全：所有敏感信息必须通过环境变量配置，不允许硬编码
 const sequelize = new Sequelize(
   process.env.DB_NAME || 'bitcoin_mining_master', // 数据库名
-  process.env.DB_USER || 'bitcoin_mining_master', // 用户名
-  process.env.DB_PASS || 'FzFbWmwMptnN3ABE',      // 密码
+  process.env.DB_USER || 'root',                  // 用户名（默认使用本地root）
+  process.env.DB_PASS || '',                      // 密码（必须通过环境变量配置）
   {
-    host: process.env.DB_HOST || '47.79.232.189', // 数据库主机地址
+    host: process.env.DB_HOST || '127.0.0.1',     // 数据库主机地址（默认本地）
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306, // 端口号
     dialect: 'mysql', // 数据库类型
     logging: false    // 禁止 SQL 日志输出，提升性能

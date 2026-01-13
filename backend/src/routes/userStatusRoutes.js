@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const userStatusController = require('../controllers/userStatusController');
-const { authenticateToken } = require('../middleware/auth');
+const authenticateToken = require('../middleware/auth');
 
 // 获取用户状态信息
 router.get('/:user_id', authenticateToken, userStatusController.getUserStatus);

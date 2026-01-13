@@ -20,9 +20,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: const Text('Mining Dashboard'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.event_available),
             onPressed: () {
-              context.read<UserProvider>().fetchBitcoinBalance();
+              // TODO: Implement check-in functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Check-in successful!')),
+              );
             },
           ),
         ],
@@ -85,36 +88,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total Balance',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
-              ),
-              Icon(
-                Icons.remove_red_eye_outlined,
-                color: Colors.white70,
-                size: 20,
-              ),
-            ],
+          const Text(
+            'Total Balance',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
-            '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(8) ?? '0.00000000'} BTC',
+            '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(15) ?? '0.000000000000000'} BTC',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 32,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          Text(
-            '≈ \$${((double.tryParse(provider.bitcoinBalance) ?? 0) * 50000).toStringAsFixed(2)} USD',
-            style: const TextStyle(
+          const Text(
+            '1 BTC = \$50,000.00 USD',
+            style: TextStyle(
               color: Colors.white70,
               fontSize: 16,
             ),
@@ -161,15 +156,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Experience',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 14,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          'Experience',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        GestureDetector(
+                          onTap: () => _showLevelInfoDialog(context),
+                          child: Icon(
+                            Icons.help_outline,
+                            size: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                     Text(
-                      '0 / 1000',
+                      '0 / 20',
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
@@ -249,13 +257,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   child: Center(
-                    child: Text(
-                      '0',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Icon(
+                      Icons.battery_1_bar,
+                      size: 20,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 );
@@ -367,4 +372,108 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-}
+
+  void _showLevelInfoDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Row(
+            children: [
+              Icon(Icons.stars, color: AppColors.primary, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                'Miner Level System',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildLevelRow('LV.1', '0~20 Points', 'Base Mining Rate'),
+                _buildLevelRow('LV.2', '21~50 Points', 'Mining Rate +10%'),
+                _buildLevelRow('LV.3', '51~100 Points', 'Mining Rate +20%'),
+                _buildLevelRow('LV.4', '101~200 Points', 'Mining Rate +35%'),
+                _buildLevelRow('LV.5', '201~400 Points', 'Mining Rate +50%'),
+                _buildLevelRow('LV.6', '401~800 Points', 'Mining Rate +70%'),
+                _buildLevelRow('LV.7', '801~1600 Points', 'Mining Rate +100%'),
+                _buildLevelRow('LV.8', '1601~3000 Points', 'Mining Rate +140%'),
+                _buildLevelRow('LV.9', '3001+ Points', 'Mining Rate +200%'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Got it',
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildLevelRow(String level, String points, String reward) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              level,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  points,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  reward,
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }}

@@ -6,14 +6,14 @@
  * @param {string} requiredRole - 需要的角色（如 'admin'）
  * @returns {function} Express 中间件
  *
- * 用法：router.get('/admin', role('admin'), handler)
+ * 用法：router.get('/admin', requireRole('admin'), handler)
  * 依赖于 req.user（通常由 auth 中间件注入）
  *
  * 安全建议：
  * - req.user 必须可信，不能被用户伪造
  * - 生产环境建议配合 JWT 签名和数据库校验
  */
-module.exports = function(requiredRole) {
+function requireRole(requiredRole) {
   return (req, res, next) => {
     // 检查用户是否已认证
     if (!req.user) {
@@ -21,18 +21,26 @@ module.exports = function(requiredRole) {
     }
     // 检查用户角色是否匹配
     if (req.user.role !== requiredRole) {
-      return res.status(403).json({ error: '无权限访问' });
+      return res.status(403).json({ error: '无权限访问，需要' + requiredRole + '角色' });
     }
     next();
   };
-};
-// 权限控制中间件，区分普通用户和管理员
-function requireAdmin(req, res, next) {
-  // 假设JWT中有role字段
-  if (req.user && req.user.role === 'admin') {
-    return next();
-  }
-  return res.status(403).json({ error: '需要管理员权限' });
 }
 
-module.exports = { requireAdmin };
+/**
+ * 管理员权限校验中间件
+ * 用法：router.post('/admin/users', authenticate, requireAdmin, handler)
+ */
+function requireAdmin(req, res, next) {
+  // 检查用户是否已认证
+  if (!req.user) {
+    return res.status(401).json({ error: '未认证用户' });
+  }
+  // 检查是否为管理员角色
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: '需要管理员权限' });
+  }
+  next();
+}
+
+module.exports = { requireRole, requireAdmin };

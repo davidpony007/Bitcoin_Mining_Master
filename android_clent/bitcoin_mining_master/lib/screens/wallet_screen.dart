@@ -38,6 +38,7 @@ class _WalletScreenState extends State<WalletScreen> {
             },
             child: SingleChildScrollView(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 16),
                   
@@ -81,36 +82,28 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total Assets',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
-              ),
-              Icon(
-                Icons.remove_red_eye_outlined,
-                color: Colors.white70,
-                size: 20,
-              ),
-            ],
+          const Text(
+            'Total Balance',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
-            '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(8) ?? '0.00000000'} BTC',
+            '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(15) ?? '0.000000000000000'} BTC',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 32,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
-          Text(
-            '≈ \$${((double.tryParse(provider.bitcoinBalance) ?? 0) * 50000).toStringAsFixed(2)} USD',
-            style: const TextStyle(
+          const Text(
+            '1 BTC = \$50,000.00 USD',
+            style: TextStyle(
               color: Colors.white70,
               fontSize: 16,
             ),
@@ -124,63 +117,27 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _buildActionButtons() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.arrow_upward,
-              label: 'Withdraw',
-              color: const Color(0xFF4CAF50),
-              onTap: () {},
-            ),
+      child: ElevatedButton(
+        onPressed: () {},
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF4CAF50),
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.swap_horiz,
-              label: 'Exchange',
-              color: AppColors.secondary,
-              onTap: () {},
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildActionButton(
-              icon: Icons.arrow_downward,
-              label: 'Deposit',
-              color: const Color(0xFFFFC107),
-              onTap: () {},
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 构建单个操作按钮
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: AppColors.cardDark,
-          borderRadius: BorderRadius.circular(12),
+          elevation: 0,
         ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Icon(Icons.arrow_upward, size: 20),
+            SizedBox(width: 8),
             Text(
-              label,
+              'Withdraw',
               style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../constants/app_constants.dart';
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 
 /// 设置页面 - Settings Screen
 class SettingsScreen extends StatefulWidget {
@@ -11,7 +14,94 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _pushNotifications = true;
-  bool _biometricAuth = false;
+  bool _isGoogleSignedIn = false; // Google登录状态
+  String _userId = 'Loading...'; // 用户ID
+  String _userName = 'Guest User'; // 用户昵称，可编辑
+  final _apiService = ApiService();
+  final _storageService = StorageService();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrGenerateUserId();
+  }
+
+  /// 从本地加载或通过后端API生成UserID
+  Future<void> _loadOrGenerateUserId() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 1. 先尝试从本地存储加载
+      final savedUserId = _storageService.getUserId();
+      if (savedUserId != null && savedUserId.isNotEmpty) {
+        setState(() {
+          _userId = savedUserId;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // 2. 本地不存在，获取Android设备ID
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final androidId = androidInfo.id; // 获取Android ID
+
+      // 3. 调用后端设备登录API
+      final response = await _apiService.deviceLogin(
+        androidId: androidId,
+        // 可选参数：如果有邀请码可以传递
+        // referrerInvitationCode: 'INV12345',
+      );
+
+      if (response.success && response.data != null) {
+        final userId = response.data!.userId;
+        
+        // 4. 保存到本地存储
+        await _storageService.saveUserId(userId);
+        
+        // 5. 更新UI
+        setState(() {
+          _userId = userId;
+          _isLoading = false;
+        });
+
+        // 6. 如果是新用户，可以显示欢迎提示
+        if (response.isNewUser) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Welcome! Your ID: $userId'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      } else {
+        throw Exception(response.message);
+      }
+    } catch (e) {
+      // 错误处理：显示错误并使用临时ID
+      print('Error loading/generating user ID: $e');
+      setState(() {
+        _userId = 'Error: ${e.toString().substring(0, 20)}...';
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to connect to server: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,22 +125,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             const SizedBox(height: 20),
             
-            // 通用Settings
-            _buildSectionTitle('通用Settings'),
+            // General Settings
+            _buildSectionTitle('General'),
             _buildSettingsCard([
               _buildNavigationItem(
                 icon: Icons.language,
                 iconColor: AppColors.primary,
                 title: 'Language',
-                subtitle: '简体Chinese',
-                onTap: () {},
-              ),
-              _buildDivider(),
-              _buildNavigationItem(
-                icon: Icons.palette,
-                iconColor: AppColors.primary,
-                title: 'Theme',
-                subtitle: 'System',
+                subtitle: 'English',
                 onTap: () {},
               ),
               _buildDivider(),
@@ -70,37 +152,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             const SizedBox(height: 20),
             
-            // 安全Settings
-            _buildSectionTitle('安全Settings'),
+            // Account
+            _buildSectionTitle('Account'),
             _buildSettingsCard([
-              _buildSwitchItem(
-                icon: Icons.fingerprint,
-                iconColor: AppColors.primary,
-                title: 'Biometric Auth',
-                subtitle: 'Use fingerprint or face login',
-                value: _biometricAuth,
-                onChanged: (value) {
-                  setState(() {
-                    _biometricAuth = value;
-                  });
-                },
-              ),
-              _buildDivider(),
               _buildNavigationItem(
-                icon: Icons.lock,
-                iconColor: AppColors.primary,
-                title: 'Change Password',
-                subtitle: '定期Change Password保护账号安全',
-                onTap: () {},
-              ),
-              _buildDivider(),
-              _buildStatusItem(
-                icon: Icons.shield,
-                iconColor: AppColors.primary,
-                title: 'Two-Factor Authentication',
-                subtitle: 'Requires secondary confirmation for withdrawal',
-                status: 'Enabled',
-                statusColor: const Color(0xFF4CAF50),
+                icon: _isGoogleSignedIn ? Icons.account_circle : Icons.login,
+                iconColor: _isGoogleSignedIn ? const Color(0xFF4CAF50) : AppColors.primary,
+                title: _isGoogleSignedIn ? 'Google Account' : 'Sign In with Google',
+                subtitle: _isGoogleSignedIn ? 'Connected' : 'Bind your Google account',
+                onTap: () {
+                  if (_isGoogleSignedIn) {
+                    // TODO: Show sign out dialog
+                    _showSignOutDialog();
+                  } else {
+                    // TODO: Implement Google Sign In
+                    _handleGoogleSignIn();
+                  }
+                },
               ),
             ]),
             
@@ -112,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildNavigationItem(
                 icon: Icons.info_outline,
                 iconColor: AppColors.primary,
-                title: 'About我们',
+                title: 'About Us',
                 subtitle: 'Bitcoin Mining Master',
                 onTap: () {},
               ),
@@ -120,7 +188,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _buildNavigationItem(
                 icon: Icons.description,
                 iconColor: AppColors.primary,
-                title: 'User协议',
+                title: 'User Agreement',
                 onTap: () {},
               ),
               _buildDivider(),
@@ -137,20 +205,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Help Center',
                 onTap: () {},
               ),
-              _buildDivider(),
-              _buildNavigationItem(
-                icon: Icons.delete_sweep,
-                iconColor: AppColors.primary,
-                title: 'Clear Cache',
-                subtitle: '约 12.5 MB',
-                onTap: () {},
-              ),
             ]),
             
             const SizedBox(height: 32),
             
-            // Deactivate Account
-            _buildDeactivateButton(),
+            // Delete Account
+            _buildDeleteAccountButton(),
             
             const SizedBox(height: 32),
           ],
@@ -160,73 +220,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildUserCard() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardDark,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              shape: BoxShape.circle,
+    return InkWell(
+      onTap: _showEditNameDialog,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.cardDark,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.person,
+                size: 32,
+                color: AppColors.primary,
+              ),
             ),
-            child: Icon(
-              Icons.person,
-              size: 32,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'User',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'ID: N/A',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    'Lv.1',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 12,
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _userName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        'ID: ',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        _userId,
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'Lv.1',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          Icon(
-            Icons.chevron_right,
-            color: AppColors.textSecondary,
-          ),
-        ],
+            Icon(
+              Icons.edit,
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -439,24 +514,196 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildDeactivateButton() {
+  Widget _buildDeleteAccountButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: TextButton(
+      child: ElevatedButton(
         onPressed: () {
-          // TODO: Show deactivate confirmation dialog
+          _showDeleteAccountDialog();
         },
-        style: TextButton.styleFrom(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent,
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: const Text(
-          'Deactivate Account',
+          'Delete Account',
           style: TextStyle(
-            color: Colors.white70,
             fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
+    );
+  }
+
+  void _handleGoogleSignIn() {
+    // TODO: Implement Google Sign In
+    setState(() {
+      _isGoogleSignedIn = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Google account connected successfully'),
+        backgroundColor: Color(0xFF4CAF50),
+      ),
+    );
+  }
+
+  void _showSignOutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Text(
+            'Sign Out',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+          content: Text(
+            'Are you sure you want to sign out from your Google account?',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                setState(() {
+                  _isGoogleSignedIn = false;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Google account disconnected'),
+                  ),
+                );
+              },
+              child: Text(
+                'Sign Out',
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showEditNameDialog() {
+    final nameController = TextEditingController(text: _userName);
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Text(
+            'Edit Username',
+            style: TextStyle(color: AppColors.textPrimary),
+          ),
+          content: TextField(
+            controller: nameController,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter your username',
+              hintStyle: TextStyle(color: AppColors.textSecondary),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.divider),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.primary),
+              ),
+            ),
+            maxLength: 20,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                final newName = nameController.text.trim();
+                if (newName.isNotEmpty) {
+                  setState(() {
+                    _userName = newName;
+                  });
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Username updated successfully'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              },
+              child: Text(
+                'Save',
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showDeleteAccountDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: const Text(
+            'Delete Account',
+            style: TextStyle(color: Colors.redAccent),
+          ),
+          content: Text(
+            'Are you sure you want to delete your account? This action cannot be undone and all your data will be permanently deleted.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                // TODO: Implement account deletion
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Account deletion requested'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+              },
+              child: const Text(
+                'Delete',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

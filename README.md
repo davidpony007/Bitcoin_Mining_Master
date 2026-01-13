@@ -119,7 +119,19 @@ npm install
 npm start
 ```
 
-### 4. 运行数据库迁移（首次部署）
+### 4. 配置 Android 客户端 (可选)
+
+1.  下载并安装 [Android Studio](https://developer.android.com/studio)。
+2.  打开 Android Studio。
+3.  选择 "Open" 或 "Open an Existing Project"。
+4.  导航到项目中的 `android_clent/Bitcoin_Mining_Master` 目录并打开。
+5.  等待 Android Studio 完成 Gradle 项目同步。
+6.  连接您的 Android 设备或启动一个模拟器。
+7.  点击 "Run" 按钮来构建和运行应用程序。
+
+**注意**: 如果您希望在 Android Studio 中使用中文界面，可以在 `Settings/Preferences` -> `Plugins` 中搜索并安装 "Chinese (Simplified) Language Pack" 插件，然后重启 Android Studio。
+
+### 5. 运行数据库迁移（首次部署）
 
 ```bash
 cd backend
@@ -372,3 +384,17 @@ MIT License
 ---
 
 **最后更新**: 2025-12-16
+
+## 安装
+
+### 检查安装状态
+
+在运行应用程序之前，您可以运行一个脚本来检查您的环境是否已正确设置（例如，Node.js 版本）。
+
+要检查安装状态，请在项目根目录中运行以下命令：
+
+```bash
+python check_installation.py
+```
+
+该脚本将验证您的 Node.js 和 npm 版本。如果发现任何问题，它将提供解决这些问题的说明。如果检查通过，它将显示启动应用程序的后续步骤。

@@ -29,5 +29,17 @@ router.get('/invitation-info', authController.getInvitationInfo);
 // 查询用户状态(余额、挖矿统计等)
 router.get('/user-status', authController.getUserStatus);
 
+// POST /api/auth/add-referrer
+// 后期添加推荐人邀请码
+router.post('/add-referrer', authController.addReferrer);
+
+// POST /api/auth/create-ad-contract
+// 创建免费广告挖矿合约
+router.post('/create-ad-contract', authController.createAdFreeContract);
+
+// POST /api/auth/activate-ad-contract
+// 激活免费广告挖矿合约
+router.post('/activate-ad-contract', authController.activateAdFreeContract);
+
 // 导出路由模块，供主应用挂载
 module.exports = router;

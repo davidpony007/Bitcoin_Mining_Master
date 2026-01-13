@@ -14,7 +14,7 @@
 const express = require('express');
 const router = express.Router();
 const CountryMiningService = require('../services/countryMiningService');
-const { authenticateToken } = require('../middleware/auth');
+const authenticateToken = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/role');
 
 /**

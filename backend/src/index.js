@@ -62,8 +62,11 @@ const app = express();
 const PORT = process.env.PORT || 8888;
 
 // 跨域配置，允许指定来源、方法、头部等，提升安全性
+// 生产环境请替换为实际的前端域名
 const corsOptions = {
-  origin: ['http://localhost:3000', 'https://yourdomain.com'], // 允许的前端地址
+  origin: process.env.CORS_ORIGINS 
+    ? process.env.CORS_ORIGINS.split(',') 
+    : ['http://localhost:3000'], // 开发环境默认允许本地前端
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // 允许的 HTTP 方法
   allowedHeaders: ['Content-Type', 'Authorization'], // 允许的请求头
   credentials: true // 允许携带 cookie
@@ -133,41 +136,41 @@ const { startAllScheduledTasks } = require('./jobs/scheduledTasks');
 // 初始化游戏机制相关配置
 async function initGameMechanics() {
   try {
-    console.log('开始初始化游戏机制...');
+    logger.info('开始初始化游戏机制...');
     
     // 初始化 Redis 连接
     await redisClient.connect();
-    console.log('✓ Redis 连接成功');
+    logger.info('✓ Redis 连接成功');
     
     // 初始化等级配置
     await LevelService.initLevelConfig();
-    console.log('✓ 等级配置加载成功');
+    logger.info('✓ 等级配置加载成功');
     
     // 初始化签到奖励配置
     await CheckInService.initRewardConfig();
-    console.log('✓ 签到奖励配置加载成功');
+    logger.info('✓ 签到奖励配置加载成功');
     
     // 初始化国家配置
     await CountryConfigService.loadAllConfigs();
-    console.log('✓ 国家配置加载成功');
+    logger.info('✓ 国家配置加载成功');
     
-    console.log('游戏机制初始化完成！');
+    logger.info('游戏机制初始化完成！');
   } catch (error) {
-    console.error('游戏机制初始化失败:', error);
+    logger.error('游戏机制初始化失败:', error);
     throw error;
   }
 }
 
 // 启动服务前同步数据库结构，确保所有表已创建
 sequelize.sync().then(async () => {
-  console.log('数据库已同步');
+  logger.info('数据库已同步');
   
   // 初始化游戏机制
   await initGameMechanics();
   
   // 启动 HTTP 服务，监听指定端口
   app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    logger.info(`Server is running on port ${PORT}`);
     
     // 启动游戏机制定时任务
     startAllScheduledTasks();
@@ -176,11 +179,11 @@ sequelize.sync().then(async () => {
     // startMiningBalanceScheduler(); // 暂时禁用,等待修复数据库连接问题
     // 启动用户状态调度
     // startUserStatusScheduler(); // 暂时禁用
-    console.log('旧调度器已暂时禁用,等待数据库连接稳定后启用');
+    logger.info('旧调度器已暂时禁用,等待数据库连接稳定后启用');
   });
 }).catch(err => {
   // 数据库连接失败时输出错误
-  console.error('数据库连接失败:', err);
+  logger.error('数据库连接失败:', err);
 });
 
 // 安全防护说明：

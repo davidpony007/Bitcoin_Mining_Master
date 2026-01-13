@@ -2,11 +2,21 @@ import 'package:flutter/material.dart';
 
 /// API配置常量
 class ApiConstants {
-  // 基础URL - 需要根据实际后端地址修改
-  static const String baseUrl = 'http://your-server-url:3000/api';
+  // 基础URL - 后端Node.js服务器地址 (Android模拟器使用10.0.2.2访问宿主机)
+  static const String baseUrl = 'http://10.0.2.2:8888/api';
   
-  // API端点
-  static const String generateUserId = '/user/generate-id';
+  // 认证相关端点
+  static const String deviceLogin = '/auth/device-login';
+  static const String bindGoogle = '/auth/bind-google';
+  static const String switchGoogle = '/auth/switch-google';
+  static const String unbindGoogle = '/auth/unbind-google';
+  static const String invitationInfo = '/auth/invitation-info';
+  static const String userStatus = '/auth/user-status';
+  static const String addReferrer = '/auth/add-referrer';
+  static const String createAdContract = '/auth/create-ad-contract';
+  static const String activateAdContract = '/auth/activate-ad-contract';
+  
+  // 用户相关端点
   static const String getBitcoinBalance = '/user/bitcoin-balance';
   static const String withdrawBitcoin = '/user/withdraw';
   static const String getTransactions = '/user/transactions';

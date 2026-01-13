@@ -3,10 +3,6 @@
 		{
 			"name": "Bitcoin Mining Master",
 			"path": "."
-		},
-		{
-			"name": "BitcoinMiningMaster",
-			"path": "../../AndroidStudioProjects/BitcoinMiningMaster"
 		}
 	],
 	"settings": {}

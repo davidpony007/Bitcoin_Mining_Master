@@ -3,9 +3,13 @@ import 'package:provider/provider.dart';
 import 'providers/user_provider.dart';
 import 'screens/home_screen.dart';
 import 'constants/app_constants.dart';
+import 'services/storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化本地存储服务
+  await StorageService().init();
   
   runApp(const MyApp());
 }

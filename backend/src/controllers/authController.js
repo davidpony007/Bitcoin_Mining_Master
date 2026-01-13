@@ -4,6 +4,7 @@
 const UserInformation = require('../models/userInformation');
 const InvitationRelationship = require('../models/invitationRelationship');
 const UserStatus = require('../models/userStatus');
+const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
 
 /**
@@ -510,3 +511,250 @@ exports.getUserStatus = async (req, res) => {
     });
   }
 };
+
+/**
+ * 后期添加推荐人邀请码
+ * 用户首次未填写邀请码，后期可通过此接口绑定推荐人
+ * 
+ * 请求体:
+ * {
+ *   user_id: "用户ID",
+ *   referrer_invitation_code: "推荐人邀请码"
+ * }
+ */
+exports.addReferrer = async (req, res) => {
+  try {
+    const { user_id, referrer_invitation_code } = req.body;
+
+    // 1. 验证参数
+    if (!user_id || !referrer_invitation_code) {
+      return res.status(400).json({
+        success: false,
+        message: '用户ID和推荐人邀请码不能为空'
+      });
+    }
+
+    // 2. 检查用户是否存在
+    const user = await UserInformation.findOne({
+      where: { user_id: user_id.trim() }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '用户不存在'
+      });
+    }
+
+    // 3. 检查是否已经有推荐人
+    const existingRelation = await InvitationRelationship.findOne({
+      where: { user_id: user_id.trim() }
+    });
+
+    if (existingRelation) {
+      return res.status(400).json({
+        success: false,
+        message: '您已经绑定过推荐人，无法重复绑定'
+      });
+    }
+
+    // 4. 查找推荐人
+    const referrer = await UserInformation.findOne({
+      where: { invitation_code: referrer_invitation_code.trim() }
+    });
+
+    if (!referrer) {
+      return res.status(404).json({
+        success: false,
+        message: '推荐人邀请码不存在'
+      });
+    }
+
+    // 5. 不能邀请自己
+    if (referrer.user_id === user_id.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: '不能使用自己的邀请码'
+      });
+    }
+
+    // 6. 创建邀请关系
+    await InvitationRelationship.create({
+      user_id: user.user_id,
+      invitation_code: user.invitation_code,
+      referrer_user_id: referrer.user_id,
+      referrer_invitation_code: referrer.invitation_code
+    });
+
+    // 7. 🎁 处理邀请奖励
+    let rewardResult = null;
+    try {
+      rewardResult = await InvitationRewardService.handleNewReferral(
+        referrer.user_id,
+        user.user_id,
+        referrer_invitation_code.trim()
+      );
+      console.log('邀请奖励发放成功:', rewardResult);
+    } catch (rewardErr) {
+      console.error('发放邀请奖励失败:', rewardErr);
+    }
+
+    res.json({
+      success: true,
+      message: '推荐人绑定成功',
+      data: {
+        referrer_user_id: referrer.user_id,
+        referrer_invitation_code: referrer.invitation_code,
+        rewards: rewardResult
+      }
+    });
+
+  } catch (err) {
+    console.error('添加推荐人失败:', err);
+    res.status(500).json({
+      success: false,
+      error: '绑定失败',
+      details: err.message
+    });
+  }
+};
+
+/**
+ * 创建免费广告挖矿合约
+ * 用户绑定推荐人后，获得一个需要通过观看广告激活的免费挖矿合约
+ * 
+ * 请求体:
+ * {
+ *   user_id: "用户ID"
+ * }
+ */
+exports.createAdFreeContract = async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: '用户ID不能为空'
+      });
+    }
+
+    // 1. 验证用户存在
+    const user = await UserInformation.findOne({
+      where: { user_id: user_id.trim() }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '用户不存在'
+      });
+    }
+
+    // 2. 检查是否已经有待激活的广告合约
+    const existingContract = await FreeContractRecord.findOne({
+      where: {
+        user_id: user_id.trim(),
+        free_contract_type: 'ad free contract',
+        mining_status: 'completed' // 查找未激活的合约
+      }
+    });
+
+    if (existingContract) {
+      return res.status(400).json({
+        success: false,
+        message: '您已有待激活的广告合约'
+      });
+    }
+
+    // 3. 创建免费广告合约（未激活状态）
+    const now = new Date();
+    const contract = await FreeContractRecord.create({
+      user_id: user_id.trim(),
+      free_contract_type: 'ad free contract',
+      free_contract_revenue: 0,
+      free_contract_creation_time: now,
+      free_contract_end_time: new Date(now.getTime() + 2 * 60 * 60 * 1000), // 2小时后
+      hashrate: 0.00000001, // 示例算力
+      mining_status: 'completed' // 待激活状态
+    });
+
+    res.json({
+      success: true,
+      message: '免费广告合约创建成功，请观看广告激活',
+      data: contract
+    });
+
+  } catch (err) {
+    console.error('创建免费广告合约失败:', err);
+    res.status(500).json({
+      success: false,
+      error: '创建失败',
+      details: err.message
+    });
+  }
+};
+
+/**
+ * 激活免费广告挖矿合约
+ * 用户观看广告完成回调后，激活合约开始挖矿
+ * 
+ * 请求体:
+ * {
+ *   user_id: "用户ID",
+ *   contract_id: "合约ID"
+ * }
+ */
+exports.activateAdFreeContract = async (req, res) => {
+  try {
+    const { user_id, contract_id } = req.body;
+
+    if (!user_id || !contract_id) {
+      return res.status(400).json({
+        success: false,
+        message: '用户ID和合约ID不能为空'
+      });
+    }
+
+    // 1. 查找合约
+    const contract = await FreeContractRecord.findOne({
+      where: {
+        id: contract_id,
+        user_id: user_id.trim(),
+        free_contract_type: 'ad free contract',
+        mining_status: 'completed'
+      }
+    });
+
+    if (!contract) {
+      return res.status(404).json({
+        success: false,
+        message: '合约不存在或已激活'
+      });
+    }
+
+    // 2. 激活合约
+    const now = new Date();
+    await contract.update({
+      mining_status: 'mining',
+      free_contract_creation_time: now,
+      free_contract_end_time: new Date(now.getTime() + 2 * 60 * 60 * 1000) // 挖矿2小时
+    });
+
+    res.json({
+      success: true,
+      message: '广告合约已激活，开始挖矿2小时',
+      data: contract
+    });
+
+  } catch (err) {
+    console.error('激活广告合约失败:', err);
+    res.status(500).json({
+      success: false,
+      error: '激活失败',
+      details: err.message
+    });
+  }
+};
+
+module.exports = exports;

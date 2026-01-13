@@ -1,5 +1,97 @@
 import 'package:json_annotation/json_annotation.dart';
 
+/// 设备登录响应模型 - 对应后端 /api/auth/device-login
+class DeviceLoginResponse {
+  final bool success;
+  final bool isNewUser;
+  final String message;
+  final UserData? data;
+  final ReferrerData? referrer;
+
+  DeviceLoginResponse({
+    required this.success,
+    required this.isNewUser,
+    required this.message,
+    this.data,
+    this.referrer,
+  });
+
+  factory DeviceLoginResponse.fromJson(Map<String, dynamic> json) {
+    return DeviceLoginResponse(
+      success: json['success'] as bool? ?? false,
+      isNewUser: json['isNewUser'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      data: json['data'] != null ? UserData.fromJson(json['data']) : null,
+      referrer: json['referrer'] != null ? ReferrerData.fromJson(json['referrer']) : null,
+    );
+  }
+}
+
+/// 用户数据模型
+class UserData {
+  final String userId;
+  final String invitationCode;
+  final String? email;
+  final String? googleAccount;
+  final String androidId;
+  final String? gaid;
+  final String? registerIp;
+  final String? country;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? lastLoginTime;
+
+  UserData({
+    required this.userId,
+    required this.invitationCode,
+    this.email,
+    this.googleAccount,
+    required this.androidId,
+    this.gaid,
+    this.registerIp,
+    this.country,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lastLoginTime,
+  });
+
+  factory UserData.fromJson(Map<String, dynamic> json) {
+    return UserData(
+      userId: json['user_id'] as String,
+      invitationCode: json['invitation_code'] as String,
+      email: json['email'] as String?,
+      googleAccount: json['google_account'] as String?,
+      androidId: json['android_id'] as String,
+      gaid: json['gaid'] as String?,
+      registerIp: json['register_ip'] as String?,
+      country: json['country'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      updatedAt: DateTime.parse(json['updated_at'] as String),
+      lastLoginTime: json['last_login_time'] != null 
+        ? DateTime.parse(json['last_login_time'] as String) 
+        : null,
+    );
+  }
+}
+
+/// 邀请人数据模型
+class ReferrerData {
+  final String userId;
+  final String invitationCode;
+
+  ReferrerData({
+    required this.userId,
+    required this.invitationCode,
+  });
+
+  factory ReferrerData.fromJson(Map<String, dynamic> json) {
+    return ReferrerData(
+      userId: json['user_id'] as String,
+      invitationCode: json['invitation_code'] as String,
+    );
+  }
+}
+
 /// 用户ID响应模型
 class UserIdResponse {
   final bool success;

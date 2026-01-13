@@ -8,7 +8,7 @@ class UserProvider with ChangeNotifier {
   
   // 用户数据
   String? _userId;
-  String _bitcoinBalance = '0.00000000';
+  String _bitcoinBalance = '0.000000000000000';
   bool _isLoading = false;
   String? _errorMessage;
   List<Transaction> _transactions = [];
@@ -29,7 +29,7 @@ class UserProvider with ChangeNotifier {
     if (userIdResult.isSuccess) {
       _userId = userIdResult.data;
     } else {
-      _setError('初始化失败: ${userIdResult.error}');
+      _setError('Initialization failed: ${userIdResult.error}');
     }
     
     // 获取余额
@@ -47,7 +47,7 @@ class UserProvider with ChangeNotifier {
       _bitcoinBalance = result.data!;
       _errorMessage = null;
     } else {
-      _setError('获取余额失败: ${result.error}');
+      _setError('Failed to get balance: ${result.error}');
     }
     
     _setLoading(false);
@@ -62,7 +62,7 @@ class UserProvider with ChangeNotifier {
       _transactions = result.data!;
       _errorMessage = null;
     } else {
-      _setError('获取交易记录失败: ${result.error}');
+      _setError('Failed to get transaction history: ${result.error}');
     }
     
     _setLoading(false);
@@ -82,7 +82,7 @@ class UserProvider with ChangeNotifier {
       await fetchBitcoinBalance();
       return true;
     } else {
-      _setError('提现失败: ${result.error}');
+      _setError('Withdrawal failed: ${result.error}');
       return false;
     }
   }

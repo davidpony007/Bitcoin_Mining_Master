@@ -129,7 +129,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '${provider.bitcoinBalance} BTC',
+            '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(15) ?? '0.000000000000000'} BTC',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 28,

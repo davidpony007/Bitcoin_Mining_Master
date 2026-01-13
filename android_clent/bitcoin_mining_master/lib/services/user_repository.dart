@@ -23,7 +23,7 @@ class UserRepository {
         await _storageService.saveUserId(response.userId);
         return Result.success(response.userId);
       } else {
-        return Result.failure(Exception(response.message ?? '获取用户ID失败'));
+        return Result.failure(Exception(response.message ?? 'Failed to get user ID'));
       }
     } catch (e) {
       return Result.failure(e as Exception);
@@ -47,7 +47,7 @@ class UserRepository {
         await _storageService.saveBitcoinBalance(response.balance);
         return Result.success(response.balance);
       } else {
-        return Result.failure(Exception(response.message ?? '获取余额失败'));
+        return Result.failure(Exception(response.message ?? 'Failed to get balance'));
       }
     } catch (e) {
       // 如果网络失败，尝试从本地获取
@@ -95,7 +95,7 @@ class UserRepository {
         await fetchBitcoinBalance();
         return Result.success(true);
       } else {
-        return Result.failure(Exception(response['message'] ?? '提现失败'));
+        return Result.failure(Exception(response['message'] ?? 'Withdrawal failed'));
       }
     } catch (e) {
       return Result.failure(e as Exception);
