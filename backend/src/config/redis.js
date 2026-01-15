@@ -433,6 +433,76 @@ class RedisClient {
       return 0;
     }
   }
+
+  /**
+   * ==================== 积分系统缓存方法 ====================
+   */
+
+  /**
+   * 获取今日广告观看次数
+   */
+  async getTodayAdCount(userId) {
+    if (!this.isReady()) return null;
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `ad:count:${userId}:${today}`;
+      const count = await this.client.get(key);
+      return count ? parseInt(count) : null;
+    } catch (error) {
+      console.error(`获取广告计数失败 [user ${userId}]:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 设置今日广告观看次数
+   */
+  async setTodayAdCount(userId, count) {
+    if (!this.isReady()) return false;
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const key = `ad:count:${userId}:${today}`;
+      await this.client.setex(key, 86400, count); // 24小时过期
+      return true;
+    } catch (error) {
+      console.error(`设置广告计数失败 [user ${userId}]:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户签到状态
+   */
+  async getUserCheckInStatus(userId) {
+    if (!this.isReady()) return null;
+    
+    try {
+      const key = `checkin:status:${userId}`;
+      const data = await this.client.get(key);
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      console.error(`获取签到状态失败 [user ${userId}]:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 设置用户签到状态
+   */
+  async setUserCheckInStatus(userId, status) {
+    if (!this.isReady()) return false;
+    
+    try {
+      const key = `checkin:status:${userId}`;
+      await this.client.setex(key, 86400, JSON.stringify(status)); // 24小时过期
+      return true;
+    } catch (error) {
+      console.error(`设置签到状态失败 [user ${userId}]:`, error.message);
+      return false;
+    }
+  }
 }
 
 const redisClient = new RedisClient();

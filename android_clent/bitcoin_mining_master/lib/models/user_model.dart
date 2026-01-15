@@ -1,4 +1,3 @@
-import 'package:json_annotation/json_annotation.dart';
 
 /// 设备登录响应模型 - 对应后端 /api/auth/device-login
 class DeviceLoginResponse {

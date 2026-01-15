@@ -1,7 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../constants/app_constants.dart';
+import '../services/points_api_service.dart';
+import '../models/points_model.dart';
+import 'points_screen.dart';
+import 'checkin_screen.dart';
+import 'paid_contracts_screen.dart';
 
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
 class DashboardScreen extends StatefulWidget {
@@ -11,64 +17,193 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
+  final PointsApiService _pointsApi = PointsApiService();
+  PointsBalance? _pointsBalance;
+  Map<String, dynamic>? _todayAdInfo;
+  bool _isLoadingPoints = true;
+  
+  // Battery management
+  late List<BatteryState> _batteries;
+  Timer? _miningTimer;
+  late AnimationController _breathingController;
+  
+  @override
+  void initState() {
+    super.initState();
+    _initializeBatteries();
+    _startMiningTimer();
+    _breathingController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+    _loadPointsData();
+  }
+  
+  void _initializeBatteries() {
+    _batteries = List.generate(48, (index) {
+      // Mock data: first 12 batteries are in use
+      if (index < 12) {
+        final level = 4 - (index % 4); // Varying levels for demo
+        final isMining = index == 0; // First battery is currently mining
+        return BatteryState(
+          level: level,
+          isMining: isMining,
+          totalSeconds: level * 15 * 60, // 15 minutes per level
+          remainingSeconds: level * 15 * 60,
+        );
+      }
+      return BatteryState(level: 4, isMining: false, totalSeconds: 0, remainingSeconds: 0);
+    });
+  }
+  
+  void _startMiningTimer() {
+    _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      
+      bool hasChanges = false;
+      for (int i = 0; i < _batteries.length; i++) {
+        if (_batteries[i].isMining && _batteries[i].remainingSeconds > 0) {
+          _batteries[i].remainingSeconds--;
+          hasChanges = true;
+          
+          // Check if current level is depleted (15 minutes = 900 seconds)
+          final secondsPerLevel = 15 * 60;
+          final currentLevel = (_batteries[i].remainingSeconds / secondsPerLevel).ceil();
+          
+          if (currentLevel != _batteries[i].level) {
+            _batteries[i].level = currentLevel;
+            
+            // If battery is depleted, start next battery
+            if (_batteries[i].level == 0) {
+              _batteries[i].isMining = false;
+              // Find next full battery to start mining
+              for (int j = 0; j < _batteries.length; j++) {
+                if (_batteries[j].level == 4 && !_batteries[j].isMining) {
+                  _batteries[j].isMining = true;
+                  _batteries[j].totalSeconds = 4 * 15 * 60;
+                  _batteries[j].remainingSeconds = 4 * 15 * 60;
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      if (hasChanges && mounted) {
+        setState(() {});
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _miningTimer?.cancel();
+    _breathingController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPointsData() async {
+    try {
+      final balance = await _pointsApi.getPointsBalance();
+      final adInfo = await _pointsApi.getTodayAdInfo();
+      
+      if (mounted) {
+        setState(() {
+          _pointsBalance = balance;
+          _todayAdInfo = adInfo;
+          _isLoadingPoints = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingPoints = false);
+      }
+    }
+  }
+
+  void _navigateToCheckIn() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CheckInScreen()),
+    ).then((_) => _loadPointsData());
+  }
+
+  void _navigateToPoints() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PointsScreen()),
+    ).then((_) => _loadPointsData());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Mining Dashboard'),
+        backgroundColor: AppColors.cardDark,
         actions: [
           IconButton(
             icon: const Icon(Icons.event_available),
-            onPressed: () {
-              // TODO: Implement check-in functionality
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Check-in successful!')),
-              );
-            },
+            tooltip: 'Daily Check-in',
+            onPressed: _navigateToCheckIn,
+          ),
+          IconButton(
+            icon: const Icon(Icons.stars),
+            tooltip: 'Points Center',
+            onPressed: _navigateToPoints,
           ),
         ],
       ),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          return SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 16),
-                
-                // Balance Card with gradient
-                _buildBalanceCard(userProvider),
-                
-                const SizedBox(height: 16),
-                
-                // Level Card
-                _buildLevelCard(),
-                
-                const SizedBox(height: 20),
-                
-                // Hashrate Pool Section
-                _buildHashratePoolSection(),
-                
-                const SizedBox(height: 20),
-                
-                // Quick Actions
-                _buildQuickActions(),
-                
-                const SizedBox(height: 20),
-                
-                // Active Contracts
-                _buildActiveContracts(),
-                
-                const SizedBox(height: 20),
-              ],
+          return RefreshIndicator(
+            onRefresh: () async {
+              await _loadPointsData();
+            },
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 16),
+                  
+                  // Balance Card with gradient
+                  _buildBalanceCard(userProvider),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Level Card
+                  _buildLevelCard(),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Hashrate Pool Section
+                  _buildHashratePoolSection(),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Quick Actions
+                  _buildQuickActions(),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Active Contracts
+                  _buildActiveContracts(),
+                  
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           );
         },
       ),
     );
   }
+
+
 
   Widget _buildBalanceCard(UserProvider provider) {
     return Container(
@@ -204,6 +339,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildHashratePoolSection() {
+    final activeBatteries = _batteries.where((b) => b.level > 0 || b.isMining).length;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -213,7 +350,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Hashrate Pool',
+                'Mining Pool',
                 style: TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 18,
@@ -221,7 +358,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               Text(
-                '0 / 48',
+                '$activeBatteries / 48',
                 style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 14,
@@ -241,33 +378,124 @@ class _DashboardScreenState extends State<DashboardScreen> {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 8,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 1,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 0.75,
               ),
               itemCount: 48,
               itemBuilder: (context, index) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: AppColors.divider,
-                      width: 1,
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.battery_1_bar,
-                      size: 20,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                );
+                return _buildBatteryCell(index);
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBatteryCell(int index) {
+    final battery = _batteries[index];
+    final isActive = battery.level > 0;
+    final isMining = battery.isMining;
+    
+    return AnimatedBuilder(
+      animation: _breathingController,
+      builder: (context, child) {
+        final opacity = isMining 
+            ? 0.4 + (_breathingController.value * 0.6) 
+            : 1.0;
+        
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isMining 
+                  ? AppColors.primary.withOpacity(opacity)
+                  : (isActive ? AppColors.primary.withOpacity(0.3) : AppColors.divider),
+              width: isMining ? 2.5 : (isActive ? 2 : 1),
+            ),
+            boxShadow: isMining ? [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(opacity * 0.5),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ] : null,
+          ),
+          child: Stack(
+            children: [
+              // Battery body
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Battery top cap
+                    Container(
+                      width: 12,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: isMining 
+                            ? AppColors.primary.withOpacity(opacity)
+                            : (isActive ? AppColors.primary : AppColors.textSecondary.withOpacity(0.3)),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(2),
+                          topRight: Radius.circular(2),
+                        ),
+                      ),
+                    ),
+                    // Battery main body with 4 levels
+                    Container(
+                      width: 20,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(
+                          color: isMining 
+                              ? AppColors.primary.withOpacity(opacity)
+                              : (isActive ? AppColors.primary : AppColors.textSecondary.withOpacity(0.3)),
+                          width: 2,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          // Level 4 (top)
+                          _buildBatteryLevel(battery.level >= 4, isMining, opacity),
+                          const SizedBox(height: 1),
+                          // Level 3
+                          _buildBatteryLevel(battery.level >= 3, isMining, opacity),
+                          const SizedBox(height: 1),
+                          // Level 2
+                          _buildBatteryLevel(battery.level >= 2, isMining, opacity),
+                          const SizedBox(height: 1),
+                          // Level 1 (bottom)
+                          _buildBatteryLevel(battery.level >= 1, isMining, opacity),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBatteryLevel(bool isFilled, bool isMining, double opacity) {
+    return Expanded(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: isFilled
+              ? (isMining 
+                  ? AppColors.primary.withOpacity(opacity)
+                  : AppColors.primary.withOpacity(0.5))
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(1),
+        ),
       ),
     );
   }
@@ -290,10 +518,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Row(
             children: [
               Expanded(
-                child: ElevatedButton.icon(
+                child: ElevatedButton(
                   onPressed: () {},
-                  icon: const Icon(Icons.play_arrow, size: 20),
-                  label: const Text('Start Ad Mining'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -302,14 +528,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.play_arrow, size: 20),
+                      const SizedBox(width: 8),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Free Ad Mining',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '5.5Gh/s',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withOpacity(0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.shopping_cart, size: 20),
-                  label: const Text('Buy Contract'),
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PaidContractsScreen(),
+                      ),
+                    );
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFC107),
                     foregroundColor: Colors.black87,
@@ -317,6 +575,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.card_giftcard, size: 20),
+                      const SizedBox(width: 8),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Daily Check-in Reward',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '7.5Gh/s',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -476,4 +761,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
     );
-  }}
+  }
+}
+
+/// Battery state model for mining pool
+class BatteryState {
+  int level; // 0-4, each level = 15 minutes
+  bool isMining; // Currently mining (breathing animation)
+  int totalSeconds; // Total seconds for this battery
+  int remainingSeconds; // Remaining seconds
+  
+  BatteryState({
+    required this.level,
+    required this.isMining,
+    required this.totalSeconds,
+    required this.remainingSeconds,
+  });
+}

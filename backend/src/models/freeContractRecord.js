@@ -11,8 +11,14 @@ const FreeContractRecord = sequelize.define('free_contract_records', {
     comment: '免费合约记录主键ID'
   },
   user_id: { 
-    type: DataTypes.STRING(15), 
+    type: DataTypes.STRING(30), 
     allowNull: false,
+    references: {
+      model: 'user_information',
+      key: 'user_id'
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'CASCADE',
     comment: '用户唯一标识符'
   },
   free_contract_type: { 
@@ -74,6 +80,11 @@ const FreeContractRecord = sequelize.define('free_contract_records', {
     {
       fields: ['user_id', 'mining_status'],
       name: 'idx_user_status'
+    },
+    // 复合索引优化实时余额查询（覆盖mining_status='mining' AND end_time > NOW()）
+    {
+      fields: ['mining_status', 'free_contract_end_time', 'user_id'],
+      name: 'idx_active_mining'
     }
   ],
   comment: '免费合约记录表'

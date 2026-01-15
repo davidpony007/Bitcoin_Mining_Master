@@ -60,6 +60,24 @@ const UserInformation = sequelize.define('user_information', {
     defaultValue: 1.00,
     comment: '国家挖矿速度倍率,默认1.00'
   },
+  user_level: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 1,
+    comment: '用户等级'
+  },
+  user_points: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0,
+    comment: '用户积分'
+  },
+  mining_speed_multiplier: {
+    type: DataTypes.DECIMAL(8, 6),
+    allowNull: true,
+    defaultValue: 1.000000,
+    comment: '挖矿速度倍率'
+  },
   user_creation_time: { 
     type: DataTypes.DATE, 
     allowNull: false, 

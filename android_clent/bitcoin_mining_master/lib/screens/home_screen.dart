@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../widgets/welcome_dialog.dart';
+import '../providers/user_provider.dart';
 import 'dashboard_screen.dart';
 import 'wallet_screen.dart';
 import 'referral_screen.dart';
@@ -145,6 +147,11 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {
               _currentIndex = index;
             });
+            
+            // 当切换到Mining页面(index=0)或钱包页面(index=3)时，刷新余额
+            if ((index == 0 || index == 3) && mounted) {
+              context.read<UserProvider>().fetchBitcoinBalance();
+            }
           },
           items: _navigationItems,
           backgroundColor: Colors.transparent,

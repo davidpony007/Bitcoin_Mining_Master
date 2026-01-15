@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
@@ -19,7 +20,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   String _invitationCode = 'Loading...';
   String _totalRebate = '0.00000000';
   int _invitedCount = 0;
-  String _todayEarnings = '0.0000';
+  final String _todayEarnings = '0.000000000000000';
   bool _isLoading = true;
   bool _hasReferrer = false; // 是否已有推荐人
 
@@ -97,12 +98,20 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   void _shareInvitationCode() {
     if (_invitationCode != 'Loading...' && _invitationCode != 'Error' && _invitationCode != 'N/A') {
-      // TODO: 实现分享功能
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Share: $_invitationCode'),
-          duration: const Duration(seconds: 2),
-        ),
+      final String shareText = '''
+🎁 Join Bitcoin Mining Master!
+
+Use my invitation code to get a FREE 2-hour mining contract:
+
+📋 Code: $_invitationCode
+
+Start earning Bitcoin today! 💰
+Download now and start mining!
+''';
+      
+      Share.share(
+        shareText,
+        subject: 'Join Bitcoin Mining Master - Free Mining Contract!',
       );
     }
   }
@@ -317,9 +326,6 @@ class _ReferralScreenState extends State<ReferralScreen> {
           children: [
             const SizedBox(height: 16),
             
-            // Add Referrer Button (if no referrer yet)
-            _buildAddReferrerButton(),
-            
             // Total Rebate Earnings Card
             _buildRebateCard(),
             
@@ -337,6 +343,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
             
             // Rebate Records
             _buildRebateRecords(),
+            
+            const SizedBox(height: 20),
+            
+            // Add Referrer Button (if no referrer yet) - Moved to bottom
+            _buildAddReferrerButton(),
             
             const SizedBox(height: 20),
           ],
@@ -467,20 +478,34 @@ class _ReferralScreenState extends State<ReferralScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            '${double.tryParse(_totalRebate)?.toStringAsFixed(15) ?? '0.000000000000000'} BTC',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                double.tryParse(_totalRebate)?.toStringAsFixed(15) ?? '0.000000000000000',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                'BTC',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _buildStatItem('Invited', _invitedCount.toString()),
-              _buildStatItem('Rebate Rate', '20%'),
               _buildStatItem("Today's Earnings", _todayEarnings),
             ],
           ),

@@ -227,6 +227,18 @@ class ApiService {
     }
   }
 
+  /// 检查用户是否有活跃的挖矿合约
+  Future<Map<String, dynamic>> checkActiveContracts(String userId) async {
+    try {
+      final response = await _dio.get(
+        '/api/contract-status/has-active/$userId',
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   /// 错误处理
   Exception _handleError(DioException error) {
     switch (error.type) {

@@ -11,8 +11,14 @@ const MiningContract = sequelize.define('mining_contracts', {
     comment: '挖矿合约主键ID'
   },
   user_id: { 
-    type: DataTypes.STRING(15), 
+    type: DataTypes.STRING(30), 
     allowNull: false,
+    references: {
+      model: 'user_information',
+      key: 'user_id'
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'CASCADE',
     comment: '用户唯一标识符'
   },
   contract_type: { 
@@ -79,6 +85,11 @@ const MiningContract = sequelize.define('mining_contracts', {
     {
       fields: ['user_id', 'mining_status'],
       name: 'idx_user_status'
+    },
+    // 复合索引优化实时余额查询
+    {
+      fields: ['mining_status', 'contract_end_time', 'user_id'],
+      name: 'idx_active_mining'
     }
   ],
   comment: '挖矿合约表'

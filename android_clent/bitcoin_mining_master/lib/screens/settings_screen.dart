@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:async';
 import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import 'google_sign_in_screen.dart';
 
 /// 设置页面 - Settings Screen
 class SettingsScreen extends StatefulWidget {
@@ -20,11 +22,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _apiService = ApiService();
   final _storageService = StorageService();
   bool _isLoading = false;
+  
+  // UTC时间显示
+  String _utcTime = '';
+  Timer? _timeTimer;
 
   @override
   void initState() {
     super.initState();
     _loadOrGenerateUserId();
+    _startUtcTimeUpdater();
+  }
+
+  @override
+  void dispose() {
+    _timeTimer?.cancel();
+    super.dispose();
+  }
+
+  /// 启动UTC时间更新定时器
+  void _startUtcTimeUpdater() {
+    _updateUtcTime();
+    _timeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _updateUtcTime();
+    });
+  }
+
+  /// 更新UTC时间
+  void _updateUtcTime() {
+    final now = DateTime.now().toUtc();
+    setState(() {
+      _utcTime = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+                 '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    });
   }
 
   /// 从本地加载或通过后端API生成UserID
@@ -109,10 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Settings'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -122,6 +149,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             
             // User Info
             _buildUserCard(),
+            
+            const SizedBox(height: 16),
+            
+            // UTC Time Display
+            _buildUtcTimeCard(),
             
             const SizedBox(height: 20),
             
@@ -306,6 +338,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildUtcTimeCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.schedule,
+              size: 28,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'System Time (UTC+00:00)',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _utcTime,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4CAF50).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: const Text(
+              'UTC',
+              style: TextStyle(
+                color: Color(0xFF4CAF50),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -438,7 +543,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
           ),
         ],
       ),
@@ -540,17 +645,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _handleGoogleSignIn() {
-    // TODO: Implement Google Sign In
-    setState(() {
-      _isGoogleSignedIn = true;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Google account connected successfully'),
-        backgroundColor: Color(0xFF4CAF50),
+  void _handleGoogleSignIn() async {
+    // 导航到Google绑定页面
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const GoogleSignInScreen(),
       ),
     );
+
+    // 如果绑定成功，更新状态
+    if (result == true && mounted) {
+      setState(() {
+        _isGoogleSignedIn = true;
+      });
+    }
   }
 
   void _showSignOutDialog() {

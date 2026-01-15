@@ -5,6 +5,10 @@
 const cron = require('node-cron');
 const redisClient = require('../config/redis');
 const pool = require('../config/database').pool;
+const PointsService = require('../services/pointsService');
+const InvitationPointsService = require('../services/invitationPointsService');
+const ContractRewardService = require('../services/contractRewardService');
+const RealtimeBalanceService = require('../services/realtimeBalanceService');
 
 /**
  * 每日签到加成过期清理任务
@@ -284,6 +288,162 @@ function startReferralAdCountSync() {
 }
 
 /**
+ * 积分缓存清理任务
+ * 每天凌晨4:00执行，清理过期的积分缓存
+ */
+function startPointsCacheCleanup() {
+  // 每天凌晨4:00执行
+  cron.schedule('0 4 * * *', async () => {
+    try {
+      console.log('[定时任务] 开始清理过期积分缓存...');
+      
+      // 获取所有积分缓存的键
+      const keys = await redisClient.client.keys('user:points:*');
+      
+      if (keys.length === 0) {
+        console.log('[定时任务] 无积分缓存需要清理');
+        return;
+      }
+      
+      let cleanedCount = 0;
+      let verifiedCount = 0;
+      
+      for (const key of keys) {
+        try {
+          const userId = key.split(':')[2];
+          
+          // 获取缓存的积分数据
+          const cachedData = await redisClient.client.hgetall(key);
+          
+          if (!cachedData || !cachedData.total_points) {
+            // 缓存数据不完整，直接删除
+            await redisClient.client.del(key);
+            cleanedCount++;
+            continue;
+          }
+          
+          // 从数据库查询实际积分
+          const [dbData] = await pool.query(
+            'SELECT total_points FROM user_points WHERE user_id = ?',
+            [userId]
+          );
+          
+          if (dbData.length === 0) {
+            // 数据库中没有此用户的积分记录，删除缓存
+            await redisClient.client.del(key);
+            cleanedCount++;
+          } else {
+            const dbPoints = parseInt(dbData[0].total_points) || 0;
+            const cachedPoints = parseInt(cachedData.total_points) || 0;
+            
+            // 如果缓存与数据库不一致，删除缓存
+            if (dbPoints !== cachedPoints) {
+              console.warn(`[定时任务] 用户 ${userId} 积分缓存不一致: DB=${dbPoints}, Cache=${cachedPoints}`);
+              await redisClient.client.del(key);
+              cleanedCount++;
+            } else {
+              verifiedCount++;
+            }
+          }
+        } catch (err) {
+          console.error('[定时任务] 清理单个用户积分缓存失败:', err);
+        }
+      }
+      
+      console.log(`[定时任务] 积分缓存清理完成，清理了 ${cleanedCount} 个缓存，验证了 ${verifiedCount} 个缓存`);
+    } catch (error) {
+      console.error('[定时任务] 积分缓存清理失败:', error);
+    }
+  });
+  
+  console.log('✓ 积分缓存清理任务已启动（每天凌晨4:00）');
+}
+
+/**
+ * 邀请奖励自动发放任务
+ * 每2小时执行一次，检查并发放符合条件的邀请奖励
+ */
+function startAutoReferralRewards() {
+  // 每2小时执行一次
+  cron.schedule('0 */2 * * *', async () => {
+    try {
+      console.log('[定时任务] 开始检查并发放邀请奖励...');
+      
+      // 查询所有有邀请关系的用户
+      const [referrers] = await pool.query(`
+        SELECT DISTINCT referrer_user_id as user_id
+        FROM invitation_relationship
+        WHERE referrer_user_id IS NOT NULL
+      `);
+      
+      if (referrers.length === 0) {
+        console.log('[定时任务] 无邀请用户需要检查');
+        return;
+      }
+      
+      let processedCount = 0;
+      let rewardedCount = 0;
+      let totalPoints = 0;
+      
+      for (const referrer of referrers) {
+        try {
+          const userId = referrer.user_id;
+          
+          // 使用InvitationPointsService检查并处理10人里程碑奖励
+          const result = await InvitationPointsService.handleTenFriendsMilestone(userId);
+          
+          if (result.success && result.points_awarded > 0) {
+            rewardedCount++;
+            totalPoints += result.points_awarded;
+            console.log(`[定时任务] 用户 ${userId} 获得邀请奖励 ${result.points_awarded} 积分`);
+          }
+          
+          processedCount++;
+        } catch (err) {
+          // 如果是"未达到要求"或"所有奖励已领取"的错误，跳过
+          if (err.message && (
+            err.message.includes('未达到') || 
+            err.message.includes('已领取') ||
+            err.message.includes('不足')
+          )) {
+            // 这是正常情况，不需要记录错误
+            processedCount++;
+          } else {
+            console.error(`[定时任务] 处理用户 ${userId} 邀请奖励失败:`, err);
+          }
+        }
+      }
+      
+      console.log(`[定时任务] 邀请奖励发放完成，检查了 ${processedCount} 个用户，发放了 ${rewardedCount} 个奖励，共 ${totalPoints} 积分`);
+    } catch (error) {
+      console.error('[定时任务] 邀请奖励自动发放失败:', error);
+    }
+  });
+  
+  console.log('✓ 邀请奖励自动发放任务已启动（每2小时）');
+}
+
+/**
+ * 合约奖励计算和发放任务
+ * 每2小时UTC整点执行一次，统计所有合约产生的收益并发放
+ * 运行时间：00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00 (UTC)
+ */
+function startContractRewardDistribution() {
+  // 每2小时UTC整点执行 (0 */2 * * *)
+  cron.schedule('0 */2 * * *', async () => {
+    try {
+      console.log('[定时任务] 开始合约奖励计算和发放...');
+      await ContractRewardService.executeRewardDistribution();
+      console.log('[定时任务] 合约奖励发放完成');
+    } catch (error) {
+      console.error('[定时任务] 合约奖励发放失败:', error);
+    }
+  });
+  
+  console.log('✓ 合约奖励发放任务已启动（每2小时UTC整点）');
+}
+
+/**
  * 启动所有定时任务
  */
 function startAllScheduledTasks() {
@@ -295,6 +455,12 @@ function startAllScheduledTasks() {
   startLevelCacheWarmup();           // 等级缓存预热（每天凌晨3点）
   startInvitationProgressSync();     // 邀请进度同步（每6小时）
   startReferralAdCountSync();        // 推荐人广告计数同步（每小时）
+  startPointsCacheCleanup();         // 积分缓存清理（每天凌晨4点）
+  startAutoReferralRewards();        // 邀请奖励自动发放（每2小时）
+  startContractRewardDistribution(); // 合约奖励发放（每2小时UTC整点）
+  
+  // 启动实时余额更新服务（每秒执行）
+  RealtimeBalanceService.startRealtimeUpdates();
   
   console.log('==========================================\n');
 }
@@ -304,6 +470,10 @@ function startAllScheduledTasks() {
  */
 function stopAllScheduledTasks() {
   console.log('[定时任务] 正在停止所有定时任务...');
+  
+  // 停止实时余额更新
+  RealtimeBalanceService.stopRealtimeUpdates();
+  
   // node-cron会在进程退出时自动清理
   console.log('[定时任务] 所有定时任务已停止');
 }
@@ -318,5 +488,8 @@ module.exports = {
   startCheckInSyncTask,
   startLevelCacheWarmup,
   startInvitationProgressSync,
-  startReferralAdCountSync
+  startReferralAdCountSync,
+  startPointsCacheCleanup,
+  startAutoReferralRewards,
+  startContractRewardDistribution
 };

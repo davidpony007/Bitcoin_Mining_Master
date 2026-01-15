@@ -14,6 +14,12 @@ const UserStatus = sequelize.define('user_status', {
     type: DataTypes.STRING(30), 
     allowNull: false,
     unique: true,
+    references: {
+      model: 'user_information',
+      key: 'user_id'
+    },
+    onUpdate: 'CASCADE',
+    onDelete: 'CASCADE',
     comment: '用户唯一标识符'
   },
   bitcoin_accumulated_amount: { 

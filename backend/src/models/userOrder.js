@@ -27,7 +27,7 @@ const UserOrder = sequelize.define('user_orders', {
   
   // 产品ID (价格枚举)
   product_id: { 
-    type: DataTypes.ENUM('p0499', 'p0699', 'p0999', 'p1999', 'p4999', 'p9999'),
+    type: DataTypes.ENUM('p0499', 'p0699', 'p0999', 'p1999'),
     allowNull: false,
     comment: '产品档位标识'
   },
@@ -38,9 +38,7 @@ const UserOrder = sequelize.define('user_orders', {
       'contract_4.99', 
       'contract_6.99', 
       'contract_9.99', 
-      'contract_19.99', 
-      'contract_49.99', 
-      'contract_99.99'
+      'contract_19.99'
     ),
     allowNull: false,
     comment: '合约产品名称'
@@ -48,7 +46,7 @@ const UserOrder = sequelize.define('user_orders', {
   
   // 产品价格
   product_price: { 
-    type: DataTypes.ENUM('4.99', '6.99', '9.99', '19.99', '49.99', '99.99'),
+    type: DataTypes.ENUM('4.99', '6.99', '9.99', '19.99'),
     allowNull: false,
     comment: '产品价格(美元)'
   },

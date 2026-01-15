@@ -187,9 +187,10 @@ class LevelService {
   }
 
   /**
-   * 计算最终挖矿速率 (等级倍数 × 签到加成倍数 × 国家倍数)
+   * 计算最终挖矿速率 (等级倍数 × 签到加成倍数)
+   * 注意：基础速度不受国家倍数影响，国家倍数单独计算
    */
-  static async calculateMiningSpeed(userId, baseSpeed = 0.00000001) {
+  static async calculateMiningSpeed(userId, baseSpeed = 0.000000000000139) {
     try {
       // 1. 获取用户等级倍数
       const levelInfo = await this.getUserLevel(userId);
@@ -206,7 +207,7 @@ class LevelService {
         }
       }
 
-      // 3. 获取用户国家倍数
+      // 3. 获取用户国家倍数（单独返回，不影响基础速度）
       let countryMultiplier = 1.0;
       try {
         const CountryConfigService = require('./countryConfigService');
@@ -219,23 +220,26 @@ class LevelService {
         
         if (userInfo.length > 0 && userInfo[0].country) {
           countryMultiplier = await CountryConfigService.getMiningSpeedMultiplier(userInfo[0].country);
-          finalMultiplier *= countryMultiplier;
           console.log(`✅ 用户 ${userId} 国家倍数 (${userInfo[0].country}): ${countryMultiplier}`);
         }
       } catch (error) {
         console.warn('获取国家倍数失败，使用默认值 1.0:', error.message);
       }
 
-      // 4. 计算最终速率
+      // 4. 计算最终速率（基础速度只受等级和签到加成影响）
       const finalSpeed = baseSpeed * finalMultiplier;
+      // 计算包含国家倍数的完整速度
+      const finalSpeedWithCountry = finalSpeed * countryMultiplier;
 
       return {
         baseSpeed,
+        baseHashrateGhs: 5.5,  // 基础算力 5.5 Gh/s
         levelMultiplier: levelInfo.speedMultiplier,
         dailyBonusMultiplier,
         countryMultiplier,
         finalMultiplier,
         finalSpeed,
+        finalSpeedWithCountry,  // 包含国家倍数的最终速度
         dailyBonusActive: dailyBonusMultiplier > 1.0
       };
     } catch (error) {

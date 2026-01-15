@@ -146,6 +146,24 @@ exports.deviceLogin = async (req, res) => {
               console.error('发放邀请奖励失败:', rewardErr);
               // 奖励发放失败不影响用户注册和邀请关系建立
             }
+
+            // 🎯 创建或延长推荐人的邀请挖矿合约（增加2小时）
+            try {
+              const InvitationMiningContractService = require('../services/invitationMiningContractService');
+              const miningContractResult = await InvitationMiningContractService.onSuccessfulInvitation(
+                referrer.user_id,
+                user.user_id
+              );
+              console.log('邀请挖矿合约创建/延长成功:', miningContractResult);
+              
+              // 将挖矿合约信息附加到推荐人信息中
+              if (referrerInfo) {
+                referrerInfo.miningContract = miningContractResult;
+              }
+            } catch (miningErr) {
+              console.error('创建/延长邀请挖矿合约失败:', miningErr);
+              // 挖矿合约失败不影响用户注册和邀请关系建立
+            }
           } else {
             console.warn(`推荐人邀请码不存在: ${referrer_invitation_code}`);
           }
@@ -497,9 +515,21 @@ exports.getUserStatus = async (req, res) => {
       });
     }
 
+    // 同时查询用户信息以获取invitation_code
+    const userInfo = await UserInformation.findOne({
+      where: { user_id: user_id.trim() },
+      attributes: ['invitation_code']
+    });
+
+    // 合并返回数据
+    const responseData = {
+      ...userStatus.toJSON(),
+      invitation_code: userInfo ? userInfo.invitation_code : null
+    };
+
     res.json({
       success: true,
-      data: userStatus
+      data: responseData
     });
 
   } catch (err) {
@@ -667,7 +697,25 @@ exports.createAdFreeContract = async (req, res) => {
       });
     }
 
-    // 3. 创建免费广告合约（未激活状态）
+    // 3. 计算挖矿速度（应用公式：基础奖励 × 国家系数 × 矿工等级速率系数 × 特殊加成系数）
+    const LevelService = require('../services/levelService');
+    const speedInfo = await LevelService.calculateMiningSpeed(user_id.trim());
+    
+    // 计算2小时的预期收益
+    const durationSeconds = 2 * 60 * 60; // 2小时
+    const expectedRevenue = speedInfo.finalSpeedWithCountry * durationSeconds;
+
+    console.log(`✅ 免费广告合约速度计算:`, {
+      user_id: user_id.trim(),
+      baseSpeed: speedInfo.baseSpeed,
+      levelMultiplier: speedInfo.levelMultiplier,
+      dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
+      countryMultiplier: speedInfo.countryMultiplier,
+      finalSpeed: speedInfo.finalSpeedWithCountry,
+      expectedRevenue2Hours: expectedRevenue
+    });
+
+    // 4. 创建免费广告合约（未激活状态）
     const now = new Date();
     const contract = await FreeContractRecord.create({
       user_id: user_id.trim(),
@@ -675,14 +723,26 @@ exports.createAdFreeContract = async (req, res) => {
       free_contract_revenue: 0,
       free_contract_creation_time: now,
       free_contract_end_time: new Date(now.getTime() + 2 * 60 * 60 * 1000), // 2小时后
-      hashrate: 0.00000001, // 示例算力
+      hashrate: speedInfo.finalSpeedWithCountry, // ✅ 使用公式计算的速度
       mining_status: 'completed' // 待激活状态
     });
 
     res.json({
       success: true,
       message: '免费广告合约创建成功，请观看广告激活',
-      data: contract
+      data: {
+        contract,
+        speedInfo: {
+          baseSpeed: speedInfo.baseSpeed,
+          baseHashrate: speedInfo.baseHashrateGhs + ' Gh/s',
+          levelMultiplier: speedInfo.levelMultiplier,
+          dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
+          countryMultiplier: speedInfo.countryMultiplier,
+          finalSpeed: speedInfo.finalSpeedWithCountry,
+          expectedRevenue2Hours: expectedRevenue,
+          formula: '每秒奖励 = 基础奖励 × 国家系数 × 矿工等级速率系数 × 特殊加成系数'
+        }
+      }
     });
 
   } catch (err) {
@@ -733,18 +793,42 @@ exports.activateAdFreeContract = async (req, res) => {
       });
     }
 
-    // 2. 激活合约
+    // 2. 重新计算挖矿速度（激活时应用最新的等级/签到/国家系数）
+    const LevelService = require('../services/levelService');
+    const speedInfo = await LevelService.calculateMiningSpeed(user_id.trim());
+    
+    const durationSeconds = 2 * 60 * 60;
+    const expectedRevenue = speedInfo.finalSpeedWithCountry * durationSeconds;
+
+    console.log(`✅ 激活广告合约，重新计算速度:`, {
+      user_id: user_id.trim(),
+      finalSpeed: speedInfo.finalSpeedWithCountry,
+      expectedRevenue2Hours: expectedRevenue
+    });
+
+    // 3. 激活合约
     const now = new Date();
     await contract.update({
       mining_status: 'mining',
       free_contract_creation_time: now,
-      free_contract_end_time: new Date(now.getTime() + 2 * 60 * 60 * 1000) // 挖矿2小时
+      free_contract_end_time: new Date(now.getTime() + 2 * 60 * 60 * 1000), // 挖矿2小时
+      hashrate: speedInfo.finalSpeedWithCountry // ✅ 更新为当前实际速度
     });
 
     res.json({
       success: true,
       message: '广告合约已激活，开始挖矿2小时',
-      data: contract
+      data: {
+        contract,
+        speedInfo: {
+          baseSpeed: speedInfo.baseSpeed,
+          levelMultiplier: speedInfo.levelMultiplier,
+          dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
+          countryMultiplier: speedInfo.countryMultiplier,
+          finalSpeed: speedInfo.finalSpeedWithCountry,
+          expectedRevenue2Hours: expectedRevenue
+        }
+      }
     });
 
   } catch (err) {
