@@ -82,9 +82,61 @@ class CheckInService {
   }
 
   /**
-   * 用户签到
+   * 用户签到（简化版本，用于挖矿合约系统）
+   * 仅验证今日是否已签到，不处理积分奖励
    */
   static async checkIn(userId) {
+    try {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // 使用Sequelize原生查询
+      const [existingCheckIn] = await db.query(
+        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',
+        {
+          replacements: [userId, today],
+          type: db.QueryTypes.SELECT
+        }
+      );
+
+      if (existingCheckIn) {
+        return {
+          success: false,
+          message: '今日已签到',
+          alreadyCheckedIn: true
+        };
+      }
+
+      // 插入签到记录（简化版）
+      await db.query(
+        `INSERT INTO user_check_in (
+          user_id, 
+          check_in_date, 
+          consecutive_days, 
+          points_earned, 
+          daily_bonus_active, 
+          bonus_expire_time
+        ) VALUES (?, ?, 1, 0, FALSE, NULL)`,
+        {
+          replacements: [userId, today],
+          type: db.QueryTypes.INSERT
+        }
+      );
+
+      return {
+        success: true,
+        message: '签到成功',
+        checkInDate: today
+      };
+    } catch (error) {
+      console.error('❌ 签到失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 用户签到（完整版本，已废弃）
+   */
+  static async checkInOld(userId) {
     const connection = await db.getConnection();
     
     try {

@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 
 /// API配置常量
 class ApiConstants {
-  // 基础URL - 后端Node.js服务器地址 (Android模拟器使用10.0.2.2访问宿主机)
-  static const String baseUrl = 'http://localhost:8888/api'; // 使用 adb reverse 端口映射
+  // 基础URL - 后端Node.js服务器地址
+  // 使用adb reverse端口转发，所有平台统一使用localhost
+  static String get baseUrl {
+    return 'http://localhost:8888/api';
+  }
   
   // 认证相关端点
   static const String deviceLogin = '/auth/device-login';
@@ -35,6 +40,8 @@ class AppConstants {
   
   // SharedPreferences keys
   static const String keyUserId = 'user_id';
+  static const String keyInvitationCode = 'invitation_code';
+  static const String keyAuthToken = 'auth_token';
   static const String keyBitcoinBalance = 'bitcoin_balance';
   static const String keyIsFirstLaunch = 'is_first_launch';
 }

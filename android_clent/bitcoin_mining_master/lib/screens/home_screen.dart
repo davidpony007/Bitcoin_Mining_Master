@@ -90,9 +90,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // 所有屏幕页面
-  final List<Widget> _screens = [
-    const DashboardScreen(),
+  // 所有屏幕页面（使用getter动态创建，以便传递回调）
+  List<Widget> get _screens => [
+    DashboardScreen(onSwitchTab: switchToTab),
     const ContractsScreen(),
     const ReferralScreen(),
     const WalletScreen(),
@@ -122,7 +122,14 @@ class _HomeScreenState extends State<HomeScreen> {
       label: 'Settings',
     ),
   ];
-
+  // 📌 切换到指定标签的方法（供子页面调用）
+  void switchToTab(int index) {
+    if (index >= 0 && index < _screens.length && mounted) {
+      setState(() {
+        _currentIndex = index;
+      });
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(

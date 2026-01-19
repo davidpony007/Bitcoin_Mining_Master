@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:async';
 import '../constants/app_constants.dart';
-import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/user_repository.dart';
 import 'google_sign_in_screen.dart';
 
 /// 设置页面 - Settings Screen
@@ -19,8 +18,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isGoogleSignedIn = false; // Google登录状态
   String _userId = 'Loading...'; // 用户ID
   String _userName = 'Guest User'; // 用户昵称，可编辑
-  final _apiService = ApiService();
   final _storageService = StorageService();
+  final _userRepository = UserRepository();
   bool _isLoading = false;
   
   // UTC时间显示
@@ -72,11 +71,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _isLoading = false;
         });
       } else {
-        // 如果本地没有，说明登录失败，显示错误
-        setState(() {
-          _userId = 'Login failed';
-          _isLoading = false;
-        });
+        // 本地没有，尝试设备登录/注册
+        final result = await _userRepository.fetchUserId();
+        if (result.isSuccess && result.data != null && result.data!.isNotEmpty) {
+          setState(() {
+            _userId = result.data!;
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _userId = 'Login failed';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       print('Error loading user ID: $e');
@@ -254,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                       Text(
-                        _userId,
+                        _isLoading ? 'Loading...' : _userId,
                         style: TextStyle(
                           color: AppColors.primary,
                           fontSize: 13,
@@ -498,65 +505,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: value,
             onChanged: onChanged,
             activeThumbColor: AppColors.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusItem({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    String? subtitle,
-    required String status,
-    required Color statusColor,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
-                ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Text(
-            status,
-            style: TextStyle(
-              color: statusColor,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
           ),
         ],
       ),

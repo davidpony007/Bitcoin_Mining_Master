@@ -4,17 +4,24 @@ library;
 /// 积分余额
 class PointsBalance {
   final int totalPoints;
-  final DateTime lastUpdated;
+  final int availablePoints;
+  final DateTime? lastUpdated;
 
   PointsBalance({
     required this.totalPoints,
-    required this.lastUpdated,
+    required this.availablePoints,
+    this.lastUpdated,
   });
 
   factory PointsBalance.fromJson(Map<String, dynamic> json) {
+    final totalPoints = json['total_points'] ?? json['totalPoints'] ?? 0;
+    final availablePoints = json['available_points'] ?? json['availablePoints'] ?? totalPoints;
     return PointsBalance(
-      totalPoints: json['total_points'] ?? 0,
-      lastUpdated: DateTime.parse(json['last_updated']),
+      totalPoints: totalPoints,
+      availablePoints: availablePoints,
+      lastUpdated: json['last_updated'] != null
+          ? DateTime.tryParse(json['last_updated'])
+          : null,
     );
   }
 }
@@ -41,26 +48,36 @@ class PointsTransaction {
     return PointsTransaction(
       id: json['id'],
       userId: json['user_id'],
-      points: json['points'],
-      type: json['type'],
-      description: json['description'],
+      points: json['points_change'] ?? json['points'] ?? 0,
+      type: json['points_type'] ?? json['type'] ?? 'UNKNOWN',
+      description: json['description'] ?? json['reason'],
       createdAt: DateTime.parse(json['created_at']),
     );
   }
 
   String get typeDisplay {
     switch (type) {
-      case 'ad_view':
+      case 'AD_VIEW':
         return 'Watch Ads';
-      case 'check_in':
+      case 'DAILY_CHECKIN':
         return 'Daily Check-in';
-      case 'referral':
+      case 'REFERRAL_1':
         return 'Referral Reward';
-      case 'subordinate_ad':
+      case 'REFERRAL_10':
+        return 'Referral Milestone';
+      case 'SUBORDINATE_AD_VIEW':
         return 'Subordinate Ads';
-      case 'milestone':
-        return 'Milestone Reward';
-      case 'deduct':
+      case 'CONSECUTIVE_CHECKIN_3':
+        return '3-Day Streak';
+      case 'CONSECUTIVE_CHECKIN_7':
+        return '7-Day Streak';
+      case 'CONSECUTIVE_CHECKIN_15':
+        return '15-Day Streak';
+      case 'CONSECUTIVE_CHECKIN_30':
+        return '30-Day Streak';
+      case 'MANUAL_ADD':
+        return 'Manual Add';
+      case 'MANUAL_DEDUCT':
         return 'Points Deducted';
       default:
         return type;
@@ -70,21 +87,59 @@ class PointsTransaction {
 
 /// 积分统计
 class PointsStatistics {
-  final Map<String, int> byType;
+  final int currentPoints;
+  final int availablePoints;
   final int totalEarned;
+  final int totalSpent;
+  final List<PointsTypeStat> items;
 
   PointsStatistics({
-    required this.byType,
+    required this.currentPoints,
+    required this.availablePoints,
     required this.totalEarned,
+    required this.totalSpent,
+    required this.items,
   });
 
   factory PointsStatistics.fromJson(Map<String, dynamic> json) {
-    final byTypeRaw = json['by_type'] as Map<String, dynamic>;
-    final byType = byTypeRaw.map((key, value) => MapEntry(key, value as int));
-    
+    final currentPointsJson = json['currentPoints'] as Map<String, dynamic>? ?? {};
+    final statistics = (json['statistics'] as List<dynamic>? ?? [])
+        .map((item) => PointsTypeStat.fromJson(item as Map<String, dynamic>))
+        .toList();
+
+    final totalEarned = statistics.fold<int>(0, (sum, item) => sum + item.totalEarned);
+    final totalSpent = statistics.fold<int>(0, (sum, item) => sum + item.totalSpent);
+
     return PointsStatistics(
-      byType: byType,
+      currentPoints: currentPointsJson['totalPoints'] ?? 0,
+      availablePoints: currentPointsJson['availablePoints'] ?? 0,
+      totalEarned: totalEarned,
+      totalSpent: totalSpent,
+      items: statistics,
+    );
+  }
+}
+
+/// 积分统计条目
+class PointsTypeStat {
+  final String type;
+  final int totalEarned;
+  final int totalSpent;
+  final int transactionCount;
+
+  PointsTypeStat({
+    required this.type,
+    required this.totalEarned,
+    required this.totalSpent,
+    required this.transactionCount,
+  });
+
+  factory PointsTypeStat.fromJson(Map<String, dynamic> json) {
+    return PointsTypeStat(
+      type: json['points_type'] ?? 'UNKNOWN',
       totalEarned: json['total_earned'] ?? 0,
+      totalSpent: json['total_spent'] ?? 0,
+      transactionCount: json['transaction_count'] ?? 0,
     );
   }
 }
@@ -105,7 +160,7 @@ class LeaderboardUser {
     return LeaderboardUser(
       userId: json['user_id'],
       totalPoints: json['total_points'],
-      rank: json['rank'],
+      rank: json['rank'] ?? 0,
     );
   }
 }

@@ -18,7 +18,6 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
   PointsBalance? _balance;
   List<PointsTransaction> _transactions = [];
   PointsStatistics? _statistics;
-  List<LeaderboardUser> _leaderboard = [];
   
   bool _isLoading = true;
   String? _error;
@@ -48,13 +47,10 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
       final balance = await _apiService.getPointsBalance();
       final transactions = await _apiService.getPointsTransactions(page: _currentPage);
       final statistics = await _apiService.getPointsStatistics();
-      final leaderboard = await _apiService.getLeaderboard();
-
       setState(() {
         _balance = balance;
         _transactions = transactions;
         _statistics = statistics;
-        _leaderboard = leaderboard;
         _isLoading = false;
       });
     } catch (e) {
@@ -121,6 +117,8 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
   }
 
   Widget _buildBalanceHeader() {
+    final totalPoints = _balance?.totalPoints ?? 0;
+    final availablePoints = _balance?.availablePoints ?? totalPoints;
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
@@ -153,12 +151,25 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
           ),
           const SizedBox(height: 8),
           Text(
-            '${_balance?.totalPoints ?? 0}',
+            '$totalPoints',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 36,
               fontWeight: FontWeight.bold,
             ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Available: $availablePoints',
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(
@@ -190,10 +201,11 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
                     child: Row(
                       children: [
                         _buildFilterChip('All', null),
-                        _buildFilterChip('Ads', 'ad_view'),
-                        _buildFilterChip('Check-in', 'check_in'),
-                        _buildFilterChip('Referral', 'referral'),
-                        _buildFilterChip('Milestone', 'milestone'),
+                        _buildFilterChip('Ads', 'AD_VIEW'),
+                        _buildFilterChip('Check-in', 'DAILY_CHECKIN'),
+                        _buildFilterChip('Referral', 'REFERRAL_1'),
+                        _buildFilterChip('Milestone', 'REFERRAL_10'),
+                        _buildFilterChip('Streak', 'CONSECUTIVE_CHECKIN_7'),
                       ],
                     ),
                   ),
@@ -317,12 +329,41 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
         padding: const EdgeInsets.all(16),
         children: [
           _buildStatCard(
-            'Total Earned',
-            '${_statistics!.totalEarned}',
+            'Current Points',
+            '${_statistics!.currentPoints}',
             Icons.stars,
             AppColors.primary,
           ),
           const SizedBox(height: 16),
+          _buildStatCard(
+            'Available Points',
+            '${_statistics!.availablePoints}',
+            Icons.wallet,
+            AppColors.success,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildStatCard(
+                  'Total Earned',
+                  '${_statistics!.totalEarned}',
+                  Icons.trending_up,
+                  AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildStatCard(
+                  'Total Spent',
+                  '${_statistics!.totalSpent}',
+                  Icons.trending_down,
+                  AppColors.error,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
           const Text(
             'Points Source Distribution',
             style: TextStyle(
@@ -332,8 +373,8 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
             ),
           ),
           const SizedBox(height: 12),
-          ..._statistics!.byType.entries.map((entry) {
-            return _buildTypeStatItem(entry.key, entry.value);
+          ..._statistics!.items.map((item) {
+            return _buildTypeStatItem(item);
           }),
         ],
       ),
@@ -384,13 +425,19 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildTypeStatItem(String type, int points) {
+  Widget _buildTypeStatItem(PointsTypeStat stat) {
     final typeNames = {
-      'ad_view': 'Watch Ads',
-      'check_in': 'Daily Check-in',
-      'referral': 'Referral Reward',
-      'subordinate_ad': 'Subordinate Ads',
-      'milestone': 'Milestone Reward',
+      'AD_VIEW': 'Watch Ads',
+      'DAILY_CHECKIN': 'Daily Check-in',
+      'REFERRAL_1': 'Referral Reward',
+      'REFERRAL_10': 'Referral Milestone',
+      'SUBORDINATE_AD_VIEW': 'Subordinate Ads',
+      'CONSECUTIVE_CHECKIN_3': '3-Day Streak',
+      'CONSECUTIVE_CHECKIN_7': '7-Day Streak',
+      'CONSECUTIVE_CHECKIN_15': '15-Day Streak',
+      'CONSECUTIVE_CHECKIN_30': '30-Day Streak',
+      'MANUAL_ADD': 'Manual Add',
+      'MANUAL_DEDUCT': 'Manual Deduct',
     };
 
     return Container(
@@ -404,97 +451,32 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            typeNames[type] ?? type,
+            typeNames[stat.type] ?? stat.type,
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 14,
             ),
           ),
-          Text(
-            '$points',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLeaderboardTab() {
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: _leaderboard.isEmpty
-          ? const Center(child: Text('No Leaderboard Data', style: TextStyle(color: AppColors.textSecondary)))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _leaderboard.length,
-              itemBuilder: (context, index) {
-                final user = _leaderboard[index];
-                return _buildLeaderboardItem(user, index);
-              },
-            ),
-    );
-  }
-
-  Widget _buildLeaderboardItem(LeaderboardUser user, int index) {
-    final medal = index < 3 ? ['🥇', '🥈', '🥉'][index] : null;
-    
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardDark,
-        borderRadius: BorderRadius.circular(12),
-        border: index < 3
-            ? Border.all(color: AppColors.primary.withOpacity(0.5))
-            : null,
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 40,
-            child: Text(
-              medal ?? '#${user.rank}',
-              style: TextStyle(
-                color: index < 3 ? AppColors.primary : AppColors.textSecondary,
-                fontSize: medal != null ? 24 : 16,
-                fontWeight: FontWeight.bold,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '+${stat.totalEarned}',
+                style: const TextStyle(
+                  color: AppColors.success,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(width: 12),
-          CircleAvatar(
-            backgroundColor: AppColors.primary.withOpacity(0.2),
-            child: Text(
-              user.userId.substring(0, 2).toUpperCase(),
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              user.userId,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Text(
-            '${user.totalPoints}',
-            style: TextStyle(
-              color: index < 3 ? AppColors.primary : AppColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+              if (stat.totalSpent > 0)
+                Text(
+                  '-${stat.totalSpent}',
+                  style: const TextStyle(
+                    color: AppColors.error,
+                    fontSize: 12,
+                  ),
+                ),
+            ],
           ),
         ],
       ),

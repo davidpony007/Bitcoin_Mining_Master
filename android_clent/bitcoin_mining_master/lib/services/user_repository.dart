@@ -20,13 +20,19 @@ class UserRepository {
       // 本地不存在，调用deviceLogin自动登录/注册
       final deviceInfo = DeviceInfoPlugin();
       final androidInfo = await deviceInfo.androidInfo;
-      final androidId = androidInfo.id;
+      final androidId = androidInfo.id.isNotEmpty
+          ? androidInfo.id
+          : androidInfo.fingerprint;
 
       final response = await _apiService.deviceLogin(androidId: androidId);
       if (response.success && response.data != null) {
         final userId = response.data!.userId;
         // 保存到本地
         await _storageService.saveUserId(userId);
+        await _storageService.saveInvitationCode(response.data!.invitationCode);
+        if (response.token != null && response.token!.isNotEmpty) {
+          await _storageService.saveAuthToken(response.token!);
+        }
         return Result.success(userId);
       } else {
         return Result.failure(Exception(response.message));

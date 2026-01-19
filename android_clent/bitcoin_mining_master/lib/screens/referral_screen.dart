@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../services/user_repository.dart';
 
 /// 推荐屏幕 - Invite with rebate earnings
 class ReferralScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class ReferralScreen extends StatefulWidget {
 class _ReferralScreenState extends State<ReferralScreen> {
   final _storageService = StorageService();
   final _apiService = ApiService();
+  final _userRepository = UserRepository();
   
   String _invitationCode = 'Loading...';
   String _totalRebate = '0.00000000';
@@ -33,38 +35,97 @@ class _ReferralScreenState extends State<ReferralScreen> {
   Future<void> _loadInvitationData() async {
     try {
       // 1. 获取本地保存的user_id
-      final userId = _storageService.getUserId();
+      String? userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) {
-        setState(() {
-          _invitationCode = 'No User ID';
-          _isLoading = false;
-        });
-        return;
+        print('📱 No userId in storage, triggering device login...');
+        final result = await _userRepository.fetchUserId();
+        if (result.isSuccess && result.data != null && result.data!.isNotEmpty) {
+          userId = result.data!;
+          print('✅ Device login success, userId: $userId');
+        } else {
+          print('❌ Device login failed: ${result.error}');
+          setState(() {
+            _invitationCode = 'No User ID';
+            _isLoading = false;
+          });
+          return;
+        }
       }
 
-      // 2. 调用后端API获取邀请信息
-      final response = await _apiService.getUserStatus(userId);
+      // 2. 首先尝试从本地存储读取邀请码
+      String? cachedCode = _storageService.getInvitationCode();
+      if (cachedCode != null && cachedCode.isNotEmpty) {
+        print('✅ Loaded invitation code from cache: $cachedCode');
+        setState(() {
+          _invitationCode = cachedCode;
+          _isLoading = false;
+        });
+      }
+
+      // 3. 调用后端API获取完整邀请信息（包括返利统计）
+      final response = await _getUserStatusWithFallback(userId);
       
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
+        final invCode = data['invitation_code'];
+        if (invCode != null && invCode.isNotEmpty) {
+          // 保存到本地存储
+          await _storageService.saveInvitationCode(invCode);
+        }
         setState(() {
-          _invitationCode = data['invitation_code'] ?? 'N/A';
+          _invitationCode = invCode ?? cachedCode ?? 'N/A';
           _totalRebate = (data['total_invitation_rebate'] ?? 0).toString();
           _isLoading = false;
         });
         
-        // 3. 获取邀请关系信息（被邀请人数）
+        // 4. 获取邀请关系信息（被邀请人数）
         _loadInvitationInfo(userId);
       } else {
-        throw Exception('Failed to load user status');
+        // 如果API调用失败但有缓存的邀请码，使用缓存
+        if (cachedCode != null && cachedCode.isNotEmpty) {
+          print('⚠️ API failed but using cached invitation code');
+          setState(() {
+            _invitationCode = cachedCode;
+            _isLoading = false;
+          });
+        } else {
+          throw Exception('Failed to load user status');
+        }
       }
     } catch (e) {
-      print('Error loading invitation data: $e');
+      print('❌ Error loading invitation data: $e');
+      // 最后尝试使用缓存
+      String? cachedCode = _storageService.getInvitationCode();
       setState(() {
-        _invitationCode = 'Error';
+        _invitationCode = cachedCode ?? 'Error';
         _isLoading = false;
       });
     }
+  }
+
+  /// 使用多地址回退机制调用user-status接口
+  Future<Map<String, dynamic>> _getUserStatusWithFallback(String userId) async {
+    final baseUrls = [
+      ApiConstants.baseUrl, // Primary (10.0.2.2 for Android)
+      'http://10.0.2.2:8888',
+      'http://127.0.0.1:8888',
+    ];
+
+    Exception? lastError;
+    for (final baseUrl in baseUrls.toSet()) {
+      try {
+        print('🔄 Trying to get user status from: $baseUrl');
+        final response = await _apiService.getUserStatus(userId);
+        print('✅ Successfully got user status from: $baseUrl');
+        return response;
+      } catch (e) {
+        print('❌ Failed with $baseUrl: $e');
+        lastError = e as Exception;
+        continue;
+      }
+    }
+    
+    throw lastError ?? Exception('All endpoints failed');
   }
 
   Future<void> _loadInvitationInfo(String userId) async {

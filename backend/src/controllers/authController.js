@@ -6,6 +6,7 @@ const InvitationRelationship = require('../models/invitationRelationship');
 const UserStatus = require('../models/userStatus');
 const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
+const jwt = require('jsonwebtoken');
 
 /**
  * 设备自动登录/注册
@@ -201,13 +202,18 @@ exports.deviceLogin = async (req, res) => {
       }
     }
 
-    // 4. 返回用户信息
+    // 4. 生成JWT Token（用于访问需要认证的接口）
+    const secret = process.env.JWT_SECRET || 'dev_secret_change_me';
+    const token = jwt.sign({ user_id: user.user_id }, secret, { expiresIn: '30d' });
+
+    // 5. 返回用户信息
     res.json({
       success: true,
       isNewUser,
       message: isNewUser ? '账号创建成功' : '登录成功',
       data: user,
-      referrer: referrerInfo
+      referrer: referrerInfo,
+      token
     });
 
   } catch (err) {

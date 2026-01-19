@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 import '../constants/app_constants.dart';
 import '../models/user_model.dart';
 
@@ -28,6 +30,23 @@ class ApiService {
     ));
   }
 
+  List<String> _getAndroidFallbackBaseUrls() {
+    if (kIsWeb) {
+      return [ApiConstants.baseUrl];
+    }
+    if (Platform.isAndroid) {
+      return [
+        'http://10.0.2.2:8888/api',
+        'http://127.0.0.1:8888/api'
+      ];
+    }
+    return [ApiConstants.baseUrl];
+  }
+
+  void _switchBaseUrl(String baseUrl) {
+    _dio.options.baseUrl = baseUrl;
+  }
+
   /// 设备登录/注册 - 对应后端 /api/auth/device-login
   /// 首次打开APP时自动创建账号或登录
   Future<DeviceLoginResponse> deviceLogin({
@@ -37,19 +56,32 @@ class ApiService {
     String? country,
     String? email,
   }) async {
+    final payload = {
+      'android_id': androidId,
+      if (referrerInvitationCode != null) 'referrer_invitation_code': referrerInvitationCode,
+      if (gaid != null) 'gaid': gaid,
+      if (country != null) 'country': country,
+      if (email != null) 'email': email,
+    };
+
     try {
-      final response = await _dio.post(
-        ApiConstants.deviceLogin,
-        data: {
-          'android_id': androidId,
-          if (referrerInvitationCode != null) 'referrer_invitation_code': referrerInvitationCode,
-          if (gaid != null) 'gaid': gaid,
-          if (country != null) 'country': country,
-          if (email != null) 'email': email,
-        },
-      );
+      final response = await _dio.post(ApiConstants.deviceLogin, data: payload);
       return DeviceLoginResponse.fromJson(response.data);
     } on DioException catch (e) {
+      // Android环境尝试回退地址
+      final fallbacks = _getAndroidFallbackBaseUrls();
+      for (final baseUrl in fallbacks) {
+        if (baseUrl == _dio.options.baseUrl) {
+          continue;
+        }
+        try {
+          _switchBaseUrl(baseUrl);
+          final response = await _dio.post(ApiConstants.deviceLogin, data: payload);
+          return DeviceLoginResponse.fromJson(response.data);
+        } catch (_) {
+          // 继续尝试下一个
+        }
+      }
       throw _handleError(e);
     }
   }

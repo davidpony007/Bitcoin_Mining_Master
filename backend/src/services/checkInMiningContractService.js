@@ -21,7 +21,8 @@ class CheckInMiningContractService {
    * 1. 每日只能签到一次（UTC+00:00重置）
    * 2. 签到成功后创建独立的2小时挖矿合约
    * 3. 该合约使用1.36倍特殊加成系数
-   * 4. 不影响普通广告挖矿合约的时间
+   * 4. 📌 重要：不影响普通广告挖矿合约的时间
+   * 5. 📌 重要：不会增加电池数量显示（电池只显示Ad Reward合约）
    */
   static async checkInAndCreateMiningContract(userId) {
     try {

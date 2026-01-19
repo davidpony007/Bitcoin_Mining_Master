@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
+import '../services/user_repository.dart';
 import '../services/storage_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'dart:io' show Platform;
 
 /// 广告奖励页面 - Ad Reward Screen 
 class AdRewardScreen extends StatefulWidget {
@@ -17,47 +20,212 @@ class AdRewardScreen extends StatefulWidget {
 class _AdRewardScreenState extends State<AdRewardScreen> {
   bool _isWatchingAd = false;
   int _countdown = 3; // 3秒广告倒计时
+  final UserRepository _userRepository = UserRepository();
   final StorageService _storageService = StorageService();
   bool _isProcessing = false;
+  String? _lastErrorMessage;
+  bool _hasCheckedInToday = false; // 今日是否已签到
 
   @override
   void initState() {
     super.initState();
+    if (widget.isDailyCheckIn) {
+      _checkIfAlreadyCheckedIn();
+    }
   }
   
-  // 调用后端API延长合约
-  Future<bool> _extendContract() async {
+  // 检查今日是否已经签到
+  Future<void> _checkIfAlreadyCheckedIn() async {
     try {
-      var userId = _storageService.getUserId();
+      final lastCheckInDate = _storageService.getLastCheckInDate();
+      final today = DateTime.now().toIso8601String().split('T')[0];
       
-      // 临时解决方案：如果userId为空，使用已知的测试用户ID
-      if (userId == null || userId.isEmpty) {
-        userId = 'U2026011910532521846';
-        print('⚠️ 用户ID为空，使用默认测试用户ID: $userId');
+      if (lastCheckInDate == today) {
+        setState(() {
+          _hasCheckedInToday = true;
+        });
+      }
+    } catch (e) {
+      print('❌ 检查签到状态失败: $e');
+    }
+  }
+  
+  // 调用后端API执行签到并创建Daily Check-in合约
+  // 📌 签到会激活Daily Check-in合约（7.5Gh/s，2小时），不影响Free Ad Reward
+  Future<bool> _performCheckIn() async {
+    try {
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        _lastErrorMessage = '用户未登录，请返回重试';
+        return false;
+      }
+      final userId = userIdResult.data!;
+      
+      // 获取JWT token
+      final token = _storageService.getAuthToken();
+      if (token == null || token.isEmpty) {
+        _lastErrorMessage = '认证失败，请重新登录';
+        return false;
       }
       
-      print('🔄 调用延长合约API - userId: $userId');
+      print('📝 调用签到API - userId: $userId');
+
+      final baseUrls = <String>[];
+      final primaryBase = ApiConstants.baseUrl;
+      baseUrls.add(primaryBase);
+
+      http.Response? response;
+      Exception? lastError;
+
+      for (final base in baseUrls.toSet()) {
+        final apiUrl = '$base/check-in/daily';
+        print('📍 签到API URL: $apiUrl');
+        try {
+          response = await http.post(
+            Uri.parse(apiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: json.encode({'user_id': userId}),
+          ).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception('请求超时，请检查网络连接');
+            },
+          );
+          if (response.statusCode == 200) {
+            break;
+          }
+        } catch (e) {
+          lastError = e is Exception ? e : Exception(e.toString());
+          continue;
+        }
+      }
+
+      if (response == null) {
+        _lastErrorMessage = lastError?.toString() ?? '网络连接失败，请检查网络设置或稍后重试';
+        return false;
+      }
       
-      final response = await http.post(
-        Uri.parse('http://localhost:8888/api/mining-pool/extend-contract'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'user_id': userId,
-          'hours': 2, // 观看广告奖励2小时
-        }),
-      );
+      print('📥 签到API响应状态: ${response.statusCode}');
+      print('📥 签到API响应内容: ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ 签到成功: $data');
+        
+        if (data['success'] == true) {
+          // 保存签到日期到本地
+          final today = DateTime.now().toIso8601String().split('T')[0];
+          _storageService.saveLastCheckInDate(today);
+          setState(() {
+            _hasCheckedInToday = true;
+          });
+          return true;
+        } else {
+          // 检查是否是今日已签到
+          if (data['data'] != null && data['data']['alreadyCheckedIn'] == true) {
+            _lastErrorMessage = 'You have already checked in today';
+            final today = DateTime.now().toIso8601String().split('T')[0];
+            _storageService.saveLastCheckInDate(today);
+            setState(() {
+              _hasCheckedInToday = true;
+            });
+          } else {
+            _lastErrorMessage = data['message'] ?? '签到失败，请稍后重试';
+          }
+          print('❌ API返回失败: ${data['message']}');
+          return false;
+        }
+      } else {
+        _lastErrorMessage = '签到失败，请稍后重试';
+        return false;
+      }
+    } catch (e) {
+      print('❌ 签到异常: $e');
+      _lastErrorMessage = e.toString();
+      return false;
+    }
+  }
+
+  // 调用后端API延长合约
+  // 📌 重要：只有Free Ad Reward才会增加电池数量（+2小时=+2个电池）
+  Future<bool> _extendContract() async {
+    try {
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        _lastErrorMessage = '用户未登录，请返回重试';
+        return false;
+      }
+      final userId = userIdResult.data!;
+      
+      print('🔄 调用延长合约API - userId: $userId');
+
+      final baseUrls = <String>[];
+      final primaryBase = ApiConstants.baseUrl.replaceAll('/api', '');
+      baseUrls.add(primaryBase);
+      if (!kIsWeb && Platform.isAndroid) {
+        baseUrls.add('http://10.0.2.2:8888');
+        baseUrls.add('http://127.0.0.1:8888');
+      }
+
+      http.Response? response;
+      Exception? lastError;
+
+      for (final base in baseUrls.toSet()) {
+        final apiUrl = '$base/api/mining-pool/extend-contract';
+        print('📍 API URL: $apiUrl');
+        try {
+          response = await http.post(
+            Uri.parse(apiUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'user_id': userId,
+              'hours': 2, // 观看广告奖励2小时
+            }),
+          ).timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception('请求超时，请检查网络连接');
+            },
+          );
+          if (response.statusCode == 200) {
+            break;
+          }
+        } catch (e) {
+          lastError = e is Exception ? e : Exception(e.toString());
+          continue;
+        }
+      }
+
+      if (response == null) {
+        _lastErrorMessage = lastError?.toString() ?? '网络连接失败，请检查网络设置或稍后重试';
+        return false;
+      }
       
       print('📥 API响应状态: ${response.statusCode}');
+      print('📥 API响应内容: ${response.body}');
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         print('✅ 延长合约成功: $data');
-        return true;
+        
+        // 检查返回的 success 字段
+        if (data['success'] == true) {
+          return true;
+        } else {
+          _lastErrorMessage = data['message'] ?? '奖励领取失败，请稍后重试';
+          print('❌ API返回失败: ${data['message']}');
+          return false;
+        }
       } else {
-        print('❌ 延长合约失败: ${response.body}');
+        _lastErrorMessage = '服务器错误 (${response.statusCode})';
+        print('❌ 延长合约失败 (${response.statusCode}): ${response.body}');
         return false;
       }
     } catch (e) {
+      _lastErrorMessage = '网络连接失败，请检查网络设置或稍后重试';
       print('❌ 调用API异常: $e');
       return false;
     }
@@ -168,18 +336,92 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Row(
                   children: [
-                    // 电池图标
+                    // 自定义电池图标（与Mining Pool一致）
                     Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF4CAF50),
+                        color: const Color(0xFFFF9800), // 橙色，与mining pool一致
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
-                        Icons.battery_charging_full,
-                        color: Colors.white,
-                        size: 24,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Battery top cap
+                            Container(
+                              width: 10,
+                              height: 2,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(1),
+                                  topRight: Radius.circular(1),
+                                ),
+                              ),
+                            ),
+                            // Battery main body with 4 levels
+                            Container(
+                              width: 16,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(2),
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  // Level 4 (top) - filled
+                                  Expanded(
+                                    child: Container(
+                                      margin: const EdgeInsets.all(1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 0.5),
+                                  // Level 3 - filled
+                                  Expanded(
+                                    child: Container(
+                                      margin: const EdgeInsets.all(1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 0.5),
+                                  // Level 2 - filled
+                                  Expanded(
+                                    child: Container(
+                                      margin: const EdgeInsets.all(1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 0.5),
+                                  // Level 1 (bottom) - filled
+                                  Expanded(
+                                    child: Container(
+                                      margin: const EdgeInsets.all(1),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(1),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -210,12 +452,26 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isProcessing ? null : () async {
+                    // 如果是签到且今日已签到，直接显示提示
+                    if (widget.isDailyCheckIn && _hasCheckedInToday) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('⚠️ You have already checked in today'),
+                          backgroundColor: Colors.orange,
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                      return;
+                    }
+                    
                     setState(() {
                       _isProcessing = true;
                     });
                     
-                    // 调用后端API延长合约
-                    bool success = await _extendContract();
+                    // 📌 根据类型调用不同的API
+                    bool success = widget.isDailyCheckIn 
+                        ? await _performCheckIn()  // 签到API
+                        : await _extendContract(); // 延长合约API
                     
                     if (mounted) {
                       setState(() {
@@ -223,15 +479,34 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                       });
                       
                       if (success) {
-                        // 延长成功，关闭对话框并返回
+                        // 先关闭对话框
                         Navigator.pop(context); // 关闭对话框
-                        Navigator.pop(context, true); // 返回成功标志
-                      } else {
-                        // 延长失败，显示错误提示
+                        
+                        // 立即显示成功提示（在主界面显示，不被对话框遮挡）
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('延长合约失败，请重试'),
+                          SnackBar(
+                            content: Text(widget.isDailyCheckIn 
+                                ? '✅ 签到成功，已激活Daily Check-in合约！' 
+                                : '✅ 奖励已领取，合约已延长！'),
+                            backgroundColor: Colors.green,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                        
+                        if (widget.isDailyCheckIn) {
+                          // 📌 签到成功后：通知HomeScreen切换到Contracts标签
+                          Navigator.pop(context, {'action': 'switchToContracts'}); // 返回并传递切换指令
+                        } else {
+                          // 广告奖励成功后返回Mining页面
+                          Navigator.pop(context, true); // 返回成功标志
+                        }
+                      } else {
+                        // 失败提示
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('⚠️ ${_lastErrorMessage ?? '网络连接失败，请检查网络设置或稍后重试'}'),
                             backgroundColor: Colors.red,
+                            duration: Duration(seconds: 4),
                           ),
                         );
                       }

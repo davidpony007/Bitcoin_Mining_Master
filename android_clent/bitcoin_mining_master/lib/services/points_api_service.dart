@@ -2,11 +2,15 @@ import 'package:dio/dio.dart';
 import '../constants/app_constants.dart';
 import '../models/points_model.dart';
 import '../models/checkin_model.dart';
+import '../services/storage_service.dart';
+import '../services/user_repository.dart';
 
 /// 积分系统API服务
 class PointsApiService {
   late final Dio _dio;
   String? _token;
+  final StorageService _storageService = StorageService();
+  final UserRepository _userRepository = UserRepository();
 
   PointsApiService() {
     _dio = Dio(BaseOptions(
@@ -30,7 +34,8 @@ class PointsApiService {
     // 添加认证拦截器
     _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
-        if (_token != null) {
+        _token ??= _storageService.getAuthToken();
+        if (_token != null && _token!.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $_token';
         }
         return handler.next(options);
@@ -43,12 +48,27 @@ class PointsApiService {
     _token = token;
   }
 
+  Future<String> _getUserId() async {
+    final cached = _storageService.getUserId();
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+    final result = await _userRepository.fetchUserId();
+    if (!result.isSuccess || result.data == null || result.data!.isEmpty) {
+      throw Exception('User ID not found');
+    }
+    return result.data!;
+  }
+
   // ==================== 积分相关 ====================
 
   /// 获取积分余额 GET /api/points/balance
   Future<PointsBalance> getPointsBalance() async {
     try {
-      final response = await _dio.get('/points/balance');
+      final userId = await _getUserId();
+      final response = await _dio.get('/points/balance', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         return PointsBalance.fromJson(response.data['data']);
       }
@@ -65,7 +85,9 @@ class PointsApiService {
     String? type,
   }) async {
     try {
+      final userId = await _getUserId();
       final response = await _dio.get('/points/transactions', queryParameters: {
+        'user_id': userId,
         'page': page,
         'page_size': pageSize,
         if (type != null) 'type': type,
@@ -84,7 +106,10 @@ class PointsApiService {
   /// 获取积分统计 GET /api/points/statistics
   Future<PointsStatistics> getPointsStatistics() async {
     try {
-      final response = await _dio.get('/points/statistics');
+      final userId = await _getUserId();
+      final response = await _dio.get('/points/statistics', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         return PointsStatistics.fromJson(response.data['data']);
       }
@@ -101,8 +126,14 @@ class PointsApiService {
         'limit': limit,
       });
       if (response.data['success'] == true) {
-        final List<dynamic> leaderboard = response.data['data']['leaderboard'] ?? [];
-        return leaderboard.map((json) => LeaderboardUser.fromJson(json)).toList();
+        final List<dynamic> leaderboard = response.data['data']?['leaderboard'] ?? response.data['data']?['data'] ?? response.data['data'] ?? [];
+        return leaderboard.asMap().entries.map((entry) {
+          final json = (entry.value as Map<String, dynamic>);
+          return LeaderboardUser.fromJson({
+            ...json,
+            'rank': entry.key + 1,
+          });
+        }).toList();
       }
       throw Exception(response.data['message'] ?? 'Failed to get leaderboard');
     } on DioException catch (e) {
@@ -115,7 +146,10 @@ class PointsApiService {
   /// 执行签到 POST /api/checkin
   Future<CheckInResult> performCheckIn() async {
     try {
-      final response = await _dio.post('/checkin');
+      final userId = await _getUserId();
+      final response = await _dio.post('/checkin', data: {
+        'user_id': userId,
+      });
       return CheckInResult.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
@@ -125,7 +159,10 @@ class PointsApiService {
   /// 获取签到状态 GET /api/checkin/status
   Future<CheckInStatus> getCheckInStatus() async {
     try {
-      final response = await _dio.get('/checkin/status');
+      final userId = await _getUserId();
+      final response = await _dio.get('/checkin/status', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         return CheckInStatus.fromJson(response.data['data']);
       }
@@ -138,7 +175,9 @@ class PointsApiService {
   /// 获取签到历史 GET /api/checkin/history
   Future<List<CheckInRecord>> getCheckInHistory({int days = 30}) async {
     try {
+      final userId = await _getUserId();
       final response = await _dio.get('/checkin/history', queryParameters: {
+        'user_id': userId,
         'days': days,
       });
       if (response.data['success'] == true) {
@@ -154,7 +193,10 @@ class PointsApiService {
   /// 获取签到里程碑 GET /api/checkin/milestones
   Future<List<CheckInMilestone>> getCheckInMilestones() async {
     try {
-      final response = await _dio.get('/checkin/milestones');
+      final userId = await _getUserId();
+      final response = await _dio.get('/checkin/milestones', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         final List<dynamic> milestones = response.data['data']['milestones'] ?? [];
         return milestones.map((json) => CheckInMilestone.fromJson(json)).toList();
@@ -168,7 +210,10 @@ class PointsApiService {
   /// 获取30天签到日历 GET /api/checkin/calendar
   Future<Map<String, dynamic>> get30DayCalendar() async {
     try {
-      final response = await _dio.get('/checkin/calendar');
+      final userId = await _getUserId();
+      final response = await _dio.get('/checkin/calendar', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         return response.data;
       }
@@ -181,7 +226,10 @@ class PointsApiService {
   /// 获取签到配置 GET /api/checkin/config
   Future<Map<String, dynamic>> getCheckInConfig() async {
     try {
-      final response = await _dio.get('/checkin/config');
+      final userId = await _getUserId();
+      final response = await _dio.get('/checkin/config', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         return response.data;
       }
@@ -194,7 +242,9 @@ class PointsApiService {
   /// 领取里程碑奖励 POST /api/checkin/claim-milestone
   Future<Map<String, dynamic>> claimMilestone(int days) async {
     try {
+      final userId = await _getUserId();
       final response = await _dio.post('/checkin/claim-milestone', data: {
+        'user_id': userId,
         'days': days,
       });
       return response.data;
@@ -208,7 +258,10 @@ class PointsApiService {
   /// 观看广告 POST /api/ad/watch
   Future<Map<String, dynamic>> watchAd() async {
     try {
-      final response = await _dio.post('/ad/watch');
+      final userId = await _getUserId();
+      final response = await _dio.post('/ad/watch', data: {
+        'user_id': userId,
+      });
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
@@ -218,7 +271,10 @@ class PointsApiService {
   /// 获取今日广告观看详情 GET /api/ad/today
   Future<Map<String, dynamic>> getTodayAdInfo() async {
     try {
-      final response = await _dio.get('/ad/today');
+      final userId = await _getUserId();
+      final response = await _dio.get('/ad/today', queryParameters: {
+        'user_id': userId,
+      });
       if (response.data['success'] == true) {
         return response.data['data'];
       }
@@ -240,6 +296,9 @@ class PointsApiService {
       case DioExceptionType.receiveTimeout:
         return Exception('Connection timeout, please check network');
       case DioExceptionType.badResponse:
+        if (error.response?.statusCode == 401) {
+          return Exception('Unauthorized, please login again');
+        }
         return Exception('Server error: ${error.response?.statusCode}');
       case DioExceptionType.cancel:
         return Exception('Request cancelled');

@@ -6,6 +6,7 @@ class DeviceLoginResponse {
   final String message;
   final UserData? data;
   final ReferrerData? referrer;
+  final String? token;
 
   DeviceLoginResponse({
     required this.success,
@@ -13,6 +14,7 @@ class DeviceLoginResponse {
     required this.message,
     this.data,
     this.referrer,
+    this.token,
   });
 
   factory DeviceLoginResponse.fromJson(Map<String, dynamic> json) {
@@ -22,6 +24,7 @@ class DeviceLoginResponse {
       message: json['message'] as String? ?? '',
       data: json['data'] != null ? UserData.fromJson(json['data']) : null,
       referrer: json['referrer'] != null ? ReferrerData.fromJson(json['referrer']) : null,
+      token: json['token'] as String?,
     );
   }
 }

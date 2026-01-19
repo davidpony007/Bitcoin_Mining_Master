@@ -14,7 +14,9 @@ import 'ad_reward_screen.dart';
 
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final Function(int)? onSwitchTab; // 切换标签的回调函数
+  
+  const DashboardScreen({super.key, this.onSwitchTab});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -129,6 +131,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   }
   
   // 根据合约剩余时间更新电池状态
+  // 📌 重要：只有Free Ad Reward合约的时间会显示为电池
+  // Daily Check-in合约是独立的，不会增加电池数量
   Future<void> _loadContractAndUpdateBatteries() async {
     try {
       var userId = _storageService.getUserId();
@@ -143,6 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       final response = await _apiService.getMyContracts(userId);
       final data = response['data'];
       
+      // 📌 只读取adReward合约来更新电池（不包含dailyCheckIn）
       if (data != null && data['adReward'] != null) {
         final isActive = data['adReward']['isActive'] == true;
         final remainingSeconds = data['adReward']['remainingSeconds'] ?? 0;
@@ -686,6 +691,25 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               Expanded(
                 child: ElevatedButton(
                   onPressed: () async {
+                    // 检查今日是否已签到
+                    final lastCheckInDate = _storageService.getLastCheckInDate();
+                    final today = DateTime.now().toIso8601String().split('T')[0];
+                    
+                    if (lastCheckInDate == today) {
+                      // 今日已签到，显示提示
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('⚠️ You have already checked in today'),
+                            backgroundColor: Colors.orange,
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    
+                    // 未签到，跳转到签到页面
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -693,8 +717,12 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                       ),
                     );
                     
-                    // 如果返回true（延长成功），则重新加载电池
-                    if (result == true && mounted) {
+                    // 📌 处理签到返回值
+                    if (result is Map && result['action'] == 'switchToContracts' && mounted) {
+                      // 通知父组件（HomeScreen）切换到Contracts标签
+                      widget.onSwitchTab?.call(1); // 切换到Contracts标签（索引1）
+                    } else if (result == true && mounted) {
+                      // Free Ad Reward延长成功，重新加载电池
                       _loadContractAndUpdateBatteries();
                     }
                   },
