@@ -44,10 +44,10 @@ class CheckInMiningContractService {
         return checkInResult; // 返回签到失败的结果（如：今天已签到）
       }
 
-      // 3. 计算挖矿速度（应用完整公式，包含1.36倍签到加成）
+      // 3. 计算挖矿速度（基础奖励 × 国家系数 × 矿工等级速率系数 × 1.36倍签到加成）
       const speedInfo = await LevelService.calculateMiningSpeed(userId);
 
-      // 4. 创建签到挖矿合约（独立队列）
+      // 4. 创建签到挖矿合约（独立队列，使用特殊加成速度）
       const now = new Date();
       const endTime = new Date(now.getTime() + this.CHECKIN_MINING_DURATION);
 
@@ -57,11 +57,11 @@ class CheckInMiningContractService {
         free_contract_revenue: 0,
         free_contract_creation_time: now,
         free_contract_end_time: endTime,
-        hashrate: speedInfo.finalSpeedWithCountry, // 包含1.36倍签到加成
+        hashrate: speedInfo.finalSpeedWithBonus, // 使用包含1.36倍签到加成的速度
         mining_status: 'mining'
       });
 
-      console.log(`✅ 创建签到挖矿合约: 用户 ${userId}, 结束时间 ${endTime}, 速度 ${speedInfo.finalSpeedWithCountry} BTC/s`);
+      console.log(`✅ 创建签到挖矿合约: 用户 ${userId}, 结束时间 ${endTime}, 速度 ${speedInfo.finalSpeedWithBonus} BTC/s (包含1.36個加成)`);
 
       return {
         success: true,
@@ -85,9 +85,9 @@ class CheckInMiningContractService {
           baseSpeed: speedInfo.baseSpeed,
           baseHashrate: speedInfo.baseHashrateGhs + ' Gh/s',
           levelMultiplier: speedInfo.levelMultiplier,
-          dailyBonusMultiplier: speedInfo.dailyBonusMultiplier, // 1.36
+          dailyBonusMultiplier: speedInfo.dailyBonusMultiplier, // 1.36倍特殊加成
           countryMultiplier: speedInfo.countryMultiplier,
-          finalSpeed: speedInfo.finalSpeedWithCountry
+          finalSpeed: speedInfo.finalSpeedWithBonus // 包含1.36倍加成的速度
         }
       };
 

@@ -164,6 +164,24 @@ exports.deviceLogin = async (req, res) => {
               console.error('创建/延长邀请挖矿合约失败:', miningErr);
               // 挖矿合约失败不影响用户注册和邀请关系建立
             }
+
+            // 🎁 为新用户（被邀请人）创建绑定推荐人挖矿合约（仅一次，2小时）
+            try {
+              const RefereeMiningContractService = require('../services/refereeMiningContractService');
+              const refereeContractResult = await RefereeMiningContractService.onBindReferrer(
+                user.user_id,
+                referrer.user_id
+              );
+              console.log('新用户绑定推荐人挖矿合约创建成功:', refereeContractResult);
+              
+              // 将被邀请人挖矿合约信息附加到返回数据中
+              if (referrerInfo) {
+                referrerInfo.refereeContract = refereeContractResult;
+              }
+            } catch (bindErr) {
+              console.error('创建新用户绑定推荐人挖矿合约失败:', bindErr);
+              // 挖矿合约失败不影响用户注册和邀请关系建立
+            }
           } else {
             console.warn(`推荐人邀请码不存在: ${referrer_invitation_code}`);
           }
@@ -616,7 +634,7 @@ exports.addReferrer = async (req, res) => {
       referrer_invitation_code: referrer.invitation_code
     });
 
-    // 7. 🎁 处理邀请奖励
+    // 7. 🎁 处理邀请奖励（推荐人获得奖励）
     let rewardResult = null;
     try {
       rewardResult = await InvitationRewardService.handleNewReferral(
@@ -629,13 +647,41 @@ exports.addReferrer = async (req, res) => {
       console.error('发放邀请奖励失败:', rewardErr);
     }
 
+    // 8. 🎯 创建或延长推荐人的邀请挖矿合约（增加2小时）
+    let referrerContractResult = null;
+    try {
+      const InvitationMiningContractService = require('../services/invitationMiningContractService');
+      referrerContractResult = await InvitationMiningContractService.onSuccessfulInvitation(
+        referrer.user_id,
+        user.user_id
+      );
+      console.log('推荐人邀请挖矿合约创建/延长成功:', referrerContractResult);
+    } catch (miningErr) {
+      console.error('创建/延长推荐人邀请挖矿合约失败:', miningErr);
+    }
+
+    // 9. 🎁 为被邀请人创建绑定推荐人挖矿合约（仅一次，2小时）
+    let refereeContractResult = null;
+    try {
+      const RefereeMiningContractService = require('../services/refereeMiningContractService');
+      refereeContractResult = await RefereeMiningContractService.onBindReferrer(
+        user.user_id,
+        referrer.user_id
+      );
+      console.log('被邀请人绑定推荐人挖矿合约创建成功:', refereeContractResult);
+    } catch (bindErr) {
+      console.error('创建被邀请人绑定推荐人挖矿合约失败:', bindErr);
+    }
+
     res.json({
       success: true,
-      message: '推荐人绑定成功',
+      message: '推荐人绑定成功，您获得了2小时免费挖矿合约',
       data: {
         referrer_user_id: referrer.user_id,
         referrer_invitation_code: referrer.invitation_code,
-        rewards: rewardResult
+        rewards: rewardResult,
+        referrerContract: referrerContractResult,
+        refereeContract: refereeContractResult
       }
     });
 

@@ -36,9 +36,14 @@ class UserData {
   final String? gaid;
   final String? registerIp;
   final String? country;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final int? userLevel;
+  final int? userPoints;
+  final double? miningSpeedMultiplier;
+  final double? countryMultiplier;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   final DateTime? lastLoginTime;
+  final DateTime? userCreationTime;
 
   UserData({
     required this.userId,
@@ -49,9 +54,14 @@ class UserData {
     this.gaid,
     this.registerIp,
     this.country,
-    required this.createdAt,
-    required this.updatedAt,
+    this.userLevel,
+    this.userPoints,
+    this.miningSpeedMultiplier,
+    this.countryMultiplier,
+    this.createdAt,
+    this.updatedAt,
     this.lastLoginTime,
+    this.userCreationTime,
   });
 
   factory UserData.fromJson(Map<String, dynamic> json) {
@@ -64,10 +74,25 @@ class UserData {
       gaid: json['gaid'] as String?,
       registerIp: json['register_ip'] as String?,
       country: json['country'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      userLevel: json['user_level'] as int?,
+      userPoints: json['user_points'] as int?,
+      miningSpeedMultiplier: json['mining_speed_multiplier'] != null 
+        ? double.tryParse(json['mining_speed_multiplier'].toString())
+        : null,
+      countryMultiplier: json['country_multiplier'] != null
+        ? double.tryParse(json['country_multiplier'].toString())
+        : null,
+      createdAt: json['created_at'] != null 
+        ? DateTime.tryParse(json['created_at'] as String) 
+        : null,
+      updatedAt: json['updated_at'] != null
+        ? DateTime.tryParse(json['updated_at'] as String)
+        : null,
       lastLoginTime: json['last_login_time'] != null 
-        ? DateTime.parse(json['last_login_time'] as String) 
+        ? DateTime.tryParse(json['last_login_time'] as String) 
+        : null,
+      userCreationTime: json['user_creation_time'] != null
+        ? DateTime.tryParse(json['user_creation_time'] as String)
         : null,
     );
   }

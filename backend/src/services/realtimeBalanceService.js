@@ -51,37 +51,24 @@ class RealtimeBalanceService {
     try {
       let totalPerSecond = 0;
 
-      // 1. 获取用户基础挖矿速度（应用等级、加成、国家系数）
-      const speedInfo = await LevelService.calculateMiningSpeed(userId);
-      const baseSpeedPerSecond = speedInfo.finalSpeedWithCountry;
-
-      // 2. 计算免费合约收益（广告、签到、邀请）
+      // 1. 计算免费合约收益（广告、签到、邀请、绑定推荐人）
+      // 直接从数据库读取每个合约的hashrate（已包含所有加成）
       const freeContracts = await sequelize.query(`
-        SELECT 
-          free_contract_type,
-          COUNT(*) as count
+        SELECT hashrate
         FROM free_contract_records 
         WHERE user_id = ? 
         AND mining_status = 'mining' 
         AND free_contract_end_time > NOW()
-        GROUP BY free_contract_type
       `, {
         replacements: [userId],
         type: sequelize.QueryTypes.SELECT
       });
 
       for (const contract of freeContracts) {
-        const count = contract.count;
-        
-        // 签到合约有1.36倍加成
-        if (contract.free_contract_type === 'daily sign-in free contract') {
-          totalPerSecond += baseSpeedPerSecond * 1.36 * count;
-        } else {
-          totalPerSecond += baseSpeedPerSecond * count;
-        }
+        totalPerSecond += parseFloat(contract.hashrate);
       }
 
-      // 3. 计算付费合约收益（使用固定hashrate，不受国家系数影响）
+      // 2. 计算付费合约收益（使用固定hashrate）
       const paidContracts = await sequelize.query(`
         SELECT hashrate
         FROM mining_contracts 
@@ -115,11 +102,10 @@ class RealtimeBalanceService {
       await sequelize.query(`
         UPDATE user_status 
         SET 
-          current_bitcoin_balance = current_bitcoin_balance + ?,
-          bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?
+          current_bitcoin_balance = current_bitcoin_balance + ?
         WHERE user_id = ?
       `, {
-        replacements: [revenuePerSecond, revenuePerSecond, userId],
+        replacements: [revenuePerSecond, userId],
         type: sequelize.QueryTypes.UPDATE
       });
 

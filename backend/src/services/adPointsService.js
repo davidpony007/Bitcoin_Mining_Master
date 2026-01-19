@@ -83,6 +83,14 @@ class AdPointsService {
       // 3. 处理邀请人奖励（下级每看10次广告，邀请人获得1积分）
       const subordinateReward = await this.handleSubordinateAdReward(userId, connection);
 
+      // 4. 检查是否触发单个好友邀请奖励（被邀请人完成5次广告观看）
+      let referralReward = null;
+      const totalViews = await this.getTotalViewCount(userId, connection);
+      if (totalViews === this.REFERRAL_REQUIRED_ADS) {
+        // 刚好达到5次，触发邀请奖励
+        referralReward = await this.handleReferralReward(userId, connection);
+      }
+
       await connection.commit();
 
       // 4. 更新 Redis 缓存
@@ -99,7 +107,8 @@ class AdPointsService {
         dailyLimit: this.DAILY_AD_LIMIT,
         remainingViews: Math.max(0, this.DAILY_AD_LIMIT - viewCount),
         isLimitReached: viewCount >= this.DAILY_AD_LIMIT,
-        subordinateReward
+        subordinateReward,
+        referralReward
       };
 
       console.log(`✅ 用户 ${userId} 观看广告，今日第${viewCount}次，获得${pointsAwarded}积分`);
@@ -297,6 +306,105 @@ class AdPointsService {
     } catch (error) {
       console.error('获取广告观看历史失败:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 检查用户是否完成邀请所需的广告观看
+   */
+  static async hasCompletedReferralRequirement(userId) {
+    try {
+      const [rows] = await db.query(
+        'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',
+        [userId]
+      );
+
+      const totalViews = rows[0].total_views || 0;
+      return totalViews >= this.REFERRAL_REQUIRED_ADS;
+
+    } catch (error) {
+      console.error('检查邀请要求失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户总观看次数（使用连接）
+   */
+  static async getTotalViewCount(userId, connection) {
+    try {
+      const [rows] = await connection.query(
+        'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',
+        [userId]
+      );
+      return rows[0].total_views || 0;
+    } catch (error) {
+      console.error('获取总观看次数失败:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 处理单个好友邀请奖励（当被邀请人完成5次广告观看时自动触发）
+   */
+  static async handleReferralReward(refereeUserId, connection) {
+    try {
+      // 引入 InvitationPointsService（避免循环依赖，在方法内部引入）
+      const InvitationPointsService = require('./invitationPointsService');
+
+      // 查找邀请人
+      const [relationshipRows] = await connection.query(
+        'SELECT referrer_user_id FROM invitation_relationship WHERE user_id = ?',
+        [refereeUserId]
+      );
+
+      if (relationshipRows.length === 0 || !relationshipRows[0].referrer_user_id) {
+        return null; // 没有邀请人
+      }
+
+      const referrerId = relationshipRows[0].referrer_user_id;
+
+      // 检查是否已奖励过
+      const [existingRows] = await connection.query(
+        `SELECT id FROM points_transaction 
+         WHERE user_id = ? 
+         AND related_user_id = ? 
+         AND points_type = ?`,
+        [referrerId, refereeUserId, PointsService.POINTS_TYPES.REFERRAL_1]
+      );
+
+      if (existingRows.length > 0) {
+        return null; // 已奖励
+      }
+
+      // 发放奖励
+      await PointsService.addPoints(
+        referrerId,
+        InvitationPointsService.FIRST_FRIEND_REWARD,
+        PointsService.POINTS_TYPES.REFERRAL_1,
+        `成功邀请好友 ${refereeUserId}（完成5次广告观看）`,
+        refereeUserId
+      );
+
+      // 记录里程碑
+      await connection.query(
+        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)
+         VALUES (?, '1_FRIEND', 1, 1, ?)`,
+        [referrerId, InvitationPointsService.FIRST_FRIEND_REWARD]
+      );
+
+      console.log(`✅ 自动触发：用户 ${referrerId} 获得邀请奖励 ${InvitationPointsService.FIRST_FRIEND_REWARD} 积分（被邀请人 ${refereeUserId} 完成5次广告）`);
+
+      return {
+        referrerId,
+        refereeUserId,
+        pointsEarned: InvitationPointsService.FIRST_FRIEND_REWARD,
+        triggered: true
+      };
+
+    } catch (error) {
+      console.error('处理邀请奖励失败:', error);
+      return null;
     }
   }
 

@@ -10,7 +10,7 @@ const { Sequelize } = require('sequelize');
 const sequelize = new Sequelize(
   process.env.DB_NAME || 'bitcoin_mining_master', // 数据库名
   process.env.DB_USER || 'root',                  // 用户名（默认使用本地root）
-  process.env.DB_PASS || '',                      // 密码（必须通过环境变量配置）
+  process.env.DB_PASSWORD || process.env.DB_PASS || '',  // 密码（必须通过环境变量配置）
   {
     host: process.env.DB_HOST || '127.0.0.1',     // 数据库主机地址（默认本地）
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306, // 端口号

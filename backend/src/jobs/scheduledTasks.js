@@ -459,8 +459,9 @@ function startAllScheduledTasks() {
   startAutoReferralRewards();        // 邀请奖励自动发放（每2小时）
   startContractRewardDistribution(); // 合约奖励发放（每2小时UTC整点）
   
-  // 启动实时余额更新服务（每秒执行）
-  RealtimeBalanceService.startRealtimeUpdates();
+  // 启动实时余额更新服务（每秒执行） - 暂时禁用以避免数据库连接池耗尽
+  // RealtimeBalanceService.startRealtimeUpdates();
+  console.log('⚠️ 实时余额更新服务已临时禁用（避免连接池耗尽）');
   
   console.log('==========================================\n');
 }

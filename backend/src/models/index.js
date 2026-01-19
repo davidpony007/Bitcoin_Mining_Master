@@ -8,7 +8,7 @@ const BitcoinTransactionRecord = require('./bitcoinTransactionRecord');
 const FreeContractRecord = require('./freeContractRecord');
 const InvitationRebate = require('./invitationRebate');
 const InvitationRelationship = require('./invitationRelationship');
-const PaidProduct = require('./paidProductList');
+// const PaidProduct = require('./paidProductList'); // 已弃用：付费合约使用代码配置，不依赖此表
 const UserLog = require('./userLog');
 const UserOrder = require('./userOrder');
 const WithdrawalRecord = require('./withdrawalRecord');
@@ -119,18 +119,18 @@ UserOrder.belongsTo(UserInformation, {
   as: 'userInfo'
 });
 
-// 9. 一对多关系：付费产品 -> 用户订单
-PaidProduct.hasMany(UserOrder, {
-  foreignKey: 'product_id',
-  sourceKey: 'product_id',
-  as: 'orders'
-});
+// 9. 一对多关系：付费产品 -> 用户订单（已弃用）
+// PaidProduct.hasMany(UserOrder, {
+//   foreignKey: 'product_id',
+//   sourceKey: 'product_id',
+//   as: 'orders'
+// });
 
-UserOrder.belongsTo(PaidProduct, {
-  foreignKey: 'product_id',
-  targetKey: 'product_id',
-  as: 'product'
-});
+// UserOrder.belongsTo(PaidProduct, {
+//   foreignKey: 'product_id',
+//   targetKey: 'product_id',
+//   as: 'product'
+// });
 
 // 10. 一对多关系：用户信息 -> 提现记录
 UserInformation.hasMany(WithdrawalRecord, {
@@ -166,7 +166,7 @@ module.exports = {
   FreeContractRecord,
   InvitationRebate,
   InvitationRelationship,
-  PaidProduct,
+  // PaidProduct, // 已弃用：付费合约使用代码配置
   UserLog,
   UserOrder,
   WithdrawalRecord

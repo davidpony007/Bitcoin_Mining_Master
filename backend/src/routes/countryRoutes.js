@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const CountryConfigService = require('../services/countryConfigService');
+const CountryMiningService = require('../services/countryMiningService');
 
 /**
  * @route   GET /api/public/countries
@@ -26,7 +26,7 @@ const CountryConfigService = require('../services/countryConfigService');
  */
 router.get('/countries', async (req, res) => {
   try {
-    const countries = await CountryConfigService.getAllCountries();
+    const countries = await CountryMiningService.getAllConfigs({ activeOnly: true });
 
     res.json({
       success: true,
@@ -69,7 +69,7 @@ router.get('/country/:countryCode', async (req, res) => {
       });
     }
 
-    const config = await CountryConfigService.getCountryConfig(countryCode);
+    const config = await CountryMiningService.getCountryDetail(countryCode);
 
     res.json({
       success: true,
@@ -101,7 +101,7 @@ router.get('/country/:countryCode/multiplier', async (req, res) => {
   try {
     const { countryCode } = req.params;
 
-    const multiplier = await CountryConfigService.getMiningSpeedMultiplier(countryCode);
+    const multiplier = await CountryMiningService.getMiningMultiplier(countryCode);
 
     res.json({
       success: true,

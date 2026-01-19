@@ -10,33 +10,17 @@ const PointsService = require('./pointsService');
 class CheckInPointsService {
   /**
    * 30天签到奖励配置系统
-   * 包含每日基础奖励 + 里程碑额外奖励
+   * 包含每日基础奖励 + 累计里程碑额外奖励
    */
-  static BASE_CHECKIN_POINTS = 4; // 每日签到基础奖励4积分
+  static BASE_CHECKIN_POINTS = 4; // 每日签到基础奖励4积分（每日都可领取）
 
-  // 30天签到每日奖励配置（累计奖励）
-  static DAILY_REWARDS = {
-    1: 4, 2: 4, 3: 6,     // Day 1-3
-    4: 4, 5: 4, 6: 4,     // Day 4-6
-    7: 10,                 // Week 1 Milestone
-    8: 5, 9: 5, 10: 5,    // Day 8-10
-    11: 5, 12: 5, 13: 5,  // Day 11-13
-    14: 12,                // Week 2 Milestone
-    15: 15,                // Half Month Milestone
-    16: 6, 17: 6, 18: 6,  // Day 16-18
-    19: 6, 20: 6, 21: 18, // Day 19-21, Week 3 Milestone
-    22: 7, 23: 7, 24: 7,  // Day 22-24
-    25: 8, 26: 8, 27: 8,  // Day 25-27
-    28: 20,                // Week 4 Milestone
-    29: 10, 30: 30        // Day 29, Full Month Milestone
-  };
-
-  // 特殊里程碑额外奖励（可单独领取）
-  static MILESTONE_REWARDS = {
-    7: { points: 15, label: 'Week 1 Champion', description: 'Continuous 7-day check-in' },
-    14: { points: 25, label: 'Week 2 Champion', description: 'Continuous 14-day check-in' },
-    21: { points: 35, label: 'Week 3 Champion', description: 'Continuous 21-day check-in' },
-    30: { points: 60, label: 'Monthly Master', description: 'Continuous 30-day check-in' }
+  // 累计签到里程碑奖励（可以不连续，只能领取一次）
+  // 根据用户需求配置：3天/7天/15天/30天累计签到可获得额外奖励
+  static CUMULATIVE_REWARDS = {
+    3: { points: 6, label: '3-Day Milestone', description: 'Complete 3 days of check-in' },
+    7: { points: 15, label: 'Week Champion', description: 'Complete 7 days of check-in' },
+    15: { points: 30, label: 'Half Month Master', description: 'Complete 15 days of check-in' },
+    30: { points: 60, label: 'Monthly Master', description: 'Complete 30 days of check-in' }
   };
 
   /**
@@ -65,49 +49,29 @@ class CheckInPointsService {
         };
       }
 
-      // 2. 获取昨天的签到记录，计算连续签到天数
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-      const [yesterdayRows] = await connection.query(
-        'SELECT consecutive_days FROM check_in_record WHERE user_id = ? AND check_in_date = ?',
-        [userId, yesterday]
+      // 2. 计算累计签到天数（不要求连续）
+      const [totalCheckInsRows] = await connection.query(
+        'SELECT COUNT(*) as total FROM check_in_record WHERE user_id = ?',
+        [userId]
       );
+      const cumulativeDays = (totalCheckInsRows[0].total || 0) + 1; // 加上今天
 
-      let consecutiveDays = 1;
-      if (yesterdayRows.length > 0) {
-        consecutiveDays = yesterdayRows[0].consecutive_days + 1;
-      }
+      // 3. 每日签到奖励固定为4积分
+      const dailyPoints = this.BASE_CHECKIN_POINTS;
 
-      // 3. 计算总奖励积分（基于连续天数的渐进奖励）
-      const dayReward = this.DAILY_REWARDS[consecutiveDays] || this.BASE_CHECKIN_POINTS;
-      let totalPoints = dayReward;
-      let milestoneBonus = 0;
-      let milestoneReached = null;
-      let isMilestoneDay = false;
-
-      // 检查是否为里程碑日
-      if (this.MILESTONE_REWARDS[consecutiveDays]) {
-        isMilestoneDay = true;
-        milestoneReached = consecutiveDays;
-        // 里程碑奖励已包含在DAILY_REWARDS中，这里记录信息用于前端显示
-      }
-
-      // 4. 创建签到记录
+      // 4. 创建签到记录（只记录累计天数）
       await connection.query(
-        `INSERT INTO check_in_record (user_id, check_in_date, consecutive_days, points_earned)
-         VALUES (?, ?, ?, ?)`,
-        [userId, today, consecutiveDays, totalPoints]
+        `INSERT INTO check_in_record (user_id, check_in_date, points_earned)
+         VALUES (?, ?, ?)`,
+        [userId, today, dailyPoints]
       );
 
-      // 5. 增加签到积分
-      const description = isMilestoneDay 
-        ? `${this.MILESTONE_REWARDS[milestoneReached].label} - Day ${consecutiveDays} Check-in`
-        : `Daily Check-in Reward (Day ${consecutiveDays})`;
-      
+      // 5. 增加每日签到积分
       await PointsService.addPoints(
         userId,
-        totalPoints,
+        dailyPoints,
         PointsService.POINTS_TYPES.DAILY_CHECKIN,
-        description,
+        `Daily Check-in Reward (Day ${cumulativeDays})`,
         null
       );
 
@@ -117,25 +81,23 @@ class CheckInPointsService {
       if (redisClient.isReady()) {
         await redisClient.setUserCheckInStatus(userId, {
           date: today,
-          consecutiveDays,
-          totalPoints
+          cumulativeDays,
+          totalPoints: dailyPoints
         });
       }
 
       const result = {
         success: true,
-        message: isMilestoneDay ? `🎉 ${this.MILESTONE_REWARDS[milestoneReached].label}!` : 'Check-in Success!',
+        message: 'Check-in Success!',
         userId,
         checkInDate: today,
-        consecutiveDays,
-        pointsAwarded: totalPoints,
-        isMilestoneDay,
-        milestoneInfo: isMilestoneDay ? this.MILESTONE_REWARDS[milestoneReached] : null,
-        nextMilestone: this.getNextMilestone(consecutiveDays),
-        totalRewardForToday: dayReward
+        cumulativeDays,
+        pointsAwarded: dailyPoints,
+        nextMilestone: this.getNextCumulativeMilestone(cumulativeDays),
+        totalRewardForToday: dailyPoints
       };
 
-      console.log(`✅ 用户 ${userId} 签到成功，连续${consecutiveDays}天，获得${totalPoints}积分`);
+      console.log(`✅ 用户 ${userId} 签到成功，累计${cumulativeDays}天，获得${dailyPoints}积分`);
 
       return result;
 
@@ -155,6 +117,13 @@ class CheckInPointsService {
     try {
       const today = new Date().toISOString().split('T')[0];
 
+      // 获取累计签到天数
+      const [totalRows] = await db.query(
+        'SELECT COUNT(*) as total FROM check_in_record WHERE user_id = ?',
+        [userId]
+      );
+      const cumulativeDays = totalRows[0].total || 0;
+
       // 优先从 Redis 获取
       if (redisClient.isReady()) {
         const cached = await redisClient.getUserCheckInStatus(userId);
@@ -162,6 +131,7 @@ class CheckInPointsService {
           return {
             success: true,
             hasCheckedInToday: true,
+            cumulativeDays,
             ...cached
           };
         }
@@ -169,7 +139,7 @@ class CheckInPointsService {
 
       // 1. 检查今日是否已签到
       const [todayRows] = await db.query(
-        'SELECT consecutive_days, points_earned, created_at FROM check_in_record WHERE user_id = ? AND check_in_date = ?',
+        'SELECT points_earned, created_at FROM check_in_record WHERE user_id = ? AND check_in_date = ?',
         [userId, today]
       );
 
@@ -178,17 +148,17 @@ class CheckInPointsService {
           success: true,
           hasCheckedInToday: true,
           checkInDate: today,
-          consecutiveDays: todayRows[0].consecutive_days,
+          cumulativeDays,
           pointsEarned: todayRows[0].points_earned,
           checkInTime: todayRows[0].created_at,
-          nextMilestone: this.getNextMilestone(todayRows[0].consecutive_days)
+          nextMilestone: this.getNextCumulativeMilestone(cumulativeDays)
         };
 
         // 缓存到 Redis
         if (redisClient.isReady()) {
           await redisClient.setUserCheckInStatus(userId, {
             date: today,
-            consecutiveDays: status.consecutiveDays,
+            cumulativeDays,
             totalPoints: status.pointsEarned
           });
         }
@@ -196,34 +166,13 @@ class CheckInPointsService {
         return status;
       }
 
-      // 2. 获取最近一次签到记录
-      const [lastRows] = await db.query(
-        `SELECT check_in_date, consecutive_days 
-         FROM check_in_record 
-         WHERE user_id = ? 
-         ORDER BY check_in_date DESC 
-         LIMIT 1`,
-        [userId]
-      );
-
-      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-      let currentStreak = 0;
-
-      if (lastRows.length > 0) {
-        if (lastRows[0].check_in_date === yesterday) {
-          // 昨天签到了，今天可以继续
-          currentStreak = lastRows[0].consecutive_days;
-        }
-        // 如果不是昨天，连续签到中断，从0开始
-      }
-
+      // 2. 今日未签到，返回当前累计状态
       return {
         success: true,
         hasCheckedInToday: false,
-        currentStreak,
-        nextCheckInDay: currentStreak + 1,
-        nextMilestone: this.getNextMilestone(currentStreak + 1),
-        potentialPoints: this.calculatePotentialPoints(currentStreak + 1)
+        cumulativeDays,
+        nextMilestone: this.getNextCumulativeMilestone(cumulativeDays + 1),
+        potentialPoints: this.calculatePotentialPoints(cumulativeDays + 1)
       };
 
     } catch (error) {
@@ -240,7 +189,6 @@ class CheckInPointsService {
       const [rows] = await db.query(
         `SELECT 
           check_in_date,
-          consecutive_days,
           points_earned,
           created_at
         FROM check_in_record
@@ -253,7 +201,6 @@ class CheckInPointsService {
       // 计算统计
       const totalCheckIns = rows.length;
       const totalPoints = rows.reduce((sum, row) => sum + row.points_earned, 0);
-      const maxStreak = rows.length > 0 ? Math.max(...rows.map(r => r.consecutive_days)) : 0;
 
       return {
         success: true,
@@ -263,7 +210,6 @@ class CheckInPointsService {
             days,
             totalCheckIns,
             totalPoints,
-            maxStreak,
             checkInRate: ((totalCheckIns / days) * 100).toFixed(2) + '%'
           }
         }
@@ -276,16 +222,16 @@ class CheckInPointsService {
   }
 
   /**
-   * 领取连续签到里程碑奖励（独立领取）
+   * 领取累计签到里程碑奖励（独立领取，可以不连续）
    */
-  static async claimConsecutiveMilestone(userId, consecutiveDays) {
+  static async claimCumulativeMilestone(userId, cumulativeDays) {
     const connection = await db.getConnection();
 
     try {
       await connection.beginTransaction();
 
       // 1. 验证里程碑是否有效
-      if (!this.CONSECUTIVE_REWARDS[consecutiveDays]) {
+      if (!this.CUMULATIVE_REWARDS[cumulativeDays]) {
         await connection.rollback();
         return {
           success: false,
@@ -296,8 +242,8 @@ class CheckInPointsService {
 
       // 2. 检查是否已领取
       const [claimedRows] = await connection.query(
-        'SELECT id FROM consecutive_check_in_reward WHERE user_id = ? AND consecutive_days = ?',
-        [userId, consecutiveDays]
+        'SELECT id FROM cumulative_check_in_reward WHERE user_id = ? AND cumulative_days = ?',
+        [userId, cumulativeDays]
       );
 
       if (claimedRows.length > 0) {
@@ -309,50 +255,51 @@ class CheckInPointsService {
         };
       }
 
-      // 3. 验证用户是否达到连续签到天数
+      // 3. 验证用户是否达到累计签到天数（不要求连续）
       const [checkInRows] = await connection.query(
-        `SELECT MAX(consecutive_days) as max_consecutive 
+        `SELECT COUNT(*) as total_check_ins 
          FROM check_in_record 
          WHERE user_id = ?`,
         [userId]
       );
 
-      if (checkInRows.length === 0 || checkInRows[0].max_consecutive < consecutiveDays) {
+      if (checkInRows.length === 0 || checkInRows[0].total_check_ins < cumulativeDays) {
         await connection.rollback();
         return {
           success: false,
           error: 'REQUIREMENT_NOT_MET',
-          message: `未达到连续签到${consecutiveDays}天的要求`
+          message: `未达到累计签到${cumulativeDays}天的要求（当前累计：${checkInRows[0].total_check_ins}天）`
         };
       }
 
       // 4. 发放奖励
-      const rewardPoints = this.CONSECUTIVE_REWARDS[consecutiveDays];
-      const milestoneType = `CONSECUTIVE_CHECKIN_${consecutiveDays}`;
+      const rewardPoints = this.CUMULATIVE_REWARDS[cumulativeDays].points;
+      const milestoneType = `CUMULATIVE_CHECKIN_${cumulativeDays}`;
 
       await connection.query(
-        `INSERT INTO consecutive_check_in_reward (user_id, consecutive_days, points_earned)
+        `INSERT INTO cumulative_check_in_reward (user_id, cumulative_days, points_earned)
          VALUES (?, ?, ?)`,
-        [userId, consecutiveDays, rewardPoints]
+        [userId, cumulativeDays, rewardPoints]
       );
 
       await PointsService.addPoints(
         userId,
         rewardPoints,
-        PointsService.POINTS_TYPES[milestoneType],
-        `领取连续签到${consecutiveDays}天里程碑奖励`,
+        PointsService.POINTS_TYPES[milestoneType] || PointsService.POINTS_TYPES.DAILY_CHECKIN,
+        `领取累计签到${cumulativeDays}天里程碑奖励 - ${this.CUMULATIVE_REWARDS[cumulativeDays].label}`,
         null
       );
 
       await connection.commit();
 
-      console.log(`✅ 用户 ${userId} 领取连续签到${consecutiveDays}天奖励 ${rewardPoints} 积分`);
+      console.log(`✅ 用户 ${userId} 领取累计签到${cumulativeDays}天奖励 ${rewardPoints} 积分`);
 
       return {
         success: true,
         userId,
-        consecutiveDays,
-        pointsEarned: rewardPoints
+        cumulativeDays,
+        pointsEarned: rewardPoints,
+        label: this.CUMULATIVE_REWARDS[cumulativeDays].label
       };
 
     } catch (error) {
@@ -365,42 +312,48 @@ class CheckInPointsService {
   }
 
   /**
-   * 获取可领取的里程碑奖励
+   * 获取可领取的累计签到里程碑奖励
    */
   static async getAvailableMilestones(userId) {
     try {
-      // 1. 获取用户最大连续签到天数
-      const [maxRows] = await db.query(
-        'SELECT MAX(consecutive_days) as max_consecutive FROM check_in_record WHERE user_id = ?',
+      // 1. 获取用户累计签到天数（不要求连续）
+      const [totalRows] = await db.query(
+        'SELECT COUNT(*) as total_check_ins FROM check_in_record WHERE user_id = ?',
         [userId]
       );
 
-      const maxConsecutive = maxRows[0].max_consecutive || 0;
+      const cumulativeDays = totalRows[0].total_check_ins || 0;
 
       // 2. 获取已领取的里程碑
       const [claimedRows] = await db.query(
-        'SELECT consecutive_days FROM consecutive_check_in_reward WHERE user_id = ?',
+        'SELECT cumulative_days FROM cumulative_check_in_reward WHERE user_id = ?',
         [userId]
       );
 
-      const claimedMilestones = claimedRows.map(row => row.consecutive_days);
+      const claimedMilestones = claimedRows.map(row => row.cumulative_days);
 
       // 3. 计算可领取的里程碑
       const availableMilestones = [];
-      for (const [days, points] of Object.entries(this.CONSECUTIVE_REWARDS)) {
+      for (const [days, config] of Object.entries(this.CUMULATIVE_REWARDS)) {
         const daysNum = parseInt(days);
-        if (daysNum <= maxConsecutive && !claimedMilestones.includes(daysNum)) {
-          availableMilestones.push({
-            consecutiveDays: daysNum,
-            points,
-            canClaim: true
-          });
-        }
+        const isClaimed = claimedMilestones.includes(daysNum);
+        const canClaim = daysNum <= cumulativeDays && !isClaimed;
+        
+        availableMilestones.push({
+          cumulativeDays: daysNum,
+          points: config.points,
+          label: config.label,
+          description: config.description,
+          canClaim,
+          claimed: isClaimed,
+          progress: cumulativeDays,
+          required: daysNum
+        });
       }
 
       return {
         success: true,
-        maxConsecutive,
+        cumulativeDays,
         availableMilestones,
         claimedMilestones
       };
@@ -412,23 +365,30 @@ class CheckInPointsService {
   }
 
   /**
-   * 获取下一个里程碑
+   * 获取下一个累计签到里程碑
    */
-  static getNextMilestone(currentDays) {
-    const milestones = Object.keys(this.MILESTONE_REWARDS).map(Number).sort((a, b) => a - b);
+  static getNextCumulativeMilestone(currentCumulativeDays) {
+    const milestones = Object.keys(this.CUMULATIVE_REWARDS).map(Number).sort((a, b) => a - b);
     
     for (const milestone of milestones) {
-      if (currentDays < milestone) {
+      if (currentCumulativeDays < milestone) {
         return {
           days: milestone,
-          label: this.MILESTONE_REWARDS[milestone].label,
-          points: this.MILESTONE_REWARDS[milestone].points,
-          daysRemaining: milestone - currentDays
+          label: this.CUMULATIVE_REWARDS[milestone].label,
+          points: this.CUMULATIVE_REWARDS[milestone].points,
+          daysRemaining: milestone - currentCumulativeDays
         };
       }
     }
 
     return null; // 已达到最高里程碑
+  }
+
+  /**
+   * 获取下一个里程碑（废弃，保留兼容性）
+   */
+  static getNextMilestone(currentDays) {
+    return this.getNextCumulativeMilestone(currentDays);
   }
 
   /**
@@ -438,7 +398,7 @@ class CheckInPointsService {
     try {
       // 获取用户最近30天的签到记录
       const [records] = await db.query(
-        `SELECT check_in_date, consecutive_days, points_earned
+        `SELECT check_in_date, points_earned
          FROM check_in_record
          WHERE user_id = ?
          AND check_in_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
@@ -447,9 +407,15 @@ class CheckInPointsService {
       );
 
       const checkedDates = new Map(records.map(r => [r.check_in_date, {
-        consecutiveDays: r.consecutive_days,
         points: r.points_earned
       }]));
+
+      // 获取用户累计签到天数
+      const [totalRows] = await db.query(
+        'SELECT COUNT(*) as total FROM check_in_record WHERE user_id = ?',
+        [userId]
+      );
+      const cumulativeDays = totalRows[0].total || 0;
 
       // 生成30天日历数据
       const calendar = [];
@@ -467,11 +433,10 @@ class CheckInPointsService {
           date: dateStr,
           day,
           isChecked: !!checkedInfo,
-          consecutiveDays: checkedInfo?.consecutiveDays || 0,
           pointsEarned: checkedInfo?.points || 0,
-          potentialPoints: this.DAILY_REWARDS[day] || this.BASE_CHECKIN_POINTS,
-          isMilestone: !!this.MILESTONE_REWARDS[day],
-          milestoneInfo: this.MILESTONE_REWARDS[day] || null,
+          potentialPoints: this.BASE_CHECKIN_POINTS, // 每日固定4积分
+          isMilestone: !!this.CUMULATIVE_REWARDS[day],
+          milestoneInfo: this.CUMULATIVE_REWARDS[day] || null,
           isPast: date < today,
           isToday: dateStr === today.toISOString().split('T')[0],
           isFuture: date > today
@@ -481,10 +446,11 @@ class CheckInPointsService {
       return {
         success: true,
         calendar,
+        cumulativeDays,
         summary: {
           totalChecked: records.length,
           totalPoints: records.reduce((sum, r) => sum + r.points_earned, 0),
-          maxStreak: records.length > 0 ? Math.max(...records.map(r => r.consecutive_days)) : 0
+          cumulativeDays
         }
       };
 
@@ -495,10 +461,10 @@ class CheckInPointsService {
   }
 
   /**
-   * 计算签到可获得的积分
+   * 计算签到可获得的积分（统一为每日4积分）
    */
-  static calculatePotentialPoints(consecutiveDays) {
-    return this.DAILY_REWARDS[consecutiveDays] || this.BASE_CHECKIN_POINTS;
+  static calculatePotentialPoints(cumulativeDays) {
+    return this.BASE_CHECKIN_POINTS;
   }
 
   /**
@@ -507,11 +473,11 @@ class CheckInPointsService {
   static getMilestoneConfig() {
     return {
       success: true,
-      milestones: Object.entries(this.MILESTONE_REWARDS).map(([day, config]) => ({
+      basePoints: this.BASE_CHECKIN_POINTS,
+      milestones: Object.entries(this.CUMULATIVE_REWARDS).map(([day, config]) => ({
         day: parseInt(day),
         ...config
-      })),
-      dailyRewards: this.DAILY_REWARDS
+      }))
     };
   }
 }

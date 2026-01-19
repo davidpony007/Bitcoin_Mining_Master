@@ -4,7 +4,7 @@ const express = require('express'); // 引入 express 框架
 const router = express.Router(); // 创建路由实例
 const authenticateToken = require('../middleware/auth'); // JWT 认证中间件
 const { requireAdmin } = require('../middleware/role'); // 管理员权限校验中间件
-const CountryConfigService = require('../services/countryConfigService'); // 国家配置服务
+const CountryMiningService = require('../services/countryMiningService'); // 国家挖矿配置服务
 
 // GET /api/admin/stats
 // 获取后台统计信息（需管理员权限）
@@ -38,7 +38,7 @@ router.put('/country/:countryCode/multiplier', authenticateToken, requireAdmin, 
       });
     }
 
-    const result = await CountryConfigService.updateCountryMultiplier(countryCode, multiplier);
+    const result = await CountryMiningService.updateMultiplier(countryCode, multiplier);
     
     if (result.success) {
       res.json(result);
@@ -62,7 +62,7 @@ router.put('/country/:countryCode/multiplier', authenticateToken, requireAdmin, 
  */
 router.post('/country/cache/clear', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    await CountryConfigService.clearAllCache();
+    await CountryMiningService.clearAllCache();
     res.json({
       success: true,
       message: '缓存清除成功'

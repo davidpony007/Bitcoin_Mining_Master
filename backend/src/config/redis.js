@@ -503,6 +503,54 @@ class RedisClient {
       return false;
     }
   }
+
+  /**
+   * 缓存用户挖矿速率（1分钟）
+   */
+  async setMiningSpeed(userId, speedPerSecond, ttl = 60) {
+    if (!this.isReady()) return false;
+    
+    try {
+      const key = `mining:speed:${userId}`;
+      await this.client.setex(key, ttl, speedPerSecond.toString());
+      return true;
+    } catch (error) {
+      console.error(`缓存挖矿速率失败 [user ${userId}]:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户挖矿速率缓存
+   */
+  async getMiningSpeed(userId) {
+    if (!this.isReady()) return null;
+    
+    try {
+      const key = `mining:speed:${userId}`;
+      const speed = await this.client.get(key);
+      return speed ? parseFloat(speed) : null;
+    } catch (error) {
+      console.error(`获取挖矿速率失败 [user ${userId}]:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 删除用户挖矿速率缓存（合约变更时调用）
+   */
+  async deleteMiningSpeed(userId) {
+    if (!this.isReady()) return false;
+    
+    try {
+      const key = `mining:speed:${userId}`;
+      await this.client.del(key);
+      return true;
+    } catch (error) {
+      console.error(`删除挖矿速率缓存失败 [user ${userId}]:`, error.message);
+      return false;
+    }
+  }
 }
 
 const redisClient = new RedisClient();

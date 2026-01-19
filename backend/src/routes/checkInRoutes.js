@@ -143,25 +143,28 @@ router.get('/milestones', authenticate, async (req, res) => {
 
 /**
  * @route   POST /api/checkin/claim-milestone
- * @desc    领取连续签到里程碑奖励
+ * @desc    领取累计签到里程碑奖励（可以不连续）
  * @access  Private
  * @body    user_id - 用户ID
- * @body    consecutive_days - 连续天数 (3/7/15/30)
+ * @body    cumulative_days - 累计天数 (3/7/15/30)
  */
 router.post('/claim-milestone', authenticate, async (req, res) => {
   try {
-    const { user_id, consecutive_days } = req.body;
+    const { user_id, cumulative_days, consecutive_days } = req.body;
+    
+    // 兼容旧的consecutive_days参数
+    const days = cumulative_days || consecutive_days;
 
-    if (!user_id || !consecutive_days) {
+    if (!user_id || !days) {
       return res.status(400).json({
         success: false,
-        message: '缺少参数: user_id, consecutive_days'
+        message: '缺少参数: user_id, cumulative_days'
       });
     }
 
-    const result = await CheckInPointsService.claimConsecutiveMilestone(
+    const result = await CheckInPointsService.claimCumulativeMilestone(
       user_id,
-      parseInt(consecutive_days)
+      parseInt(days)
     );
 
     res.json(result);

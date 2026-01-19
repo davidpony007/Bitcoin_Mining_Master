@@ -4,10 +4,13 @@ import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../constants/app_constants.dart';
 import '../services/points_api_service.dart';
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 import '../models/points_model.dart';
 import 'points_screen.dart';
 import 'checkin_screen.dart';
 import 'paid_contracts_screen.dart';
+import 'ad_reward_screen.dart';
 
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
 class DashboardScreen extends StatefulWidget {
@@ -19,6 +22,8 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> with TickerProviderStateMixin {
   final PointsApiService _pointsApi = PointsApiService();
+  final ApiService _apiService = ApiService();
+  final StorageService _storageService = StorageService();
   PointsBalance? _pointsBalance;
   Map<String, dynamic>? _todayAdInfo;
   bool _isLoadingPoints = true;
@@ -38,22 +43,14 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       vsync: this,
     )..repeat(reverse: true);
     _loadPointsData();
+    _loadContractAndUpdateBatteries();
   }
   
   void _initializeBatteries() {
     _batteries = List.generate(48, (index) {
-      // Mock data: first 12 batteries are in use
-      if (index < 12) {
-        final level = 4 - (index % 4); // Varying levels for demo
-        final isMining = index == 0; // First battery is currently mining
-        return BatteryState(
-          level: level,
-          isMining: isMining,
-          totalSeconds: level * 15 * 60, // 15 minutes per level
-          remainingSeconds: level * 15 * 60,
-        );
-      }
-      return BatteryState(level: 4, isMining: false, totalSeconds: 0, remainingSeconds: 0);
+      // Initial state: all batteries are empty (no batteries at start)
+      // Batteries will only be added after watching ads and clicking continue
+      return BatteryState(level: 0, isMining: false, totalSeconds: 0, remainingSeconds: 0);
     });
   }
   
@@ -62,6 +59,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       if (!mounted) return;
       
       bool hasChanges = false;
+      bool needsResort = false;
+      
       for (int i = 0; i < _batteries.length; i++) {
         if (_batteries[i].isMining && _batteries[i].remainingSeconds > 0) {
           _batteries[i].remainingSeconds--;
@@ -77,8 +76,10 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             // If battery is depleted, start next battery
             if (_batteries[i].level == 0) {
               _batteries[i].isMining = false;
-              // Find next full battery to start mining
-              for (int j = 0; j < _batteries.length; j++) {
+              needsResort = true; // 需要重新排序
+              
+              // Find next full battery to start mining (search from right to left - consume batteries from right)
+              for (int j = _batteries.length - 1; j >= 0; j--) {
                 if (_batteries[j].level == 4 && !_batteries[j].isMining) {
                   _batteries[j].isMining = true;
                   _batteries[j].totalSeconds = 4 * 15 * 60;
@@ -91,12 +92,16 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         }
       }
       
+      // 如果有电池状态变化需要重新排序
+      if (needsResort) {
+        _sortBatteries();
+      }
+      
       if (hasChanges && mounted) {
         setState(() {});
       }
     });
   }
-  
   @override
   void dispose() {
     _miningTimer?.cancel();
@@ -121,6 +126,114 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         setState(() => _isLoadingPoints = false);
       }
     }
+  }
+  
+  // 根据合约剩余时间更新电池状态
+  Future<void> _loadContractAndUpdateBatteries() async {
+    try {
+      var userId = _storageService.getUserId();
+      
+      // 临时解决方案：如果userId为空，使用默认测试用户ID
+      if (userId == null || userId.isEmpty) {
+        userId = 'U2026011910532521846';
+        print('⚠️ Dashboard: 用户ID为空，使用默认测试用户ID');
+      }
+      
+      print('📊 Dashboard: 加载合约状态 - userId: $userId');
+      final response = await _apiService.getMyContracts(userId);
+      final data = response['data'];
+      
+      if (data != null && data['adReward'] != null) {
+        final isActive = data['adReward']['isActive'] == true;
+        final remainingSeconds = data['adReward']['remainingSeconds'] ?? 0;
+        
+        print('📊 Dashboard: 合约状态 - isActive: $isActive, remainingSeconds: $remainingSeconds');
+        
+        if (isActive && remainingSeconds > 0 && mounted) {
+          setState(() {
+            _updateBatteriesFromRemainingTime(remainingSeconds);
+          });
+          print('✅ Dashboard: 电池状态已更新');
+        }
+      }
+    } catch (e) {
+      print('❌ Dashboard: 加载合约状态失败: $e');
+    }
+  }
+  
+  // 根据剩余秒数设置电池状态
+  void _updateBatteriesFromRemainingTime(int remainingSeconds) {
+    // 每小时 = 3600秒 = 1个电池
+    // 每15分钟 = 900秒 = 电池的1格（共4格）
+    
+    final totalHours = remainingSeconds ~/ 3600; // 完整小时数
+    final remainingSecondsAfterHours = remainingSeconds % 3600; // 剩余的秒数
+    
+    // 清空所有电池
+    for (var battery in _batteries) {
+      battery.level = 0;
+      battery.isMining = false;
+      battery.totalSeconds = 0;
+      battery.remainingSeconds = 0;
+    }
+    
+    int batteryIndex = 0;
+    
+    // 设置完整小时对应的满电池（每个满电池 = 4格 = 60分钟）
+    for (int i = 0; i < totalHours && batteryIndex < _batteries.length; i++) {
+      _batteries[batteryIndex].level = 4;
+      _batteries[batteryIndex].isMining = false;
+      _batteries[batteryIndex].totalSeconds = 3600;
+      _batteries[batteryIndex].remainingSeconds = 3600;
+      batteryIndex++;
+    }
+    
+    // 如果还有剩余时间（不足1小时的部分），设置为正在挖矿的电池
+    if (remainingSecondsAfterHours > 0 && batteryIndex < _batteries.length) {
+      // 计算这个电池应该显示几格（每15分钟1格）
+      final level = (remainingSecondsAfterHours / 900).ceil().clamp(1, 4);
+      
+      _batteries[batteryIndex].level = level;
+      _batteries[batteryIndex].isMining = true;
+      _batteries[batteryIndex].totalSeconds = 3600; // 一个完整电池的总时间
+      _batteries[batteryIndex].remainingSeconds = remainingSecondsAfterHours;
+    }
+    
+    // 重新排序：空电池 -> 满电 -> 挖矿中（最右边）
+    _sortBatteries();
+  }
+  
+  // 增加电池的方法 - 改为从API重新加载合约状态
+  void _addBatteries(int count) {
+    // 观看广告后，重新从API加载最新的合约剩余时间
+    _loadContractAndUpdateBatteries();
+  }
+  
+  // 电池排序：满电电池在前（从左往右填充），空电池在中间，正在挖矿的电池排在最右边
+  void _sortBatteries() {
+    // 分离出三类电池
+    final miningBatteries = <BatteryState>[];
+    final fullBatteries = <BatteryState>[];
+    final emptyBatteries = <BatteryState>[];
+    
+    for (var battery in _batteries) {
+      if (battery.isMining) {
+        miningBatteries.add(battery);
+      } else if (battery.level > 0) {
+        fullBatteries.add(battery);
+      } else {
+        emptyBatteries.add(battery);
+      }
+    }
+    
+    // 重新组合：满电池（左侧）-> 挖矿中（中间）-> 空电池（最右边）
+    // 填充顺序：从左往右、从上至下（满电池优先填充左边位置）
+    // 消耗顺序：从右往左（空电池在最右边，挖矿中的在中间）
+    _batteries.clear();
+    _batteries.addAll(fullBatteries);
+    _batteries.addAll(miningBatteries);
+    _batteries.addAll(emptyBatteries);
+    print('🔋 电池排序完成 - 满电:${fullBatteries.length}, 空:${emptyBatteries.length}, 挖矿中:${miningBatteries.length}');
   }
 
   void _navigateToCheckIn() {
@@ -180,13 +293,13 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   
                   const SizedBox(height: 20),
                   
-                  // Hashrate Pool Section
-                  _buildHashratePoolSection(),
+                  // Quick Actions
+                  _buildQuickActions(),
                   
                   const SizedBox(height: 20),
                   
-                  // Quick Actions
-                  _buildQuickActions(),
+                  // Hashrate Pool Section
+                  _buildHashratePoolSection(),
                   
                   const SizedBox(height: 20),
                   
@@ -519,7 +632,19 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
             children: [
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {},
+                  onPressed: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AdRewardScreen(),
+                      ),
+                    );
+                    
+                    // 如果返回true（延长成功），则重新加载电池
+                    if (result == true && mounted) {
+                      _loadContractAndUpdateBatteries();
+                    }
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -560,13 +685,18 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
+                  onPressed: () async {
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const PaidContractsScreen(),
+                        builder: (context) => const AdRewardScreen(isDailyCheckIn: true),
                       ),
                     );
+                    
+                    // 如果返回true（延长成功），则重新加载电池
+                    if (result == true && mounted) {
+                      _loadContractAndUpdateBatteries();
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFC107),
@@ -683,14 +813,39 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildLevelRow('LV.1', '0~20 Points', 'Base Mining Rate'),
-                _buildLevelRow('LV.2', '21~50 Points', 'Mining Rate +10%'),
-                _buildLevelRow('LV.3', '51~100 Points', 'Mining Rate +20%'),
-                _buildLevelRow('LV.4', '101~200 Points', 'Mining Rate +35%'),
-                _buildLevelRow('LV.5', '201~400 Points', 'Mining Rate +50%'),
-                _buildLevelRow('LV.6', '401~800 Points', 'Mining Rate +70%'),
-                _buildLevelRow('LV.7', '801~1600 Points', 'Mining Rate +100%'),
-                _buildLevelRow('LV.8', '1601~3000 Points', 'Mining Rate +140%'),
-                _buildLevelRow('LV.9', '3001+ Points', 'Mining Rate +200%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.2', 'Need 30 Points', 'Mining Rate +10%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.3', 'Need 50 Points', 'Mining Rate +20%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.4', 'Need 100 Points', 'Mining Rate +35%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.5', 'Need 200 Points', 'Mining Rate +50%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.6', 'Need 400 Points', 'Mining Rate +70%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.7', 'Need 800 Points', 'Mining Rate +100%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.8', 'Need 1600 Points', 'Mining Rate +140%'),
+                const SizedBox(height: 4),
+                _buildLevelRow('LV.9', 'Max Level', 'Mining Rate +200%'),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Note: Points reset to 0 after each level up',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ],
             ),
           ),

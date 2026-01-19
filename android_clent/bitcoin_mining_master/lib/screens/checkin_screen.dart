@@ -217,8 +217,6 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                         const SizedBox(height: 16),
                         _buildMilestonesSection(),
                         const SizedBox(height: 16),
-                        _buildMonthlyCalendar(),
-                        const SizedBox(height: 16),
                       ],
                     ),
                   ),
@@ -567,11 +565,11 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
 
     final dayData = calendar.firstWhere(
       (d) => d['day'] == day,
-      orElse: () => null,
+      orElse: () => <String, Object>{},
     );
 
-    final isChecked = dayData?['isChecked'] ?? false;
-    final isToday = dayData?['isToday'] ?? false;
+    final isChecked = dayData['isChecked'] ?? false;
+    final isToday = dayData['isToday'] ?? false;
     final isMilestone = milestones.any((m) => m['day'] == day);
     final points = dailyRewards[day.toString()] ?? 4;
 

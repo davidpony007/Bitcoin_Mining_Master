@@ -23,7 +23,7 @@ class PaidContractService {
       price: 4.99,
       name: 'contract_4.99',
       duration: 30,  // 30天
-      hashrate: 0.00000000000456,  // 实际每秒挖矿BTC数
+      hashrate: 0.000000000004456,  // 实际每秒挖矿BTC数
       displayHashrate: '176.3Gh/s',  // 前端显示的算力值
       description: '入门合约 - 30天挖矿'
     },
@@ -31,7 +31,7 @@ class PaidContractService {
       price: 6.99,
       name: 'contract_6.99',
       duration: 30,
-      hashrate: 0.00000000000772,  // 实际每秒挖矿BTC数
+      hashrate: 0.000000000007723,  // 实际每秒挖矿BTC数
       displayHashrate: '305.6Gh/s',  // 前端显示的算力值
       description: '标准合约 - 30天挖矿'
     },
@@ -39,7 +39,7 @@ class PaidContractService {
       price: 9.99,
       name: 'contract_9.99',
       duration: 30,  // 30天
-      hashrate: 0.0000000000154,  // 实际每秒挖矿BTC数
+      hashrate: 0.000000000015447,  // 实际每秒挖矿BTC数
       displayHashrate: '611.2Gh/s',  // 前端显示的算力值
       description: '进阶合约 - 30天挖矿'
     },
@@ -47,7 +47,7 @@ class PaidContractService {
       price: 19.99,
       name: 'contract_19.99',
       duration: 30,  // 30天
-      hashrate: 0.0000000000335,  // 实际每秒挖矿BTC数
+      hashrate: 0.000000000033522,  // 实际每秒挖矿BTC数
       displayHashrate: '1326.4Gh/s',  // 前端显示的算力值
       description: '高级合约 - 30天挖矿'
     }

@@ -1,6 +1,6 @@
 /**
  * 挖矿合约路由
- * 处理三种免费挖矿合约的相关请求
+ * 处理四种免费挖矿合约的相关请求
  */
 
 const express = require('express');
@@ -8,6 +8,7 @@ const router = express.Router();
 const AdMiningContractService = require('../services/adMiningContractService');
 const CheckInMiningContractService = require('../services/checkInMiningContractService');
 const InvitationMiningContractService = require('../services/invitationMiningContractService');
+const RefereeMiningContractService = require('../services/refereeMiningContractService');
 
 /**
  * POST /api/mining-contracts/ad/watch
@@ -153,6 +154,34 @@ router.get('/invitation/status/:userId', async (req, res) => {
 
   } catch (err) {
     console.error('❌ 获取邀请挖矿合约状态失败:', err);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: err.message
+    });
+  }
+});
+
+/**
+ * GET /api/mining-contracts/bind-referrer/status/:userId
+ * 获取绑定推荐人挖矿合约状态
+ */
+router.get('/bind-referrer/status/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: '用户ID不能为空'
+      });
+    }
+
+    const result = await RefereeMiningContractService.getContractStatus(userId.trim());
+    res.json(result);
+
+  } catch (err) {
+    console.error('❌ 获取绑定推荐人挖矿合约状态失败:', err);
     res.status(500).json({
       success: false,
       message: '服务器错误',

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 /// API配置常量
 class ApiConstants {
   // 基础URL - 后端Node.js服务器地址 (Android模拟器使用10.0.2.2访问宿主机)
-  static const String baseUrl = 'http://10.0.2.2:8888/api';
+  static const String baseUrl = 'http://localhost:8888/api'; // 使用 adb reverse 端口映射
   
   // 认证相关端点
   static const String deviceLogin = '/auth/device-login';

@@ -16,8 +16,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       'name': 'Starter Plan',
       'duration': 30,
       'hashrate': '176.3 Gh/s',
-      'dailyOutput': '0.00039398 BTC',
-      'totalOutput': '0.01181952 BTC',
+      'dailyOutput': '0.00000038503 BTC',
+      'totalOutput': '0.00001155091 BTC',
       'description': 'Perfect for beginners',
       'color': Color(0xFF4A90E2),
       'popular': false,
@@ -28,8 +28,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       'name': 'Standard Plan',
       'duration': 30,
       'hashrate': '305.6 Gh/s',
-      'dailyOutput': '0.00066661 BTC',
-      'totalOutput': '0.01999872 BTC',
+      'dailyOutput': '0.00000066727 BTC',
+      'totalOutput': '0.00002001802 BTC',
       'description': 'Most popular choice',
       'color': Color(0xFF50C878),
       'popular': true,
@@ -40,8 +40,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       'name': 'Advanced Plan',
       'duration': 30,
       'hashrate': '611.2 Gh/s',
-      'dailyOutput': '0.00133056 BTC',
-      'totalOutput': '0.03991680 BTC',
+      'dailyOutput': '0.00000133466 BTC',
+      'totalOutput': '0.00004003982 BTC',
       'description': 'For serious miners',
       'color': Color(0xFFFF6B35),
       'popular': false,
@@ -52,8 +52,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       'name': 'Premium Plan',
       'duration': 30,
       'hashrate': '1326.4 Gh/s',
-      'dailyOutput': '0.00289440 BTC',
-      'totalOutput': '0.08683200 BTC',
+      'dailyOutput': '0.00000289630 BTC',
+      'totalOutput': '0.00008688902 BTC',
       'description': 'Maximum hashrate power',
       'color': Color(0xFFFFD700),
       'popular': false,
@@ -160,8 +160,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         color: const Color(0xFF0F1624),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isPopular ? tier['color'] : Colors.transparent,
-          width: 2,
+          color: isPopular ? tier['color'] : (tier['color'] as Color).withOpacity(0.3),
+          width: isPopular ? 2 : 1.5,
         ),
         boxShadow: isPopular
             ? [
@@ -201,7 +201,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             ),
 
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -257,7 +257,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
                   ],
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // 算力信息
                 _buildInfoRow(
@@ -266,26 +266,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
                   value: tier['hashrate'],
                   color: tier['color'],
                 ),
-                const SizedBox(height: 12),
 
-                // 每日产出
-                _buildInfoRow(
-                  icon: Icons.today,
-                  label: 'Daily Output',
-                  value: tier['dailyOutput'],
-                  color: tier['color'],
-                ),
-                const SizedBox(height: 12),
-
-                // 总产出
-                _buildInfoRow(
-                  icon: Icons.account_balance_wallet,
-                  label: 'Total Output (30d)',
-                  value: tier['totalOutput'],
-                  color: tier['color'],
-                ),
-
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
                 // 购买按钮
                 SizedBox(

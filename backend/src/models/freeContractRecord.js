@@ -25,10 +25,11 @@ const FreeContractRecord = sequelize.define('free_contract_records', {
     type: DataTypes.ENUM(
       'ad free contract',
       'daily sign-in free contract',
-      'invitation free contract'
+      'invitation free contract',
+      'bind referrer free contract'
     ),
     allowNull: true,
-    comment: '免费合约类型: 广告免费合约/每日签到/邀请奖励'
+    comment: '免费合约类型: 广告免费合约/每日签到/邀请奖励/绑定推荐人'
   },
   free_contract_revenue: { 
     type: DataTypes.DECIMAL(18, 18), 

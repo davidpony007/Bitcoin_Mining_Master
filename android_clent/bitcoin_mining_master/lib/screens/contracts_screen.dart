@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../constants/app_constants.dart';
+import '../services/storage_service.dart';
+import '../services/api_service.dart';
 import 'paid_contracts_screen.dart';
 
-/// 合约屏幕 - Contracts with tabs
+/// 合约屏幕 - Contracts with tabs 
 class ContractsScreen extends StatefulWidget {
   const ContractsScreen({super.key});
 
@@ -13,49 +15,110 @@ class ContractsScreen extends StatefulWidget {
 
 class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final _storageService = StorageService();
+  final _apiService = ApiService();
   
-  // 广告挖矿状态
-  bool _isAdMining = false;
-  Duration _remainingTime = Duration.zero;
-  Timer? _miningTimer;
+  // 合约状态
+  bool _isLoadingContracts = true;
+  bool _isDailyCheckInActive = false;
+  bool _isAdRewardActive = false;
+  int _dailyCheckInRemainingSeconds = 0;
+  int _adRewardRemainingSeconds = 0;
+  Timer? _contractTimer;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadContracts();
+    
+    // 每秒更新倒计时
+    _contractTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_dailyCheckInRemainingSeconds > 0) {
+          _dailyCheckInRemainingSeconds--;
+        } else {
+          _isDailyCheckInActive = false;
+        }
+        
+        if (_adRewardRemainingSeconds > 0) {
+          _adRewardRemainingSeconds--;
+        } else {
+          _isAdRewardActive = false;
+        }
+      });
+    });
+    
+    // 每30秒刷新一次合约数据（防止时间漂移）
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _loadContracts();
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _miningTimer?.cancel();
+    _contractTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
   
-  void _startAdMining() {
-    setState(() {
-      _isAdMining = true;
-      _remainingTime = const Duration(hours: 2); // 2小时广告挖矿
-    });
-    
-    _miningTimer?.cancel();
-    _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+  Future<void> _loadContracts() async {
+    try {
+      final userId = _storageService.getUserId();
+      if (userId == null || userId.isEmpty) {
+        setState(() {
+          _isLoadingContracts = false;
+        });
+        return;
+      }
+
+      print('📝 加载合约数据 - userId: $userId');
+      final response = await _apiService.getMyContracts(userId);
+      print('📦 API响应: $response');
+      
+      if (response['success'] == true && response['data'] != null) {
+        final data = response['data'];
+        
+        print('✅ Daily Check-in: ${data['dailyCheckIn']}');
+        print('✅ Ad Reward: ${data['adReward']}');
+        
+        setState(() {
+          // Daily Check-in状态
+          _isDailyCheckInActive = data['dailyCheckIn']['isActive'] == true;
+          _dailyCheckInRemainingSeconds = data['dailyCheckIn']['remainingSeconds'] ?? 0;
+          
+          // Ad Reward状态
+          _isAdRewardActive = data['adReward']['isActive'] == true;
+          _adRewardRemainingSeconds = data['adReward']['remainingSeconds'] ?? 0;
+          
+          _isLoadingContracts = false;
+        });
+        
+        print('🔄 状态更新: Daily=${_isDailyCheckInActive}, Ad=${_isAdRewardActive}');
+      } else {
+        print('❌ API响应失败或数据为空');
+        setState(() {
+          _isLoadingContracts = false;
+        });
+      }
+    } catch (e) {
+      print('❌ 加载合约失败: $e');
       setState(() {
-        if (_remainingTime.inSeconds > 0) {
-          _remainingTime = Duration(seconds: _remainingTime.inSeconds - 1);
-        } else {
-          _isAdMining = false;
-          timer.cancel();
-        }
+        _isLoadingContracts = false;
       });
-    });
+    }
   }
   
-  String _formatDuration(Duration duration) {
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    final seconds = duration.inSeconds.remainder(60);
-    return '${hours}h ${minutes}m ${seconds}s';
+  String _formatDuration(int totalSeconds) {
+    if (totalSeconds <= 0) return '00h 00m 00s';
+    
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+    
+    return '${hours.toString().padLeft(2, '0')}h ${minutes.toString().padLeft(2, '0')}m ${seconds.toString().padLeft(2, '0')}s';
   }
 
   @override
@@ -63,7 +126,36 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Mining Contracts'),
+        title: const Text('Contracts'),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PaidContractsScreen(),
+                ),
+              );
+            },
+            icon: Icon(
+              Icons.add_shopping_cart,
+              color: AppColors.primary,
+              size: 20,
+            ),
+            label: Text(
+              'Buy Contract',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppColors.primary,
@@ -112,15 +204,122 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
     );
   }
   
-  Widget _buildAdMiningCard() {
+  Widget _buildDailyCheckinCard() {
+    final isActive = _isDailyCheckInActive && _dailyCheckInRemainingSeconds > 0;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.cardDark,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.textSecondary.withOpacity(0.1),
-          width: 1,
+          color: AppColors.primary.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Bitcoin Icon
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.currency_bitcoin,
+              color: AppColors.primary,
+              size: 28,
+            ),
+          ),
+          
+          const SizedBox(width: 16),
+          
+          // Contract Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '7.5Gh/s',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Daily Check-in Reward',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Status and Countdown
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              // Status Dot and Countdown
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF4CAF50) : const Color(0xFFF44336),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  if (isActive) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDuration(_dailyCheckInRemainingSeconds),
+                      style: const TextStyle(
+                        color: Color(0xFF4CAF50),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              
+              // Not Active Status (only show when not active)
+              if (!isActive) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Not Active',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildAdMiningCard() {
+    final isActive = _isAdRewardActive && _adRewardRemainingSeconds > 0;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.3),
+          width: 1.5,
         ),
       ),
       child: Row(
@@ -157,7 +356,7 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Watch Ads Rewards',
+                  'Free Ad Reward',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 14,
@@ -167,11 +366,11 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
             ),
           ),
           
-          // Status Indicator and Timer
+          // Status Indicator and Countdown
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Status Dot
+              // Status Dot and Countdown
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -179,17 +378,17 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      color: _isAdMining ? const Color(0xFF4CAF50) : const Color(0xFFF44336),
+                      color: isActive ? const Color(0xFF4CAF50) : const Color(0xFFF44336),
                       shape: BoxShape.circle,
                     ),
                   ),
-                  if (_isAdMining) ...[
+                  if (isActive) ...[
                     const SizedBox(width: 8),
                     Text(
-                      _formatDuration(_remainingTime),
+                      _formatDuration(_adRewardRemainingSeconds),
                       style: const TextStyle(
                         color: Color(0xFF4CAF50),
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -197,23 +396,14 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
                 ],
               ),
               
-              // Start Button (only show when not mining)
-              if (!_isAdMining) ...[
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _startAdMining,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'Start',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+              // Not Active Status (only show when not active)
+              if (!isActive) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Not Active',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -225,6 +415,12 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
   }
 
   Widget _buildAllTab() {
+    if (_isLoadingContracts) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+    
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -241,31 +437,13 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
           ),
           const SizedBox(height: 16),
           
-          // Ad Mining Contract Card
+          // Daily Check-in Contract Card (Top Priority - 7.5Gh/s)
+          _buildDailyCheckinCard(),
+          
+          const SizedBox(height: 12),
+          
+          // Ad Mining Contract Card (5.5Gh/s)
           _buildAdMiningCard(),
-          
-          const SizedBox(height: 24),
-          
-          // Empty state for other contracts
-          Center(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.inventory_2_outlined,
-                  size: 48,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No other contracts',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

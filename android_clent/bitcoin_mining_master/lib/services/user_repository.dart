@@ -1,13 +1,14 @@
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 /// 用户仓库 - 对应Kotlin的UserRepository
 class UserRepository {
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
 
-  /// 获取用户ID（如果不存在则生成新的）
+  /// 获取用户ID（如果不存在则通过deviceLogin自动登录/注册）
   Future<Result<String>> fetchUserId() async {
     try {
       // 先尝试从本地获取
@@ -16,14 +17,19 @@ class UserRepository {
         return Result.success(cachedUserId);
       }
 
-      // 从服务器获取新ID
-      final response = await _apiService.generateUserId();
-      if (response.success) {
+      // 本地不存在，调用deviceLogin自动登录/注册
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final androidId = androidInfo.id;
+
+      final response = await _apiService.deviceLogin(androidId: androidId);
+      if (response.success && response.data != null) {
+        final userId = response.data!.userId;
         // 保存到本地
-        await _storageService.saveUserId(response.userId);
-        return Result.success(response.userId);
+        await _storageService.saveUserId(userId);
+        return Result.success(userId);
       } else {
-        return Result.failure(Exception(response.message ?? 'Failed to get user ID'));
+        return Result.failure(Exception(response.message));
       }
     } catch (e) {
       return Result.failure(e as Exception);

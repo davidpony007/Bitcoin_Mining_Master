@@ -30,7 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrGenerateUserId();
+    _loadUserId();
     _startUtcTimeUpdater();
   }
 
@@ -57,79 +57,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  /// 从本地加载或通过后端API生成UserID
-  Future<void> _loadOrGenerateUserId() async {
+  /// 从本地加载UserID（登录已在UserProvider中完成）
+  Future<void> _loadUserId() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // 1. 先尝试从本地存储加载
+      // 从本地存储加载（应该已在APP启动时通过deviceLogin保存）
       final savedUserId = _storageService.getUserId();
       if (savedUserId != null && savedUserId.isNotEmpty) {
         setState(() {
           _userId = savedUserId;
           _isLoading = false;
         });
-        return;
-      }
-
-      // 2. 本地不存在，获取Android设备ID
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      final androidId = androidInfo.id; // 获取Android ID
-
-      // 3. 调用后端设备登录API
-      final response = await _apiService.deviceLogin(
-        androidId: androidId,
-        // 可选参数：如果有邀请码可以传递
-        // referrerInvitationCode: 'INV12345',
-      );
-
-      if (response.success && response.data != null) {
-        final userId = response.data!.userId;
-        
-        // 4. 保存到本地存储
-        await _storageService.saveUserId(userId);
-        
-        // 5. 更新UI
+      } else {
+        // 如果本地没有，说明登录失败，显示错误
         setState(() {
-          _userId = userId;
+          _userId = 'Login failed';
           _isLoading = false;
         });
-
-        // 6. 如果是新用户，可以显示欢迎提示
-        if (response.isNewUser) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Welcome! Your ID: $userId'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-        }
-      } else {
-        throw Exception(response.message);
       }
     } catch (e) {
-      // 错误处理：显示错误并使用临时ID
-      print('Error loading/generating user ID: $e');
+      print('Error loading user ID: $e');
       setState(() {
-        _userId = 'Error: ${e.toString().substring(0, 20)}...';
+        _userId = 'Error: ${e.toString()}';
         _isLoading = false;
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to connect to server: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
     }
   }
 

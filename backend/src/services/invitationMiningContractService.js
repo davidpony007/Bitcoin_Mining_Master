@@ -49,7 +49,7 @@ class InvitationMiningContractService {
         order: [['free_contract_creation_time', 'DESC']]
       });
 
-      // 3. 计算挖矿速度（应用完整公式）
+      // 3. 计算挖矿速度（基础奖励 × 国家系数 × 矿工等级速率系数，不含签到加成）
       const speedInfo = await LevelService.calculateMiningSpeed(referrerId);
 
       const now = new Date();
@@ -63,7 +63,7 @@ class InvitationMiningContractService {
 
         await existingContract.update({
           free_contract_end_time: newEndTime,
-          hashrate: speedInfo.finalSpeedWithCountry // 更新为最新速度
+          hashrate: speedInfo.finalSpeedWithoutBonus // 使用不含签到加成的标准速度
         });
 
         contract = existingContract;
@@ -79,7 +79,7 @@ class InvitationMiningContractService {
           free_contract_revenue: 0,
           free_contract_creation_time: now,
           free_contract_end_time: endTime,
-          hashrate: speedInfo.finalSpeedWithCountry,
+          hashrate: speedInfo.finalSpeedWithoutBonus, // 使用不含签到加成的标准速度
           mining_status: 'mining'
         });
 
@@ -113,7 +113,7 @@ class InvitationMiningContractService {
           levelMultiplier: speedInfo.levelMultiplier,
           dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
           countryMultiplier: speedInfo.countryMultiplier,
-          finalSpeed: speedInfo.finalSpeedWithCountry
+          finalSpeed: speedInfo.finalSpeedWithoutBonus // 不包含签到加成
         },
         invitationStats: {
           totalInvitations,

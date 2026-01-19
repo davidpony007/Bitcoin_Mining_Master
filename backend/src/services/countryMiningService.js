@@ -322,6 +322,70 @@ class CountryMiningService {
       throw error;
     }
   }
+
+  /**
+   * 获取指定国家的详细配置
+   * 
+   * @param {string} countryCode - 国家代码
+   * @returns {Promise<Object>} 国家详细信息
+   */
+  static async getCountryDetail(countryCode) {
+    try {
+      const code = countryCode.toUpperCase();
+
+      const config = await CountryMiningConfig.findOne({
+        where: {
+          country_code: code,
+          is_active: true
+        }
+      });
+
+      if (!config) {
+        return {
+          countryCode: code,
+          countryName: 'Unknown',
+          countryNameCn: '未知',
+          miningSpeedMultiplier: 1.00
+        };
+      }
+
+      return {
+        countryCode: config.country_code,
+        countryName: config.country_name,
+        countryNameCn: config.country_name_cn,
+        miningSpeedMultiplier: parseFloat(config.mining_multiplier)
+      };
+
+    } catch (error) {
+      console.error('❌ 获取国家详情失败:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * 清除所有国家配置缓存
+   * 
+   * @returns {Promise<Object>} 操作结果
+   */
+  static async clearAllCache() {
+    try {
+      const configs = await CountryMiningConfig.findAll({
+        attributes: ['country_code']
+      });
+
+      for (const config of configs) {
+        const cacheKey = `country:mining:${config.country_code}`;
+        await redisClient.del(cacheKey);
+      }
+
+      console.log('✓ 国家配置缓存已清除');
+      return { success: true, message: '缓存已清除' };
+
+    } catch (error) {
+      console.error('❌ 清除缓存失败:', error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = CountryMiningService;

@@ -56,6 +56,7 @@ class ContractRewardService {
         adFreeContracts: 0,
         dailySignInContracts: 0,
         invitationContracts: 0,
+        bindReferrerContracts: 0,
         paidContracts: 0
       };
 
@@ -96,7 +97,18 @@ class ContractRewardService {
       details.invitationContracts = invitationRevenue;
       totalRevenue += invitationRevenue;
 
-      // 5. 计算付费合约收益（不使用国家系数）
+      // 5. 计算绑定推荐人合约收益
+      const bindReferrerRevenue = await this.calculateFreeContractRevenue(
+        userId, 
+        'bind referrer free contract', 
+        startTime, 
+        endTime,
+        speedPerSecond
+      );
+      details.bindReferrerContracts = bindReferrerRevenue;
+      totalRevenue += bindReferrerRevenue;
+
+      // 6. 计算付费合约收益（不使用国家系数）
       const paidRevenue = await this.calculatePaidContractRevenue(
         userId, 
         startTime, 

@@ -231,7 +231,19 @@ class ApiService {
   Future<Map<String, dynamic>> checkActiveContracts(String userId) async {
     try {
       final response = await _dio.get(
-        '/api/contract-status/has-active/$userId',
+        '/contract-status/has-active/$userId',
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  /// 获取用户的合约详情（My Contract页面）
+  Future<Map<String, dynamic>> getMyContracts(String userId) async {
+    try {
+      final response = await _dio.get(
+        '/contract-status/my-contracts/$userId',
       );
       return response.data;
     } on DioException catch (e) {
