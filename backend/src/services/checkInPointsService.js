@@ -3,7 +3,7 @@
  * 负责每日签到、连续签到奖励、里程碑奖励等功能
  */
 
-const db = require('../config/database');
+const db = require('../config/database_native'); // 使用原生MySQL连接池
 const redisClient = require('../config/redis');
 const PointsService = require('./pointsService');
 

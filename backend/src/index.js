@@ -38,6 +38,9 @@ const contractStatusRoutes = require('./routes/contractStatusRoutes'); // 合约
 const balanceRoutes = require('./routes/balanceRoutes'); // 余额相关接口路由（实时余额、挖矿速率）
 const miningPoolRoutes = require('./routes/miningPoolRoutes'); // Mining Pool路由（电池增加挖矿时间）
 const dailyCheckInRoutes = require('./routes/dailyCheckInRoutes'); // 每日签到路由
+const bitcoinRoutes = require('./routes/bitcoinRoutes'); // 比特币价格路由
+const withdrawalRoutes = require('./routes/withdrawalRoutes'); // 提现相关路由
+const bitcoinTransactionRoutes = require('./routes/bitcoinTransactionRoutes'); // 比特币交易记录路由
 
 // 数据库相关配置，使用 Sequelize ORM 连接 MySQL 数据库
 const sequelize = require('./config/database');
@@ -91,6 +94,7 @@ app.use(helmet()); // 增强 HTTP 头安全，防止常见 Web 攻击
 
 // 注册 API 路由，将不同业务模块分离
 app.use('/api/users', userRoutes); // 用户相关接口
+app.use('/api/user', userRoutes); // 用户相关接口（单数形式）
 app.use('/api/userInformation', userInformationRoutes); // 用户信息表接口
 // app.use('/api/userStatus', userStatusRoutes); // 用户状态接口 - 暂时禁用
 app.use('/api/mining', miningRoutes); // 挖矿相关接口
@@ -100,7 +104,7 @@ app.use('/api/admin', adminRoutes); // 管理员相关接口
 
 // 游戏机制路由（新增）
 app.use('/api/level', levelRoutes); // 等级系统接口
-// app.use('/api/checkin', checkInRoutes); // 签到系统接口 - 暂时禁用,表结构不匹配
+app.use('/api/checkin', checkInRoutes); // 签到系统接口 - 已启用（表结构验证通过）
 app.use('/api/check-in', dailyCheckInRoutes); // 每日签到挖矿合约接口
 app.use('/api/ad', adRoutes); // 广告系统接口
 app.use('/api/invitation', invitationRoutes); // 邀请系统接口
@@ -114,6 +118,9 @@ app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口
 app.use('/api/contract-status', contractStatusRoutes); // 合约状态检查接口
 app.use('/api/balance', balanceRoutes); // 余额相关接口（实时余额查询、挖矿速率查询、缓存清理）
 app.use('/api/mining-pool', miningPoolRoutes); // Mining Pool接口（使用电池增加挖矿时间）
+app.use('/api/bitcoin', bitcoinRoutes); // 比特币价格接口
+app.use('/api/withdrawal', withdrawalRoutes); // 提现相关接口（申请提现、查询历史、管理员审核）
+app.use('/api/bitcoin-transactions', bitcoinTransactionRoutes); // 比特币交易记录接口
 
 // 健康检查接口，检测数据库连接状态，便于监控和自动化运维
 app.get('/api/health', async (req, res) => {
@@ -142,6 +149,7 @@ app.use(errorHandler);
 const LevelService = require('./services/levelService');
 const CheckInService = require('./services/checkInService');
 const CountryMiningService = require('./services/countryMiningService');
+const bitcoinPriceService = require('./services/bitcoinPriceService'); // 比特币价格服务
 const redisClient = require('./config/redis');
 const { startAllScheduledTasks } = require('./jobs/scheduledTasks');
 const BalanceSyncTask = require('./jobs/balanceSyncTask');
@@ -160,13 +168,16 @@ async function initGameMechanics() {
     await LevelService.initLevelConfig();
     logger.info('✓ 等级配置加载成功');
     
-    // 初始化签到奖励配置 - 暂时禁用,表结构不匹配
-    // await CheckInService.initRewardConfig();
-    // logger.info('✓ 签到奖励配置加载成功');
+    // 不需要初始化旧的CheckInService配置（使用新的CheckInPointsService，无需预加载配置）
+    // CheckInService.initRewardConfig() 已废弃
     
     // 初始化国家挖矿配置
     const configs = await CountryMiningService.getAllConfigs({ activeOnly: true });
     logger.info(`✓ 国家挖矿配置加载成功，共 ${configs.length} 个国家`);
+    
+    // 启动比特币价格自动更新（每小时更新一次）
+    bitcoinPriceService.startAutoUpdate();
+    logger.info('✓ 比特币价格自动更新已启动');
     
     logger.info('游戏机制初始化完成！');
   } catch (error) {
@@ -176,22 +187,42 @@ async function initGameMechanics() {
 }
 
 // 启动服务前同步数据库结构，确保所有表已创建
-sequelize.sync().then(async () => {
-  logger.info('数据库已同步');
+// sequelize.sync().then(async () => {
+//   logger.info('数据库已同步');
   
-  // 初始化游戏机制
-  await initGameMechanics();
+//   // 初始化游戏机制
+//   await initGameMechanics();
   
-  // 启动 HTTP 服务，监听指定端口
-  app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Server is running on 0.0.0.0:${PORT}`);
+//   // 启动 HTTP 服务，监听指定端口
+//   app.listen(PORT, '0.0.0.0', () => {
+//     logger.info(`Server is running on 0.0.0.0:${PORT}`);
     
-    // 启动游戏机制定时任务
-    startAllScheduledTasks();
+//     // 启动游戏机制定时任务
+//     startAllScheduledTasks();
     
-    // 启动余额同步和返利定时任务 - 暂时禁用以避免数据库连接池耗尽
-    // BalanceSyncTask.start();
-    // logger.info('✓ 余额同步任务已启动（每2小时执行一次）');
+//     // 启动余额同步和返利定时任务 - 暂时禁用以避免数据库连接池耗尽
+//     // BalanceSyncTask.start();
+//     // logger.info('✓ 余额同步任务已启动（每2小时执行一次）');
+
+// ⚠️ 临时禁用Sequelize sync，直接启动服务（已改用原生MySQL连接池）
+(async () => {
+  try {
+    logger.info('使用原生MySQL连接池，跳过Sequelize sync');
+    
+    // 初始化游戏机制
+    await initGameMechanics();
+    
+    // 启动 HTTP 服务，监听指定端口
+    app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`Server is running on 0.0.0.0:${PORT}`);
+      
+      // 启动游戏机制定时任务
+      startAllScheduledTasks();
+      
+      // 启动余额同步和返利定时任务 - 暂时禁用以避免数据库连接池耗尽
+      // BalanceSyncTask.start();
+      // logger.info('✓ 余额同步任务已启动（每2小时执行一次）');
+    
     
     // ReferralRebateTask.start();
     // logger.info('✓ 推荐返利任务已启动（每2小时执行一次）');
@@ -202,11 +233,13 @@ sequelize.sync().then(async () => {
     // 启动用户状态调度
     // startUserStatusScheduler(); // 暂时禁用
     logger.info('旧调度器已暂时禁用,等待数据库连接稳定后启用');
-  });
-}).catch(err => {
-  // 数据库连接失败时输出错误
-  logger.error('数据库连接失败:', err);
-});
+    });
+  } catch (err) {
+    // 数据库连接失败时输出错误
+    logger.error('服务启动失败:', err);
+    process.exit(1);
+  }
+})();
 
 // 安全防护说明：
 // SQL注入防护：

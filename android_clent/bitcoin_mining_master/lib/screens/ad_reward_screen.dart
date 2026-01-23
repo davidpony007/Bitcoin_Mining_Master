@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../services/user_repository.dart';
 import '../services/storage_service.dart';
+import '../services/admob_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -19,12 +20,14 @@ class AdRewardScreen extends StatefulWidget {
 
 class _AdRewardScreenState extends State<AdRewardScreen> {
   bool _isWatchingAd = false;
-  int _countdown = 3; // 3秒广告倒计时
   final UserRepository _userRepository = UserRepository();
   final StorageService _storageService = StorageService();
+  final AdMobService _adMobService = AdMobService();
   bool _isProcessing = false;
   String? _lastErrorMessage;
   bool _hasCheckedInToday = false; // 今日是否已签到
+  bool _isAdReady = false; // 广告是否准备好
+  bool _isLoadingAd = true; // 是否正在加载广告
 
   @override
   void initState() {
@@ -32,6 +35,45 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     if (widget.isDailyCheckIn) {
       _checkIfAlreadyCheckedIn();
     }
+    // 预加载广告
+    _loadAd();
+  }
+  
+  @override
+  void dispose() {
+    // 清理广告资源
+    super.dispose();
+  }
+  
+  /// 加载AdMob广告
+  Future<void> _loadAd() async {
+    setState(() {
+      _isLoadingAd = true;
+      _isAdReady = false;
+    });
+
+    _adMobService.onAdLoaded = () {
+      if (mounted) {
+        setState(() {
+          _isAdReady = true;
+          _isLoadingAd = false;
+        });
+        print('✅ 广告加载完成，可以播放');
+      }
+    };
+
+    _adMobService.onAdFailedToLoad = (String error) {
+      if (mounted) {
+        setState(() {
+          _isLoadingAd = false;
+          _isAdReady = false;
+          _lastErrorMessage = '广告加载失败: $error';
+        });
+        print('❌ 广告加载失败: $error');
+      }
+    };
+
+    await _adMobService.loadRewardedAd();
   }
   
   // 检查今日是否已经签到
@@ -231,28 +273,145 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     }
   }
 
-  void _startWatchingAd() {
+  void _startWatchingAd() async {
+    if (!_isAdReady) {
+      _showMessage('广告尚未加载完成，请稍候...');
+      return;
+    }
+
     setState(() {
       _isWatchingAd = true;
+      _isProcessing = true;
     });
 
-    // 模拟广告播放倒计时
-    Future.doWhile(() async {
-      if (_countdown > 0 && _isWatchingAd) {
-        await Future.delayed(const Duration(seconds: 1));
-        if (mounted && _isWatchingAd) {
-          setState(() {
-            _countdown--;
-          });
-        }
-        return true;
+    try {
+      // 展示真实的AdMob激励视频广告
+      print('📺 开始播放AdMob激励视频广告...');
+      final earnedReward = await _adMobService.showRewardedAd();
+
+      if (!mounted) return;
+
+      if (earnedReward) {
+        // 用户看完广告，给予奖励
+        print('✅ 用户看完广告，开始发放奖励...');
+        await _completeAdReward();
       } else {
-        if (mounted && _isWatchingAd) {
-          _showRewardDialog();
+        // 用户未看完广告
+        print('⚠️ 用户未看完广告');
+        setState(() {
+          _isWatchingAd = false;
+          _isProcessing = false;
+          _lastErrorMessage = '您未完整观看广告，无法获得奖励';
+        });
+      }
+    } catch (e) {
+      print('❌ 播放广告异常: $e');
+      if (mounted) {
+        setState(() {
+          _isWatchingAd = false;
+          _isProcessing = false;
+          _lastErrorMessage = '播放广告时出现错误: $e';
+        });
+      }
+    }
+  }
+
+  /// 完成广告观看后的奖励发放
+  Future<void> _completeAdReward() async {
+    setState(() {
+      _isProcessing = true;
+    });
+
+    bool success;
+    if (widget.isDailyCheckIn) {
+      // 每日签到流程
+      success = await _performCheckIn();
+    } else {
+      // 广告奖励流程
+      success = await _extendContract();
+    }
+
+    if (!mounted) return;
+
+    if (success) {
+      // 奖励发放成功
+      setState(() {
+        _isProcessing = false;
+        _isWatchingAd = false;
+      });
+      
+      // 延迟后返回并刷新
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) {
+        Navigator.pop(context, true); // 返回true表示成功
+      }
+    } else {
+      // 奖励发放失败
+      setState(() {
+        _isProcessing = false;
+        _isWatchingAd = false;
+      });
+      _showMessage(_lastErrorMessage ?? '操作失败，请重试');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+  
+  // 原有的_performCheckIn和_extendContract方法保持不变...
+          // 📌 先验证用户登录状态再显示奖励对话框
+          await _checkLoginAndShowReward();
         }
         return false;
       }
     });
+  }
+
+  // 📌 验证用户登录状态并显示奖励对话框
+  Future<void> _checkLoginAndShowReward() async {
+    try {
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        // 用户未登录，显示错误提示并返回
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ 用户未登录，请返回重试'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          // 延迟1秒后自动返回
+          await Future.delayed(const Duration(seconds: 1));
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        }
+        return;
+      }
+      // 用户已登录，显示奖励对话框
+      _showRewardDialog();
+    } catch (e) {
+      print('❌ 检查登录状态异常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ 网络错误，请稍后重试'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    }
   }
 
   void _showRewardDialog() {
@@ -445,13 +604,53 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                   ],
                 ),
               ),
+              
+              // Points 奖励行
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.stars,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      'Points',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      widget.isDailyCheckIn ? '+ 4' : '+ 1',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 16),
               
               // Continue 按钮
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isProcessing ? null : () async {
+                  onPressed: (_isProcessing || !_isAdReady) ? null : () {
                     // 如果是签到且今日已签到，直接显示提示
                     if (widget.isDailyCheckIn && _hasCheckedInToday) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -464,56 +663,11 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                       return;
                     }
                     
-                    setState(() {
-                      _isProcessing = true;
-                    });
-                    
-                    // 📌 根据类型调用不同的API
-                    bool success = widget.isDailyCheckIn 
-                        ? await _performCheckIn()  // 签到API
-                        : await _extendContract(); // 延长合约API
-                    
-                    if (mounted) {
-                      setState(() {
-                        _isProcessing = false;
-                      });
-                      
-                      if (success) {
-                        // 先关闭对话框
-                        Navigator.pop(context); // 关闭对话框
-                        
-                        // 立即显示成功提示（在主界面显示，不被对话框遮挡）
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(widget.isDailyCheckIn 
-                                ? '✅ 签到成功，已激活Daily Check-in合约！' 
-                                : '✅ 奖励已领取，合约已延长！'),
-                            backgroundColor: Colors.green,
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                        
-                        if (widget.isDailyCheckIn) {
-                          // 📌 签到成功后：通知HomeScreen切换到Contracts标签
-                          Navigator.pop(context, {'action': 'switchToContracts'}); // 返回并传递切换指令
-                        } else {
-                          // 广告奖励成功后返回Mining页面
-                          Navigator.pop(context, true); // 返回成功标志
-                        }
-                      } else {
-                        // 失败提示
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('⚠️ ${_lastErrorMessage ?? '网络连接失败，请检查网络设置或稍后重试'}'),
-                            backgroundColor: Colors.red,
-                            duration: Duration(seconds: 4),
-                          ),
-                        );
-                      }
-                    }
+                    // 播放广告
+                    _startWatchingAd();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: _isAdReady ? AppColors.primary : Colors.grey,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -567,6 +721,91 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (!_isWatchingAd) ...[
+                // 广告加载状态提示
+                if (_isLoadingAd)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardDark.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '广告加载中...',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_isAdReady)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 16,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '广告已准备好',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 16,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '广告加载失败，请重试',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Container(
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
@@ -582,7 +821,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                       ),
                       const SizedBox(height: 24),
                       Text(
-                        '观看3秒广告',
+                        '观看激励广告',
                         style: TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 20,

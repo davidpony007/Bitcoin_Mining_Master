@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../models/points_model.dart';
 import '../services/points_api_service.dart';
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 
 /// 积分中心页面
 class PointsScreen extends StatefulWidget {
@@ -11,13 +13,19 @@ class PointsScreen extends StatefulWidget {
   State<PointsScreen> createState() => _PointsScreenState();
 }
 
-class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderStateMixin {
+class _PointsScreenState extends State<PointsScreen> {
   final PointsApiService _apiService = PointsApiService();
-  late TabController _tabController;
+  final ApiService _levelApiService = ApiService();
+  final StorageService _storageService = StorageService();
   
   PointsBalance? _balance;
   List<PointsTransaction> _transactions = [];
   PointsStatistics? _statistics;
+  
+  // 等级相关
+  int _userLevel = 1;
+  String _levelName = 'LV.1';
+  int _maxPoints = 20;
   
   bool _isLoading = true;
   String? _error;
@@ -27,13 +35,11 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadData();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     super.dispose();
   }
 
@@ -44,21 +50,235 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
     });
 
     try {
-      final balance = await _apiService.getPointsBalance();
-      final transactions = await _apiService.getPointsTransactions(page: _currentPage);
-      final statistics = await _apiService.getPointsStatistics();
+      // 并行加载数据以提高速度
+      final results = await Future.wait([
+        _apiService.getPointsBalance(),
+        _apiService.getPointsTransactions(page: _currentPage),
+      ]);
+      
       setState(() {
-        _balance = balance;
-        _transactions = transactions;
-        _statistics = statistics;
+        _balance = results[0] as PointsBalance;
+        _transactions = results[1] as List<PointsTransaction>;
         _isLoading = false;
       });
+      
+      // 加载用户等级
+      await _loadUserLevel();
     } catch (e) {
+      print('❌ Points数据加载失败: $e');
       setState(() {
-        _error = e.toString();
+        _error = _formatError(e.toString());
         _isLoading = false;
       });
     }
+  }
+  
+  Future<void> _loadUserLevel() async {
+    try {
+      final userId = _storageService.getUserId();
+      if (userId != null && userId.isNotEmpty) {
+        final response = await _levelApiService.getUserLevel(userId);
+        if (response['success'] == true && response['data'] != null) {
+          final data = response['data'];
+          setState(() {
+            _userLevel = data['level'] ?? 1;
+            _levelName = data['levelName'] ?? 'LV.1';
+            _maxPoints = data['maxPoints'] ?? 20;
+          });
+        }
+      }
+    } catch (e) {
+      print('⚠️ 加载等级失败: $e');
+      // 使用本地缓存
+      setState(() {
+        _userLevel = _storageService.getUserLevel();
+        _levelName = 'LV.$_userLevel';
+      });
+    }
+  }
+
+  String _formatError(String error) {
+    if (error.contains('SocketException') || error.contains('Network error')) {
+      return 'Network connection failed\nPlease check your internet connection';
+    } else if (error.contains('TimeoutException')) {
+      return 'Request timeout\nPlease try again later';
+    } else if (error.contains('User ID not found')) {
+      return 'Please login first';
+    }
+    return 'Failed to load data\n${error.split(':').last}';
+  }
+
+  void _showPointsGuide() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Column(
+          children: [
+            Icon(
+              Icons.lightbulb_outline,
+              color: AppColors.primary,
+              size: 36,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Points Guide',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildGuideSection(
+                'Free Ad Reward',
+                Icons.play_circle_outline,
+                [
+                  _buildGuideItem('Watch one ad', '+1 point, daily cap 20 points, resets at UTC+00:00'),
+                ],
+              ),
+              const Divider(height: 32, thickness: 1),
+              _buildGuideSection(
+                'Referral Rewards',
+                Icons.people_outline,
+                [
+                  _buildGuideItem('Invite 1 friend\n(must complete 5 ad views)', '+6 points, unlimited'),
+                  _buildGuideItem('Invite 10 friends\n(each must complete 5 ad views)', 'Extra +30 points, unlimited'),
+                  _buildGuideItem('Each referred friend completes\n10 ad views', 'You get +1 point, unlimited'),
+                ],
+              ),
+              const Divider(height: 32, thickness: 1),
+              _buildGuideSection(
+                'Daily Check-in Reward',
+                Icons.calendar_today,
+                [
+                  _buildGuideItem('Complete daily check-in', '+4 points, daily'),
+                  _buildGuideItem('Check in for 3 days\n(cumulative)', 'Extra +6 points, one-time'),
+                  _buildGuideItem('Check in for 7 days\n(cumulative)', 'Extra +15 points, one-time'),
+                  _buildGuideItem('Check in for 15 days\n(cumulative)', 'Extra +30 points, one-time'),
+                  _buildGuideItem('Check in for 30 days\n(cumulative)', 'Extra +60 points, one-time'),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+        actions: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Got it!',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+        actionsPadding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildGuideSection(String title, IconData icon, List<Widget> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, color: AppColors.primary, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 17,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...items,
+      ],
+    );
+  }
+
+  Widget _buildGuideItem(String action, String reward) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 4),
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  action,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    reward,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.primary.withOpacity(0.9),
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadTransactions() async {
@@ -84,34 +304,13 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
       appBar: AppBar(
         title: const Text('Points Center'),
         backgroundColor: AppColors.cardDark,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppColors.primary,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textSecondary,
-          tabs: const [
-            Tab(text: 'Details'),
-            Tab(text: 'Statistics'),
-          ],
-        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _buildErrorWidget()
-              : Column(
-                  children: [
-                    _buildBalanceHeader(),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabController,
-                        children: [
-                          _buildTransactionsTab(),
-                          _buildStatisticsTab(),
-                        ],
-                      ),
-                    ),
-                  ],
+              : SingleChildScrollView(
+                  child: _buildBalanceHeader(),
                 ),
     );
   }
@@ -119,69 +318,134 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
   Widget _buildBalanceHeader() {
     final totalPoints = _balance?.totalPoints ?? 0;
     final availablePoints = _balance?.availablePoints ?? totalPoints;
+    final frozenPoints = totalPoints - availablePoints;
+    
     return Container(
       margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             AppColors.primary,
-            AppColors.secondary,
+            AppColors.primary.withOpacity(0.7),
           ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: AppColors.primary.withOpacity(0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         children: [
-          const Text(
-            'Current Points',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$totalPoints',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 36,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Current Level Points',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.help_outline,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                onPressed: _showPointsGuide,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'Available: $availablePoints',
+                '$totalPoints',
                 style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
+                  color: Colors.white,
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'PTS',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Updated: ${_formatDateTime(_balance?.lastUpdated)}',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
+          const SizedBox(height: 16),
+          Divider(color: Colors.white.withOpacity(0.2), height: 1),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildPointsStat('Level', _levelName, Icons.military_tech),
+              Container(
+                width: 1,
+                height: 30,
+                color: Colors.white.withOpacity(0.2),
+              ),
+              _buildPointsStat('Next Level', '$_maxPoints PTS', Icons.arrow_upward),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildPointsStat(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white70, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatTime(DateTime? date) {
+    if (date == null) return '--:--';
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
   }
 
   Widget _buildTransactionsTab() {
@@ -215,13 +479,38 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
           ),
           Expanded(
             child: _transactions.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No Transaction Records',
-                      style: TextStyle(color: AppColors.textSecondary),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.receipt_long_outlined,
+                          size: 80,
+                          color: AppColors.textSecondary.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No Transaction Records',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Start earning points by:\n• Watching ads\n• Daily check-ins\n• Inviting friends',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   )
                 : ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 16),
                     itemCount: _transactions.length,
                     itemBuilder: (context, index) {
                       final transaction = _transactions[index];
@@ -484,26 +773,111 @@ class _PointsScreenState extends State<PointsScreen> with SingleTickerProviderSt
   }
 
   Widget _buildErrorWidget() {
+    final isNetworkError = _error?.contains('Network') ?? false;
+    final isLoginError = _error?.contains('login') ?? false;
+    
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.error_outline, size: 64, color: AppColors.error),
-          const SizedBox(height: 16),
-          Text(
-            _error ?? 'Failed to Load',
-            style: const TextStyle(color: AppColors.textSecondary),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _loadData,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // 错误图标
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.error.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isNetworkError 
+                    ? Icons.wifi_off 
+                    : isLoginError
+                        ? Icons.person_off
+                        : Icons.error_outline,
+                size: 64,
+                color: AppColors.error,
+              ),
             ),
-            child: const Text('Retry'),
-          ),
-        ],
+            const SizedBox(height: 24),
+            // 错误标题
+            Text(
+              isNetworkError 
+                  ? 'Connection Failed' 
+                  : isLoginError
+                      ? 'Login Required'
+                      : 'Something Went Wrong',
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // 错误详情
+            Text(
+              _error ?? 'Unknown error occurred',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            // 重试按钮
+            ElevatedButton.icon(
+              onPressed: _loadData,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.refresh),
+              label: const Text(
+                'Retry',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            if (isNetworkError) ...[
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  // 显示网络故障排除提示
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      backgroundColor: AppColors.cardDark,
+                      title: const Text(
+                        'Network Troubleshooting',
+                        style: TextStyle(color: AppColors.textPrimary),
+                      ),
+                      content: const Text(
+                        '1. Check your WiFi or mobile data\n'
+                        '2. Ensure backend server is running\n'
+                        '3. Verify the API URL is correct\n'
+                        '4. Try restarting the app',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: const Text(
+                  'Troubleshooting Tips',
+                  style: TextStyle(color: AppColors.primary),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

@@ -551,6 +551,66 @@ class RedisClient {
       return false;
     }
   }
+
+  /**
+   * 缓存用户积分信息
+   */
+  async cacheUserPoints(userId, totalPoints, availablePoints) {
+    if (!this.isReady()) return false;
+    
+    try {
+      const key = `user:points:${userId}`;
+      const data = {
+        total: totalPoints.toString(),
+        available: availablePoints.toString()
+      };
+      
+      await this.client.hmset(key, data);
+      await this.client.expire(key, 300); // 5分钟过期
+      return true;
+    } catch (error) {
+      console.error(`缓存用户积分失败 [user ${userId}]:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 获取用户积分缓存
+   */
+  async getUserPoints(userId) {
+    if (!this.isReady()) return null;
+    
+    try {
+      const key = `user:points:${userId}`;
+      const data = await this.client.hgetall(key);
+      
+      if (!data || Object.keys(data).length === 0) return null;
+      
+      return {
+        total: parseInt(data.total) || 0,
+        available: parseInt(data.available) || 0
+      };
+    } catch (error) {
+      console.error(`获取用户积分缓存失败 [user ${userId}]:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 删除用户积分缓存（积分变更时清除）
+   */
+  async deleteUserPoints(userId) {
+    if (!this.isReady()) return false;
+    
+    try {
+      const key = `user:points:${userId}`;
+      await this.client.del(key);
+      return true;
+    } catch (error) {
+      console.error(`删除用户积分缓存失败 [user ${userId}]:`, error.message);
+      return false;
+    }
+  }
 }
 
 const redisClient = new RedisClient();

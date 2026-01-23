@@ -4,14 +4,14 @@ library;
 /// 签到状态
 class CheckInStatus {
   final bool checkedInToday;
-  final int consecutiveDays;
+  final int totalDays;
   final DateTime? lastCheckInDate;
   final String? nextMilestone;
   final int? daysUntilMilestone;
 
   CheckInStatus({
     required this.checkedInToday,
-    required this.consecutiveDays,
+    required this.totalDays,
     this.lastCheckInDate,
     this.nextMilestone,
     this.daysUntilMilestone,
@@ -20,7 +20,7 @@ class CheckInStatus {
   factory CheckInStatus.fromJson(Map<String, dynamic> json) {
     return CheckInStatus(
       checkedInToday: json['checked_in_today'] ?? false,
-      consecutiveDays: json['consecutive_days'] ?? 0,
+      totalDays: json['total_days'] ?? json['consecutive_days'] ?? 0,
       lastCheckInDate: json['last_check_in_date'] != null
           ? DateTime.parse(json['last_check_in_date'])
           : null,
@@ -35,7 +35,7 @@ class CheckInRecord {
   final int id;
   final String userId;
   final DateTime checkInDate;
-  final int consecutiveDays;
+  final int totalDays;
   final int pointsAwarded;
   final DateTime createdAt;
 
@@ -43,7 +43,7 @@ class CheckInRecord {
     required this.id,
     required this.userId,
     required this.checkInDate,
-    required this.consecutiveDays,
+    required this.totalDays,
     required this.pointsAwarded,
     required this.createdAt,
   });
@@ -53,7 +53,7 @@ class CheckInRecord {
       id: json['id'],
       userId: json['user_id'],
       checkInDate: DateTime.parse(json['check_in_date']),
-      consecutiveDays: json['consecutive_days'],
+      totalDays: json['total_days'] ?? json['consecutive_days'] ?? 0,
       pointsAwarded: json['points_awarded'],
       createdAt: DateTime.parse(json['created_at']),
     );
@@ -88,7 +88,7 @@ class CheckInMilestone {
 class CheckInResult {
   final bool success;
   final String message;
-  final int consecutiveDays;
+  final int totalDays;
   final int pointsAwarded;
   final bool milestoneReached;
   final int? milestoneBonus;
@@ -96,7 +96,7 @@ class CheckInResult {
   CheckInResult({
     required this.success,
     required this.message,
-    required this.consecutiveDays,
+    required this.totalDays,
     required this.pointsAwarded,
     required this.milestoneReached,
     this.milestoneBonus,
@@ -106,7 +106,7 @@ class CheckInResult {
     return CheckInResult(
       success: json['success'] ?? false,
       message: json['message'] ?? '',
-      consecutiveDays: json['consecutive_days'] ?? 0,
+      totalDays: json['total_days'] ?? json['consecutive_days'] ?? 0,
       pointsAwarded: json['points_awarded'] ?? 0,
       milestoneReached: json['milestone_reached'] ?? false,
       milestoneBonus: json['milestone_bonus'],

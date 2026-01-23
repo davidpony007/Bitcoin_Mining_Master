@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/user_repository.dart';
-import 'google_sign_in_screen.dart';
 
 /// 设置页面 - Settings Screen
 class SettingsScreen extends StatefulWidget {
@@ -21,6 +21,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _storageService = StorageService();
   final _userRepository = UserRepository();
   bool _isLoading = false;
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+  );
   
   // UTC时间显示
   String _utcTime = '';
@@ -548,19 +551,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _handleGoogleSignIn() async {
-    // 导航到Google绑定页面
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const GoogleSignInScreen(),
-      ),
-    );
-
-    // 如果绑定成功，更新状态
-    if (result == true && mounted) {
-      setState(() {
-        _isGoogleSignedIn = true;
-      });
+    try {
+      // 先尝试静默登录
+      GoogleSignInAccount? account = await _googleSignIn.signInSilently();
+      
+      // 如果静默登录失败，弹出登录界面
+      account ??= await _googleSignIn.signIn();
+      
+      if (account != null) {
+        // 获取认证信息
+        final GoogleSignInAuthentication auth = await account.authentication;
+        
+        print('✅ Google登录成功！');
+        print('用户ID: ${account.id}');
+        print('用户名: ${account.displayName}');
+        print('邮箱: ${account.email}');
+        
+        if (mounted) {
+          setState(() {
+            _isGoogleSignedIn = true;
+          });
+          
+          // 显示成功消息
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Welcome, ${account.displayName ?? account.email}!'),
+              backgroundColor: const Color(0xFF4CAF50),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (error) {
+      print('❌ Google登录失败: $error');
+      
+      if (mounted) {
+        String errorMessage = 'Failed to sign in';
+        if (error.toString().contains('DEVELOPER_ERROR') || 
+            error.toString().contains('10')) {
+          errorMessage = 'OAuth配置错误，请检查Google Cloud Console设置';
+        } else if (error.toString().contains('network')) {
+          errorMessage = '网络错误，请检查网络连接';
+        } else if (error.toString().contains('sign_in_canceled')) {
+          errorMessage = '登录已取消';
+        }
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -587,16 +630,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
+                await _googleSignIn.signOut();
                 Navigator.of(context).pop();
                 setState(() {
                   _isGoogleSignedIn = false;
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Google account disconnected'),
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Google account disconnected'),
+                    ),
+                  );
+                }
               },
               child: Text(
                 'Sign Out',

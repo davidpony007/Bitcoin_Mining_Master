@@ -11,12 +11,12 @@ const WithdrawalRecord = sequelize.define('withdrawal_records', {
     comment: '提现记录主键ID'
   },
   user_id: { 
-    type: DataTypes.STRING(15), 
+    type: DataTypes.STRING(30), 
     allowNull: false,
     comment: '用户唯一标识符'
   },
   email: { 
-    type: DataTypes.STRING(30), 
+    type: DataTypes.STRING(60), 
     allowNull: false,
     comment: '用户邮箱地址'
   },
@@ -26,17 +26,17 @@ const WithdrawalRecord = sequelize.define('withdrawal_records', {
     comment: '提现钱包地址'
   },
   withdrawal_request_amount: { 
-    type: DataTypes.DECIMAL(18, 18), 
+    type: DataTypes.DECIMAL(20, 8), 
     allowNull: false,
     comment: '用户申请提现金额(扣除手续费前)'
   },
   network_fee: { 
-    type: DataTypes.DECIMAL(18, 18), 
+    type: DataTypes.DECIMAL(20, 8), 
     allowNull: false,
     comment: '网络手续费'
   },
   received_amount: { 
-    type: DataTypes.DECIMAL(18, 18), 
+    type: DataTypes.DECIMAL(20, 8), 
     allowNull: false,
     comment: '实际到账金额(扣除手续费后)'
   },

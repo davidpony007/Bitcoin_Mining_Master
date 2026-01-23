@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const { Op } = require('sequelize');
+const PointsService = require('../services/pointsService'); // 📌 导入积分服务
 
 /**
  * POST /api/mining-pool/use-battery
@@ -213,10 +214,14 @@ router.post('/extend-contract', async (req, res) => {
       let contractId;
       let newEndTime;
       let isNewContract = false;
+      
+      // 📌 检查是否已达到48小时上限（48个电池槽）
+      const MAX_HOURS = 48;
+      const MAX_SECONDS = MAX_HOURS * 3600;
 
       if (contracts.length === 0) {
-        // 没有活跃合约，创建新的2小时合约（如果指定了额外小时，则为2+hours小时）
-        const totalHours = 2 + hours;
+        // 没有活跃合约，创建新的2小时合约
+        const totalHours = Math.min(2 + hours, MAX_HOURS);
         
         const [result] = await connection.query(
           `INSERT INTO free_contract_records 
@@ -236,14 +241,50 @@ router.post('/extend-contract', async (req, res) => {
         );
         newEndTime = new Date(newContract[0].free_contract_end_time);
       } else {
-        // 已有活跃合约，延长时间
+        // 已有活跃合约，检查剩余时间
         contractId = contracts[0].id;
+        const currentEndTime = new Date(contracts[0].free_contract_end_time);
+        const now = new Date();
+        const remainingSeconds = Math.floor((currentEndTime - now) / 1000);
+        
+        // 📌 检查是否已达到48小时上限
+        if (remainingSeconds >= MAX_SECONDS) {
+          await connection.rollback();
+          connection.release();
+          return res.status(400).json({
+            success: false,
+            message: 'The mining pool is full. Maximum 48 hours allowed.',
+            data: {
+              currentHours: Math.floor(remainingSeconds / 3600),
+              maxHours: MAX_HOURS,
+              remainingSeconds: remainingSeconds
+            }
+          });
+        }
+        
+        // 计算可以增加的小时数（不超过48小时上限）
+        const maxAdditionalSeconds = MAX_SECONDS - remainingSeconds;
+        const maxAdditionalHours = Math.floor(maxAdditionalSeconds / 3600);
+        const actualHours = Math.min(hours, maxAdditionalHours);
+        
+        if (actualHours <= 0) {
+          await connection.rollback();
+          connection.release();
+          return res.status(400).json({
+            success: false,
+            message: 'The mining pool is full. Maximum 48 hours allowed.',
+            data: {
+              currentHours: Math.floor(remainingSeconds / 3600),
+              maxHours: MAX_HOURS
+            }
+          });
+        }
 
         await connection.query(
           `UPDATE free_contract_records 
            SET free_contract_end_time = DATE_ADD(free_contract_end_time, INTERVAL ? HOUR)
            WHERE id = ?`,
-          [hours, contractId]
+          [actualHours, contractId]
         );
         
         // 查询更新后的结束时间
@@ -256,6 +297,21 @@ router.post('/extend-contract', async (req, res) => {
 
       await connection.commit();
       connection.release();
+
+      // 📌 增加积分：观看广告获得1积分
+      try {
+        await PointsService.addPoints(
+          user_id,
+          1, // 每次观看广告获得1积分
+          'AD_VIEW', // 积分类型（必须匹配ENUM值）
+          `Watched ad and ${isNewContract ? 'created' : 'extended'} Free Ad Reward contract`
+        );
+        console.log(`✅ 用户 ${user_id} 观看广告获得1积分`);
+      } catch (pointsError) {
+        console.error('❌ 增加积分失败:', pointsError);
+        console.error('错误详情:', pointsError.message, pointsError.stack);
+        // 不影响主流程，仅记录错误
+      }
 
       const now = new Date();
       const remainingSeconds = Math.max(0, Math.floor((newEndTime - now) / 1000));

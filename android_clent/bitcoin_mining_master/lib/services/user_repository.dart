@@ -33,6 +33,12 @@ class UserRepository {
         if (response.token != null && response.token!.isNotEmpty) {
           await _storageService.saveAuthToken(response.token!);
         }
+        
+        // 保存用户等级和积分到本地
+        if (response.data!.userLevel != null) {
+          await _storageService.saveUserLevel(response.data!.userLevel!);
+        }
+        
         return Result.success(userId);
       } else {
         return Result.failure(Exception(response.message));
@@ -88,7 +94,12 @@ class UserRepository {
   }
 
   /// 提现
-  Future<Result<bool>> withdrawBitcoin(String amount, String address) async {
+  Future<Result<bool>> withdrawBitcoin(
+    String amount, 
+    String address,
+    String network,
+    String networkFee,
+  ) async {
     try {
       final userIdResult = await fetchUserId();
       if (!userIdResult.isSuccess) {
@@ -96,10 +107,20 @@ class UserRepository {
       }
 
       final userId = userIdResult.data!;
+      // 优先使用保存的邮箱，否则使用默认邮箱格式
+      String email = _storageService.getUserEmail() ?? '';
+      if (email.isEmpty) {
+        // 使用userId生成默认邮箱
+        email = '$userId@cloudminingtool.com';
+      }
+
       final response = await _apiService.withdrawBitcoin(
         userId: userId,
+        email: email,
         amount: amount,
         address: address,
+        network: network,
+        networkFee: networkFee,
       );
 
       if (response['success'] == true) {

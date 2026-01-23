@@ -226,9 +226,12 @@ class AdPointsService {
       }
 
       // 从数据库获取
-      const [rows] = await db.query(
-        'SELECT view_count, points_earned FROM ad_view_record WHERE user_id = ? AND view_date = ?',
-        [userId, today]
+      const rows = await db.query(
+        'SELECT view_count, points_earned FROM ad_view_record WHERE user_id = :userId AND view_date = :today',
+        {
+          replacements: { userId, today },
+          type: QueryTypes.SELECT
+        }
       );
 
       if (rows.length === 0) {
@@ -273,17 +276,20 @@ class AdPointsService {
    */
   static async getAdViewHistory(userId, days = 30) {
     try {
-      const [rows] = await db.query(
+      const rows = await db.query(
         `SELECT 
           view_date,
           view_count,
           points_earned,
           created_at
         FROM ad_view_record
-        WHERE user_id = ?
-        AND view_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+        WHERE user_id = :userId
+        AND view_date >= DATE_SUB(CURDATE(), INTERVAL :days DAY)
         ORDER BY view_date DESC`,
-        [userId, days]
+        {
+          replacements: { userId, days },
+          type: QueryTypes.SELECT
+        }
       );
 
       // 计算统计
@@ -432,7 +438,7 @@ class AdPointsService {
    */
   static async getSubordinateAdStatistics(referrerId) {
     try {
-      const [rows] = await db.query(
+      const rows = await db.query(
         `SELECT 
           ir.user_id as subordinate_id,
           ui.invitation_code,
@@ -442,10 +448,13 @@ class AdPointsService {
         FROM invitation_relationship ir
         LEFT JOIN user_information ui ON ir.user_id = ui.user_id
         LEFT JOIN ad_view_record avr ON ir.user_id = avr.user_id
-        WHERE ir.referrer_user_id = ?
+        WHERE ir.referrer_user_id = :referrerId
         GROUP BY ir.user_id, ui.invitation_code
         ORDER BY total_views DESC`,
-        [referrerId]
+        {
+          replacements: { referrerId },
+          type: QueryTypes.SELECT
+        }
       );
 
       return {

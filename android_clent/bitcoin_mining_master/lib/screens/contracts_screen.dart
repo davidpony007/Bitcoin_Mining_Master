@@ -4,8 +4,9 @@ import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import 'paid_contracts_screen.dart';
+import '../widgets/mining_machine_animation.dart';
 
-/// 合约屏幕 - Contracts with tabs 
+/// 合约屏幕 - Contracts with tabs
 class ContractsScreen extends StatefulWidget {
   const ContractsScreen({super.key});
 
@@ -13,26 +14,31 @@ class ContractsScreen extends StatefulWidget {
   State<ContractsScreen> createState() => _ContractsScreenState();
 }
 
-class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProviderStateMixin {
+class _ContractsScreenState extends State<ContractsScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final _storageService = StorageService();
   final _apiService = ApiService();
-  
+  bool _isPageVisible = true;
+
   // 合约状态
   bool _isLoadingContracts = true;
   bool _isDailyCheckInActive = false;
   bool _isAdRewardActive = false;
   int _dailyCheckInRemainingSeconds = 0;
   int _adRewardRemainingSeconds = 0;
+  int _userLevel = 1; // 用户矿工等级
   Timer? _contractTimer;
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
+    _loadUserLevel(); // 加载用户等级
     _loadContracts();
-    
+
     // 每秒更新倒计时
     _contractTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
@@ -41,7 +47,7 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
         } else {
           _isDailyCheckInActive = false;
         }
-        
+
         if (_adRewardRemainingSeconds > 0) {
           _adRewardRemainingSeconds--;
         } else {
@@ -49,7 +55,7 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
         }
       });
     });
-    
+
     // 每30秒刷新一次合约数据（防止时间漂移）
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _loadContracts();
@@ -58,12 +64,50 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _contractTimer?.cancel();
     _refreshTimer?.cancel();
     super.dispose();
   }
-  
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isPageVisible) {
+      // 应用恢复到前台时立即刷新
+      _loadContracts();
+    }
+  }
+
+  // 加载用户等级
+  Future<void> _loadUserLevel() async {
+    try {
+      final userId = _storageService.getUserId();
+      if (userId == null || userId.isEmpty) return;
+
+      final response = await _apiService.getUserLevel(userId);
+      if (response['success'] == true && response['data'] != null) {
+        final data = response['data'];
+        final level = data['level'] ?? 1;
+        setState(() {
+          _userLevel = level.clamp(1, 9);
+        });
+        // 同步更新本地存储
+        _storageService.saveUserLevel(level);
+      }
+    } catch (e) {
+      // 如果API失败，回退到本地存储的等级
+      setState(() {
+        _userLevel = _storageService.getUserLevel().clamp(1, 9);
+      });
+    }
+  }
+
+  // 公开的刷新方法，供外部调用
+  void refreshContracts() {
+    _loadContracts();
+  }
+
   Future<void> _loadContracts() async {
     try {
       final userId = _storageService.getUserId();
@@ -75,28 +119,35 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
       }
 
       print('📝 加载合约数据 - userId: $userId');
+
+      // 同时刷新用户等级
+      _loadUserLevel();
+
       final response = await _apiService.getMyContracts(userId);
       print('📦 API响应: $response');
-      
+
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
-        
+
         print('✅ Daily Check-in: ${data['dailyCheckIn']}');
         print('✅ Ad Reward: ${data['adReward']}');
-        
+
         setState(() {
           // Daily Check-in状态
           _isDailyCheckInActive = data['dailyCheckIn']['isActive'] == true;
-          _dailyCheckInRemainingSeconds = data['dailyCheckIn']['remainingSeconds'] ?? 0;
-          
+          _dailyCheckInRemainingSeconds =
+              data['dailyCheckIn']['remainingSeconds'] ?? 0;
+
           // Ad Reward状态
           _isAdRewardActive = data['adReward']['isActive'] == true;
           _adRewardRemainingSeconds = data['adReward']['remainingSeconds'] ?? 0;
-          
+
           _isLoadingContracts = false;
         });
-        
-        print('🔄 状态更新: Daily=${_isDailyCheckInActive}, Ad=${_isAdRewardActive}');
+
+        print(
+          '🔄 状态更新: Daily=${_isDailyCheckInActive}, Ad=${_isAdRewardActive}',
+        );
       } else {
         print('❌ API响应失败或数据为空');
         setState(() {
@@ -110,14 +161,14 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
       });
     }
   }
-  
+
   String _formatDuration(int totalSeconds) {
     if (totalSeconds <= 0) return '00h 00m 00s';
-    
+
     final hours = totalSeconds ~/ 3600;
     final minutes = (totalSeconds % 3600) ~/ 60;
     final seconds = totalSeconds % 60;
-    
+
     return '${hours.toString().padLeft(2, '0')}h ${minutes.toString().padLeft(2, '0')}m ${seconds.toString().padLeft(2, '0')}s';
   }
 
@@ -169,10 +220,7 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildAllTab(),
-          _buildExpiredTab(),
-        ],
+        children: [_buildAllTab(), _buildExpiredTab()],
       ),
     );
   }
@@ -203,10 +251,10 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
       ),
     );
   }
-  
+
   Widget _buildDailyCheckinCard() {
     final isActive = _isDailyCheckInActive && _dailyCheckInRemainingSeconds > 0;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -233,9 +281,9 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
               size: 28,
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Contract Info
           Expanded(
             child: Column(
@@ -260,12 +308,12 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
               ],
             ),
           ),
-          
+
           // Status and Countdown
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Status Dot and Countdown
+              // Status Dot and Countdown/Status
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -273,45 +321,39 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      color: isActive ? const Color(0xFF4CAF50) : const Color(0xFFF44336),
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFF44336),
                       shape: BoxShape.circle,
                     ),
                   ),
-                  if (isActive) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatDuration(_dailyCheckInRemainingSeconds),
-                      style: const TextStyle(
-                        color: Color(0xFF4CAF50),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isActive
+                        ? _formatDuration(_dailyCheckInRemainingSeconds)
+                        : 'Not Active',
+                    style: TextStyle(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: isActive
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                     ),
-                  ],
+                  ),
                 ],
               ),
-              
-              // Not Active Status (only show when not active)
-              if (!isActive) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Not Active',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
             ],
           ),
         ],
       ),
     );
   }
-  
+
   Widget _buildAdMiningCard() {
     final isActive = _isAdRewardActive && _adRewardRemainingSeconds > 0;
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -338,9 +380,9 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
               size: 28,
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           // Contract Info
           Expanded(
             child: Column(
@@ -365,12 +407,12 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
               ],
             ),
           ),
-          
+
           // Status Indicator and Countdown
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              // Status Dot and Countdown
+              // Status Dot and Countdown/Status
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -378,35 +420,29 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      color: isActive ? const Color(0xFF4CAF50) : const Color(0xFFF44336),
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFF44336),
                       shape: BoxShape.circle,
                     ),
                   ),
-                  if (isActive) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      _formatDuration(_adRewardRemainingSeconds),
-                      style: const TextStyle(
-                        color: Color(0xFF4CAF50),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isActive
+                        ? _formatDuration(_adRewardRemainingSeconds)
+                        : 'Not Active',
+                    style: TextStyle(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: isActive
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                     ),
-                  ],
+                  ),
                 ],
               ),
-              
-              // Not Active Status (only show when not active)
-              if (!isActive) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Not Active',
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
             ],
           ),
         ],
@@ -416,17 +452,15 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
 
   Widget _buildAllTab() {
     if (_isLoadingContracts) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
-    
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // My Contract Section
+          // My Contract Title
           Text(
             'My Contract',
             style: TextStyle(
@@ -435,13 +469,23 @@ class _ContractsScreenState extends State<ContractsScreen> with SingleTickerProv
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 16),
-          
+          const SizedBox(height: 20),
+
+          // 3D矿机动画 - 居中显示，在任务队列上方
+          Center(
+            child: MiningMachineAnimation(
+              isActive: _isDailyCheckInActive || _isAdRewardActive,
+              size: 200, // 增大尺寸至200
+              userLevel: _userLevel, // 传递用户矿工等级
+            ),
+          ),
+          const SizedBox(height: 24),
+
           // Daily Check-in Contract Card (Top Priority - 7.5Gh/s)
           _buildDailyCheckinCard(),
-          
+
           const SizedBox(height: 12),
-          
+
           // Ad Mining Contract Card (5.5Gh/s)
           _buildAdMiningCard(),
         ],

@@ -23,10 +23,14 @@ class ApiConstants {
   
   // 用户相关端点
   static const String getBitcoinBalance = '/user/bitcoin-balance';
-  static const String withdrawBitcoin = '/user/withdraw';
-  static const String getTransactions = '/user/transactions';
+  static const String getTransactions = '/bitcoin-transactions/records';
   static const String getReferrals = '/user/referrals';
   static const String getContracts = '/contracts';
+  
+  // 提现相关端点
+  static const String withdrawRequest = '/withdrawal/request';
+  static const String withdrawHistory = '/withdrawal/history';
+  static const String withdrawDetail = '/withdrawal'; // + /{id}
   
   // 请求超时时间（秒）
   static const int connectTimeout = 30;

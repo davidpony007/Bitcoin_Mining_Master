@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../constants/app_constants.dart';
 import '../models/checkin_model.dart';
 import '../services/points_api_service.dart';
+import '../services/storage_service.dart';
+import 'ad_reward_screen.dart';
 
 /// 签到页面
 class CheckInScreen extends StatefulWidget {
@@ -12,17 +14,19 @@ class CheckInScreen extends StatefulWidget {
   State<CheckInScreen> createState() => _CheckInScreenState();
 }
 
-class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProviderStateMixin {
+class _CheckInScreenState extends State<CheckInScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final PointsApiService _apiService = PointsApiService();
+  final StorageService _storageService = StorageService();
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
-  
+
   CheckInStatus? _status;
   List<CheckInRecord> _history = [];
   List<CheckInMilestone> _milestones = [];
   Map<String, dynamic>? _calendarData;
   Map<String, dynamic>? _config;
-  
+
   bool _isLoading = true;
   bool _isCheckingIn = false;
   String? _error;
@@ -30,6 +34,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // 添加生命周期观察者
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 500),
       vsync: this,
@@ -42,8 +47,18 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // 移除生命周期观察者
     _animationController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // 当应用从后台返回时重新加载数据（例如从广告页面返回）
+    if (state == AppLifecycleState.resumed) {
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
@@ -54,20 +69,30 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
 
     try {
       // 使用模拟数据进行测试
-      final status = await _apiService.getCheckInStatus().catchError((_) => CheckInStatus(
-        checkedInToday: false,
-        consecutiveDays: 3,
-        lastCheckInDate: DateTime.now().subtract(const Duration(days: 1)),
-        nextMilestone: '7 days',
-        daysUntilMilestone: 4,
-      ));
-      
-      final history = await _apiService.getCheckInHistory(days: 30).catchError((_) => <CheckInRecord>[]);
-      final milestones = await _apiService.getCheckInMilestones().catchError((_) => <CheckInMilestone>[]);
-      
+      final status = await _apiService.getCheckInStatus().catchError(
+        (_) => CheckInStatus(
+          checkedInToday: false,
+          totalDays: 0,
+          lastCheckInDate: null,
+          nextMilestone: '3 days',
+          daysUntilMilestone: 3,
+        ),
+      );
+
+      final history = await _apiService
+          .getCheckInHistory(days: 30)
+          .catchError((_) => <CheckInRecord>[]);
+      final milestones = await _apiService.getCheckInMilestones().catchError(
+        (_) => <CheckInMilestone>[],
+      );
+
       // 使用模拟日历数据
-      final calendar = await _apiService.get30DayCalendar().catchError((_) => _createMockCalendar());
-      final config = await _apiService.getCheckInConfig().catchError((_) => _createMockConfig());
+      final calendar = await _apiService.get30DayCalendar().catchError(
+        (_) => _createMockCalendar(),
+      );
+      final config = await _apiService.getCheckInConfig().catchError(
+        (_) => _createMockConfig(),
+      );
 
       setState(() {
         _status = status;
@@ -82,10 +107,10 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
       setState(() {
         _status = CheckInStatus(
           checkedInToday: false,
-          consecutiveDays: 3,
-          lastCheckInDate: DateTime.now().subtract(const Duration(days: 1)),
-          nextMilestone: '7 days',
-          daysUntilMilestone: 4,
+          totalDays: 0,
+          lastCheckInDate: null,
+          nextMilestone: '3 days',
+          daysUntilMilestone: 3,
         );
         _calendarData = _createMockCalendar();
         _config = _createMockConfig();
@@ -93,40 +118,50 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
       });
     }
   }
-  
+
   Map<String, dynamic> _createMockCalendar() {
-    // 创建30天日历，前5天已签到
+    // 创建30天日历，初始化时所有天都未签到
     final calendar = List.generate(30, (index) {
       final day = index + 1;
       return {
         'day': day,
-        'isChecked': day <= 5, // 前5天已签到
-        'isToday': day == 6, // 第6天是今天
-        'date': DateTime.now().subtract(Duration(days: 5 - day)),
+        'isChecked': false, // 初始化时所有天都未签到
+        'isToday': day == 1, // 第1天是今天
+        'date': DateTime.now().add(Duration(days: day - 1)),
       };
     });
-    
-    return {
-      'success': true,
-      'calendar': calendar,
-    };
+
+    return {'success': true, 'calendar': calendar};
   }
-  
+
   Map<String, dynamic> _createMockConfig() {
-    // 每日奖励配置
+    // 每日奖励配置：基础4积分 + 里程碑日期的额外奖励
     final dailyRewards = <String, int>{};
     for (int i = 1; i <= 30; i++) {
-      dailyRewards[i.toString()] = i <= 7 ? i + 3 : (i <= 14 ? 12 : (i <= 21 ? 15 : 20));
+      int points = 4; // 基础奖励
+
+      // 里程碑日期加上额外奖励
+      if (i == 3) {
+        points += 6; // Day 3: 4 + 6 = 10
+      } else if (i == 7) {
+        points += 15; // Day 7: 4 + 15 = 19
+      } else if (i == 15) {
+        points += 30; // Day 15: 4 + 30 = 34
+      } else if (i == 30) {
+        points += 60; // Day 30: 4 + 60 = 64
+      }
+
+      dailyRewards[i.toString()] = points;
     }
-    
+
     return {
       'success': true,
       'dailyRewards': dailyRewards,
       'milestones': [
-        {'day': 7, 'bonus': 50},
-        {'day': 14, 'bonus': 100},
-        {'day': 21, 'bonus': 200},
-        {'day': 30, 'bonus': 500},
+        {'day': 3, 'bonus': 6}, // 累计3天
+        {'day': 7, 'bonus': 15}, // 累计7天
+        {'day': 15, 'bonus': 30}, // 累计15天
+        {'day': 30, 'bonus': 60}, // 累计30天
       ],
     };
   }
@@ -137,13 +172,15 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
     setState(() => _isCheckingIn = true);
 
     try {
-      _animationController.forward().then((_) => _animationController.reverse());
-      
+      _animationController.forward().then(
+        (_) => _animationController.reverse(),
+      );
+
       final result = await _apiService.performCheckIn();
-      
+
       if (result.success) {
         await _loadData();
-        
+
         if (mounted) {
           showDialog(
             context: context,
@@ -168,14 +205,16 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
   Future<void> _claimMilestone(int days) async {
     try {
       final result = await _apiService.claimMilestone(days);
-      
+
       if (result['success'] == true) {
         await _loadData();
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Successfully claimed ${result['bonus_points']} points reward!'),
+              content: Text(
+                'Successfully claimed ${result['bonus_points']} points reward!',
+              ),
               backgroundColor: AppColors.success,
             ),
           );
@@ -204,29 +243,27 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? _buildErrorWidget()
-              : RefreshIndicator(
-                  onRefresh: _loadData,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    child: Column(
-                      children: [
-                        _buildCheckInCard(),
-                        const SizedBox(height: 16),
-                        _build30DayCalendar(),
-                        const SizedBox(height: 16),
-                        _buildMilestonesSection(),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
+          ? _buildErrorWidget()
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                    _buildCheckInCard(),
+                    const SizedBox(height: 16),
+                    _build30DayCalendar(),
+                    const SizedBox(height: 16),
+                  ],
                 ),
+              ),
+            ),
     );
   }
 
   Widget _buildCheckInCard() {
     final checkedIn = _status?.checkedInToday ?? false;
-    final consecutiveDays = _status?.consecutiveDays ?? 0;
+    final totalDays = _status?.totalDays ?? 0;
 
     return Container(
       margin: const EdgeInsets.all(16),
@@ -235,10 +272,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary,
-            AppColors.secondary,
-          ],
+          colors: [AppColors.primary, AppColors.secondary],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
@@ -252,11 +286,8 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
       child: Column(
         children: [
           const Text(
-            'Consecutive Days',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 16,
-            ),
+            'Total Check-in Days',
+            style: TextStyle(color: Colors.white70, fontSize: 16),
           ),
           const SizedBox(height: 8),
           Row(
@@ -264,7 +295,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '$consecutiveDays',
+                '$totalDays',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 56,
@@ -289,12 +320,54 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
           ScaleTransition(
             scale: _scaleAnimation,
             child: ElevatedButton(
-              onPressed: checkedIn || _isCheckingIn ? null : _performCheckIn,
+              onPressed: _isCheckingIn
+                  ? null
+                  : () async {
+                      // 检查今日是否已签到
+                      final lastCheckInDate = _storageService
+                          .getLastCheckInDate();
+                      final today = DateTime.now().toIso8601String().split(
+                        'T',
+                      )[0];
+
+                      if (lastCheckInDate == today) {
+                        // 今日已签到，显示提示
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                '⚠️ You have already checked in today',
+                              ),
+                              backgroundColor: Colors.orange,
+                              duration: Duration(seconds: 3),
+                            ),
+                          );
+                        }
+                        return;
+                      }
+
+                      // 未签到，跳转到签到页面（广告观看）
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const AdRewardScreen(isDailyCheckIn: true),
+                        ),
+                      );
+
+                      // 签到成功后重新加载数据
+                      if (result == true && mounted) {
+                        _loadData();
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 disabledBackgroundColor: Colors.white.withOpacity(0.5),
                 foregroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 48,
+                  vertical: 16,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                 ),
@@ -325,16 +398,6 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                     ),
             ),
           ),
-          if (_status?.nextMilestone != null) ...[
-            const SizedBox(height: 16),
-            Text(
-              '${_status!.daysUntilMilestone} days until next milestone',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -394,8 +457,8 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
             color: isClaimed
                 ? AppColors.success
                 : isClaimable
-                    ? AppColors.primary
-                    : AppColors.textSecondary,
+                ? AppColors.primary
+                : AppColors.textSecondary,
             size: 32,
           ),
           const SizedBox(height: 8),
@@ -409,10 +472,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
           ),
           Text(
             '${milestone.bonusPoints} Points',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           if (isClaimable) ...[
             const SizedBox(height: 8),
@@ -420,22 +480,19 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
               onPressed: () => _claimMilestone(milestone.days),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
               ),
-              child: const Text(
-                'Claim',
-                style: TextStyle(fontSize: 12),
-              ),
+              child: const Text('Claim', style: TextStyle(fontSize: 12)),
             ),
           ],
           if (isClaimed)
             const Text(
               'Claimed',
-              style: TextStyle(
-                color: AppColors.success,
-                fontSize: 10,
-              ),
+              style: TextStyle(color: AppColors.success, fontSize: 10),
             ),
         ],
       ),
@@ -467,10 +524,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
           const SizedBox(height: 8),
           Text(
             'Complete daily check-ins to unlock special rewards!',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 14,
-            ),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
           ),
           const SizedBox(height: 16),
           Container(
@@ -505,7 +559,10 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.primary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
@@ -515,7 +572,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                         ),
                       ),
                       child: Text(
-                        '${(_status?.consecutiveDays ?? 0)}/30',
+                        '${(_status?.totalDays ?? 0)}/30',
                         style: TextStyle(
                           color: AppColors.primary,
                           fontSize: 14,
@@ -603,38 +660,28 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
         color: cellColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: borderColor, 
+          color: borderColor,
           width: isToday || isMilestone ? 2 : 1,
         ),
-        boxShadow: isChecked ? [
-          BoxShadow(
-            color: AppColors.success.withOpacity(0.3),
-            blurRadius: 8,
-            spreadRadius: 0,
-          ),
-        ] : null,
+        boxShadow: isChecked
+            ? [
+                BoxShadow(
+                  color: AppColors.success.withOpacity(0.3),
+                  blurRadius: 8,
+                  spreadRadius: 0,
+                ),
+              ]
+            : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (isChecked)
-            Icon(
-              Icons.check_circle,
-              color: Colors.white,
-              size: 24,
-            )
+            Icon(Icons.check_circle, color: Colors.white, size: 24)
           else if (isMilestone)
-            Icon(
-              Icons.emoji_events,
-              color: Colors.amber,
-              size: 22,
-            )
+            Icon(Icons.emoji_events, color: Colors.amber, size: 22)
           else if (isToday)
-            Icon(
-              Icons.today,
-              color: AppColors.primary,
-              size: 20,
-            )
+            Icon(Icons.today, color: AppColors.primary, size: 20)
           else
             const SizedBox(height: 24),
           const SizedBox(height: 4),
@@ -650,9 +697,11 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
-              color: isChecked 
+              color: isChecked
                   ? Colors.white.withOpacity(0.2)
-                  : (isToday ? AppColors.primary.withOpacity(0.2) : Colors.transparent),
+                  : (isToday
+                        ? AppColors.primary.withOpacity(0.2)
+                        : Colors.transparent),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -750,17 +799,19 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-              .map((day) => SizedBox(
-                    width: 40,
-                    child: Text(
-                      day,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 12,
-                      ),
+              .map(
+                (day) => SizedBox(
+                  width: 40,
+                  child: Text(
+                    day,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
                     ),
-                  ))
+                  ),
+                ),
+              )
               .toList(),
         ),
         const SizedBox(height: 8),
@@ -803,7 +854,9 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                                 ? AppColors.primary
                                 : AppColors.textPrimary,
                             fontSize: 14,
-                            fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isToday
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                       ),
@@ -901,11 +954,11 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Consecutive:',
+                        'Total Days:',
                         style: TextStyle(color: AppColors.textPrimary),
                       ),
                       Text(
-                        '${result.consecutiveDays} Days',
+                        '${result.totalDays} Days',
                         style: const TextStyle(
                           color: AppColors.primary,
                           fontSize: 20,
@@ -914,7 +967,8 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
                       ),
                     ],
                   ),
-                  if (result.milestoneReached && result.milestoneBonus != null) ...[
+                  if (result.milestoneReached &&
+                      result.milestoneBonus != null) ...[
                     const SizedBox(height: 8),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -942,7 +996,10 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
               onPressed: () => Navigator.of(context).pop(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 12,
+                ),
               ),
               child: const Text('Awesome!'),
             ),
@@ -967,9 +1024,7 @@ class _CheckInScreenState extends State<CheckInScreen> with SingleTickerProvider
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _loadData,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
             child: const Text('Retry'),
           ),
         ],

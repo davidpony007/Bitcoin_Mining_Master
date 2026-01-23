@@ -62,17 +62,27 @@ class UserProvider with ChangeNotifier {
       _transactions = result.data!;
       _errorMessage = null;
     } else {
-      _setError('Failed to get transaction history: ${result.error}');
+      _setError('Failed to get transaction records: ${result.error}');
     }
     
     _setLoading(false);
   }
 
   /// 提现
-  Future<bool> withdrawBitcoin(String amount, String address) async {
+  Future<bool> withdrawBitcoin(
+    String amount, 
+    String address,
+    String network,
+    String networkFee,
+  ) async {
     _setLoading(true);
     
-    final result = await _repository.withdrawBitcoin(amount, address);
+    final result = await _repository.withdrawBitcoin(
+      amount, 
+      address,
+      network,
+      networkFee,
+    );
     
     _setLoading(false);
     

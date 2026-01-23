@@ -4,12 +4,16 @@ import 'providers/user_provider.dart';
 import 'screens/home_screen.dart';
 import 'constants/app_constants.dart';
 import 'services/storage_service.dart';
+import 'services/admob_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // 初始化本地存储服务
   await StorageService().init();
+  
+  // 初始化AdMob SDK
+  await AdMobService.initialize();
   
   runApp(const MyApp());
 }

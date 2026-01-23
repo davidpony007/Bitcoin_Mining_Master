@@ -161,6 +161,18 @@ class BitcoinBalanceResponse {
   });
 
   factory BitcoinBalanceResponse.fromJson(Map<String, dynamic> json) {
+    // 处理新的API响应格式：{"success":true,"data":{"currentBalance":0.98234234536,"accumulatedAmount":0.98234234536}}
+    if (json['data'] != null && json['data'] is Map) {
+      final data = json['data'] as Map<String, dynamic>;
+      final currentBalance = data['currentBalance'];
+      return BitcoinBalanceResponse(
+        success: json['success'] as bool? ?? false,
+        balance: currentBalance?.toString() ?? '0.00000000',
+        message: json['message'] as String?,
+      );
+    }
+    
+    // 兼容旧格式：{"success":true,"balance":"0.00000000"}
     return BitcoinBalanceResponse(
       success: json['success'] as bool? ?? false,
       balance: json['balance'] as String? ?? '0.00000000',
@@ -179,32 +191,37 @@ class BitcoinBalanceResponse {
 
 /// 交易记录模型
 class Transaction {
-  final String id;
+  final int id;
   final String userId;
   final String type;
-  final String amount;
-  final String description;
+  final double amount;
+  final String typeLabel;
   final DateTime createdAt;
+  final String status;
 
   Transaction({
     required this.id,
     required this.userId,
     required this.type,
     required this.amount,
-    required this.description,
+    required this.typeLabel,
     required this.createdAt,
+    required this.status,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
     return Transaction(
-      id: json['id'] as String? ?? '',
+      id: json['id'] as int? ?? 0,
       userId: json['userId'] as String? ?? '',
-      type: json['type'] as String? ?? 'income',
-      amount: json['amount'] as String? ?? '0.00000000',
-      description: json['description'] as String? ?? '',
+      type: json['type'] as String? ?? '',
+      amount: (json['amount'] is num) 
+          ? (json['amount'] as num).toDouble() 
+          : double.tryParse(json['amount'].toString()) ?? 0.0,
+      typeLabel: json['typeLabel'] as String? ?? '',
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
+      status: json['status'] as String? ?? 'success',
     );
   }
   
@@ -214,8 +231,9 @@ class Transaction {
       'userId': userId,
       'type': type,
       'amount': amount,
-      'description': description,
+      'typeLabel': typeLabel,
       'createdAt': createdAt.toIso8601String(),
+      'status': status,
     };
   }
 }

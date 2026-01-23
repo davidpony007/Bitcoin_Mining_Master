@@ -3,8 +3,7 @@
  * 负责用户等级计算、积分管理、挖矿速率倍数计算
  */
 
-const { QueryTypes } = require('sequelize');
-const db = require('../config/database');
+const pool = require('../config/database_native');
 const redisClient = require('../config/redis');
 
 class LevelService {
@@ -17,8 +16,10 @@ class LevelService {
    * 初始化等级配置 (从数据库加载)
    */
   static async initLevelConfig() {
+    const connection = await pool.getConnection();
+    
     try {
-      const [rows] = await db.query(
+      const [rows] = await connection.query(
         'SELECT level, min_points, max_points, speed_multiplier, level_name, description FROM level_config ORDER BY level ASC'
       );
       this.LEVEL_CONFIG = rows;
@@ -28,17 +29,19 @@ class LevelService {
       console.error('❌ 加载等级配置失败:', error);
       // 使用默认配置
       this.LEVEL_CONFIG = [
-        { level: 1, min_points: 0, max_points: 20, speed_multiplier: 1.0000, level_name: 'LV.1 新手矿工' },
-        { level: 2, min_points: 0, max_points: 30, speed_multiplier: 1.1000, level_name: 'LV.2 初级矿工' },
-        { level: 3, min_points: 0, max_points: 50, speed_multiplier: 1.2000, level_name: 'LV.3 中级矿工' },
-        { level: 4, min_points: 0, max_points: 100, speed_multiplier: 1.3500, level_name: 'LV.4 高级矿工' },
-        { level: 5, min_points: 0, max_points: 200, speed_multiplier: 1.5000, level_name: 'LV.5 专家矿工' },
-        { level: 6, min_points: 0, max_points: 400, speed_multiplier: 1.7000, level_name: 'LV.6 大师矿工' },
-        { level: 7, min_points: 0, max_points: 800, speed_multiplier: 2.0000, level_name: 'LV.7 传奇矿工' },
-        { level: 8, min_points: 0, max_points: 1600, speed_multiplier: 2.4000, level_name: 'LV.8 史诗矿工' },
-        { level: 9, min_points: 0, max_points: 999999, speed_multiplier: 3.0000, level_name: 'LV.9 神话矿工' }
+        { level: 1, min_points: 0, max_points: 20, speed_multiplier: 1.0000, level_name: 'LV.1 Novice Miner' },
+        { level: 2, min_points: 0, max_points: 30, speed_multiplier: 1.1000, level_name: 'LV.2 Junior Miner' },
+        { level: 3, min_points: 0, max_points: 50, speed_multiplier: 1.2000, level_name: 'LV.3 Intermediate Miner' },
+        { level: 4, min_points: 0, max_points: 100, speed_multiplier: 1.3500, level_name: 'LV.4 Senior Miner' },
+        { level: 5, min_points: 0, max_points: 200, speed_multiplier: 1.5000, level_name: 'LV.5 Expert Miner' },
+        { level: 6, min_points: 0, max_points: 400, speed_multiplier: 1.7000, level_name: 'LV.6 Master Miner' },
+        { level: 7, min_points: 0, max_points: 800, speed_multiplier: 2.0000, level_name: 'LV.7 Legendary Miner' },
+        { level: 8, min_points: 0, max_points: 1600, speed_multiplier: 2.4000, level_name: 'LV.8 Epic Miner' },
+        { level: 9, min_points: 0, max_points: 999999, speed_multiplier: 3.0000, level_name: 'LV.9 Mythic Miner' }
       ];
       return this.LEVEL_CONFIG;
+    } finally {
+      connection.release();
     }
   }
 
@@ -112,6 +115,8 @@ class LevelService {
    * 获取用户等级信息 (优先从 Redis 缓存获取)
    */
   static async getUserLevel(userId) {
+    const connection = await pool.getConnection();
+    
     try {
       // 1. 尝试从 Redis 获取
       if (redisClient.isReady()) {
@@ -123,12 +128,9 @@ class LevelService {
       }
 
       // 2. 从数据库获取
-      const rows = await db.query(
+      const [rows] = await connection.query(
         'SELECT user_level, user_points, mining_speed_multiplier FROM user_information WHERE user_id = ?',
-        {
-          replacements: [userId],
-          type: QueryTypes.SELECT
-        }
+        [userId]
       );
 
       if (rows.length === 0) {
@@ -164,6 +166,8 @@ class LevelService {
     } catch (error) {
       console.error('❌ 获取用户等级信息失败:', error);
       throw error;
+    } finally {
+      connection.release();
     }
   }
 

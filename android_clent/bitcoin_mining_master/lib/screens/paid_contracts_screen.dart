@@ -160,40 +160,35 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         color: const Color(0xFF0F1624),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isPopular ? tier['color'] : (tier['color'] as Color).withOpacity(0.3),
-          width: isPopular ? 2 : 1.5,
+          color: tier['color'],
+          width: isPopular ? 2.5 : 2,
         ),
-        boxShadow: isPopular
-            ? [
-                BoxShadow(
-                  color: (tier['color'] as Color).withOpacity(0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : [],
+        boxShadow: [
+          BoxShadow(
+            color: (tier['color'] as Color).withOpacity(isPopular ? 0.4 : 0.2),
+            blurRadius: isPopular ? 12 : 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Stack(
         children: [
           // 热门标签
           if (isPopular)
             Positioned(
-              top: 0,
-              right: 20,
+              top: 12,
+              left: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: tier['color'],
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(8),
-                    bottomRight: Radius.circular(8),
-                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
                   '🔥 POPULAR',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -205,6 +200,9 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 预留POPULAR标签的空间
+                if (isPopular) const SizedBox(height: 32),
+                
                 // 标题和价格
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,

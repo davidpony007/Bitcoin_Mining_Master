@@ -74,6 +74,26 @@ class StorageService {
     return _prefs?.getString('last_check_in_date');
   }
 
+  /// 保存用户等级
+  Future<bool> saveUserLevel(int level) async {
+    return await _prefs?.setInt('user_level', level) ?? false;
+  }
+
+  /// 获取用户等级
+  int getUserLevel() {
+    return _prefs?.getInt('user_level') ?? 1;
+  }
+
+  /// 保存用户邮箱
+  Future<bool> saveUserEmail(String email) async {
+    return await _prefs?.setString('user_email', email) ?? false;
+  }
+
+  /// 获取用户邮箱
+  String? getUserEmail() {
+    return _prefs?.getString('user_email');
+  }
+
   /// 清除所有数据
   Future<bool> clearAll() async {
     return await _prefs?.clear() ?? false;
