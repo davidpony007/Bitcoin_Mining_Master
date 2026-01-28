@@ -5,7 +5,7 @@
 require('dotenv').config();
 const db = require('./src/config/database_native');
 
-const userId = 'U2026011910532463989';
+const userId = 'U2026012523102894533';
 
 async function resetUserData() {
   const connection = await db.getConnection();

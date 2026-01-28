@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:io' show Platform;
 import '../constants/app_constants.dart';
 import '../models/user_model.dart';
@@ -107,6 +108,29 @@ class ApiService {
     }
   }
 
+  /// 绑定Google账号（完整信息）- 对应后端 /api/auth/bind-google
+  Future<Map<String, dynamic>> bindGoogleAccount({
+    required String userId,
+    required String? googleId,
+    required String googleEmail,
+    required String googleName,
+  }) async {
+    try {
+      final response = await _dio.post(
+        ApiConstants.bindGoogle,
+        data: {
+          'user_id': userId,
+          'google_account': googleEmail,
+          'google_id': googleId,
+          'google_name': googleName,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   /// 解绑Google账号 - 对应后端 /api/auth/unbind-google
   Future<Map<String, dynamic>> unbindGoogle({required String userId}) async {
     try {
@@ -196,6 +220,51 @@ class ApiService {
     }
   }
 
+  /// 邮箱+密码登录 - 对应后端 /api/auth/email-login
+  Future<Map<String, dynamic>> emailLogin({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/email-login',
+        data: {
+          'email': email,
+          'password': password,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  /// 邮箱注册 - 对应后端 /api/auth/email-register
+  Future<Map<String, dynamic>> emailRegister({
+    required String email,
+    required String password,
+    String? referrerInvitationCode,
+  }) async {
+    try {
+      final payload = {
+        'email': email,
+        'password': password,
+      };
+      
+      if (referrerInvitationCode != null && referrerInvitationCode.isNotEmpty) {
+        payload['referrer_invitation_code'] = referrerInvitationCode;
+      }
+      
+      final response = await _dio.post(
+        '/auth/email-register',
+        data: payload,
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   /// 生成用户ID（已废弃，改用deviceLogin）
   @Deprecated('Use deviceLogin instead')
   Future<UserIdResponse> generateUserId() async {
@@ -207,13 +276,13 @@ class ApiService {
     }
   }
 
-  /// 获取比特币余额
+  /// 获取比特币余额（实时余额，包含未持久化的挖矿收益）
   Future<BitcoinBalanceResponse> getBitcoinBalance(String userId) async {
     try {
       final response = await _dio.get(
-        ApiConstants.getBitcoinBalance,
-        queryParameters: {'userId': userId},
+        '${ApiConstants.getBitcoinBalance}/$userId',
       );
+      print('🔍 API 响应完整数据: ${response.data}');
       return BitcoinBalanceResponse.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleError(e);
@@ -339,17 +408,31 @@ class ApiService {
 
   /// 错误处理
   Exception _handleError(DioException error) {
+    final bool isNetworkError =
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.connectionError;
+
+    if (isNetworkError) {
+      Fluttertoast.showToast(
+        msg: '网络连接错误，请重试！',
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.CENTER,
+      );
+    }
+
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return Exception('Connection timeout, please check your network');
+        return Exception('网络连接错误，请重试！');
       case DioExceptionType.badResponse:
         return Exception('Server error: ${error.response?.statusCode}');
       case DioExceptionType.cancel:
         return Exception('Request cancelled');
       default:
-        return Exception('Network error: ${error.message}');
+        return Exception('网络连接错误，请重试！');
     }
   }
 
@@ -373,6 +456,74 @@ class ApiService {
           // 继续尝试下一个
         }
       }
+      throw _handleError(e);
+    }
+  }
+
+  /// 延长广告奖励合约（Free Ad Reward）
+  Future<Map<String, dynamic>> extendAdRewardContract({
+    required String userId,
+    required int hours,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/mining-pool/extend-contract',
+        data: {
+          'user_id': userId,
+          'hours': hours,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  /// 执行每日签到（Daily Check-in）
+  Future<Map<String, dynamic>> performCheckIn({
+    required String userId,
+  }) async {
+    try {
+      print('📡 [API Service] 调用签到API: /mining-contracts/checkin, userId=$userId');
+      final response = await _dio.post(
+        '/mining-contracts/checkin',
+        data: {
+          'user_id': userId,
+        },
+      );
+      print('✅ [API Service] 签到API响应: ${response.data}');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      // 检查是否是"今日已签到"的情况
+      if (e.response?.statusCode == 400 && e.response?.data != null) {
+        final responseData = e.response!.data;
+        if (responseData is Map && responseData['alreadyCheckedIn'] == true) {
+          print('ℹ️ [API Service] 检测到今日已签到，返回特殊标记');
+          // 返回特殊标记，让调用方知道已经签到过了
+          return {
+            'success': true,
+            'alreadyCheckedIn': true,
+            'message': responseData['message'] ?? '今日已签到'
+          };
+        }
+      }
+      print('❌ [API Service] 签到API错误: ${e.response?.data ?? e.message}');
+      throw _handleError(e);
+    }
+  }
+
+  /// 更新用户昵称
+  Future<Map<String, dynamic>> updateNickname({
+    required String userId,
+    required String nickname,
+  }) async {
+    try {
+      final response = await _dio.put(
+        '/userInformation/$userId/nickname',
+        data: {'nickname': nickname},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
       throw _handleError(e);
     }
   }

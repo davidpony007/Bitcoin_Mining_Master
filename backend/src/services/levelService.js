@@ -153,13 +153,18 @@ class LevelService {
 
       // 3. 缓存到 Redis
       if (redisClient.isReady()) {
-        await redisClient.cacheUserLevel(userId, {
-          level: result.level,
-          points: result.points,
-          speedMultiplier: result.speedMultiplier,
-          dailyBonusActive: false,
-          dailyBonusExpire: null
-        });
+        try {
+          await redisClient.cacheUserLevel(
+            userId,
+            result.level,
+            result.points,
+            result.speedMultiplier,
+            false,
+            null
+          );
+        } catch (cacheError) {
+          console.error(`缓存用户 ${userId} 等级失败:`, cacheError.message);
+        }
       }
 
       return result;

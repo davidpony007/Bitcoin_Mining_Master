@@ -220,14 +220,14 @@ router.post('/extend-contract', async (req, res) => {
       const MAX_SECONDS = MAX_HOURS * 3600;
 
       if (contracts.length === 0) {
-        // 没有活跃合约，创建新的2小时合约
-        const totalHours = Math.min(2 + hours, MAX_HOURS);
+        // 没有活跃合约，创建新的合约（用户请求的小时数）
+        const totalHours = Math.min(hours, MAX_HOURS);
         
         const [result] = await connection.query(
           `INSERT INTO free_contract_records 
            (user_id, free_contract_type, hashrate, free_contract_creation_time, 
             free_contract_end_time, mining_status, free_contract_revenue)
-           VALUES (?, 'ad free contract', 0.000000005500000000, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), 'mining', 0.000000000000000000)`,
+           VALUES (?, 'ad free contract', 0.000000000000139, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), 'mining', 0.000000000000000000)`,
           [user_id, totalHours]
         );
         
@@ -319,7 +319,7 @@ router.post('/extend-contract', async (req, res) => {
       return res.json({
         success: true,
         message: isNewContract 
-          ? `Created new Ad Free Contract with ${hours > 0 ? 2 + hours : 2} hour(s)`
+          ? `Created new Ad Free Contract with ${hours} hour(s)`
           : `Extended Ad Free Contract by ${hours} hour(s)`,
         data: {
           contract_id: contractId,

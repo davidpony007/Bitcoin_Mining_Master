@@ -4,11 +4,16 @@ import '../constants/app_constants.dart';
 import '../models/checkin_model.dart';
 import '../services/points_api_service.dart';
 import '../services/storage_service.dart';
+import '../services/admob_service.dart';
+import '../services/user_repository.dart';
+import '../services/api_service.dart';
 import 'ad_reward_screen.dart';
 
 /// 签到页面
 class CheckInScreen extends StatefulWidget {
-  const CheckInScreen({super.key});
+  final bool shouldRefresh; // 是否需要延迟刷新（签到后跳转过来）
+  
+  const CheckInScreen({super.key, this.shouldRefresh = false});
 
   @override
   State<CheckInScreen> createState() => _CheckInScreenState();
@@ -18,6 +23,9 @@ class _CheckInScreenState extends State<CheckInScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final PointsApiService _apiService = PointsApiService();
   final StorageService _storageService = StorageService();
+  final AdMobService _adMobService = AdMobService();
+  final UserRepository _userRepository = UserRepository();
+  final ApiService _checkInApiService = ApiService();
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
 
@@ -42,7 +50,17 @@ class _CheckInScreenState extends State<CheckInScreen>
     _scaleAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    _loadData();
+    _initLoadData();
+  }
+  
+  /// 初始化数据加载（支持延迟）
+  Future<void> _initLoadData() async {
+    if (widget.shouldRefresh) {
+      print('⏳ [CheckIn Screen] 签到后跳转，等待2秒确保后端数据写入...');
+      await Future.delayed(const Duration(seconds: 2));
+      print('✅ [CheckIn Screen] 等待完成，开始加载数据');
+    }
+    await _loadData();
   }
 
   @override
@@ -62,6 +80,7 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   Future<void> _loadData() async {
+    print('🔄 [CheckIn Screen] 开始加载签到数据...');
     setState(() {
       _isLoading = true;
       _error = null;
@@ -70,14 +89,19 @@ class _CheckInScreenState extends State<CheckInScreen>
     try {
       // 使用模拟数据进行测试
       final status = await _apiService.getCheckInStatus().catchError(
-        (_) => CheckInStatus(
-          checkedInToday: false,
-          totalDays: 0,
-          lastCheckInDate: null,
-          nextMilestone: '3 days',
-          daysUntilMilestone: 3,
-        ),
+        (e) {
+          print('❌ [CheckIn Screen] API获取签到状态失败: $e');
+          return CheckInStatus(
+            checkedInToday: false,
+            totalDays: 0,
+            lastCheckInDate: null,
+            nextMilestone: '3 days',
+            daysUntilMilestone: 3,
+          );
+        },
       );
+      
+      print('📊 [CheckIn Screen] API返回签到状态: totalDays=${status.totalDays}, checkedInToday=${status.checkedInToday}');
 
       final history = await _apiService
           .getCheckInHistory(days: 30)
@@ -86,13 +110,11 @@ class _CheckInScreenState extends State<CheckInScreen>
         (_) => <CheckInMilestone>[],
       );
 
-      // 使用模拟日历数据
-      final calendar = await _apiService.get30DayCalendar().catchError(
-        (_) => _createMockCalendar(),
-      );
-      final config = await _apiService.getCheckInConfig().catchError(
-        (_) => _createMockConfig(),
-      );
+      // 直接使用模拟日历数据(API暂未实现)
+      final calendar = _createMockCalendar(totalDays: status.totalDays);
+      final config = _createMockConfig();
+      print('✅ [CheckIn Screen] 使用模拟日历数据: calendar keys=${calendar.keys}, config keys=${config.keys}, totalDays=${status.totalDays}');
+      print('📅 [CheckIn Screen] 日历数据: ${calendar['calendar']?.length} days');
 
       setState(() {
         _status = status;
@@ -102,6 +124,8 @@ class _CheckInScreenState extends State<CheckInScreen>
         _config = config;
         _isLoading = false;
       });
+      
+      print('✅ [CheckIn Screen] 数据加载完成: totalDays=${_status?.totalDays}, checkedInToday=${_status?.checkedInToday}');
     } catch (e) {
       // 使用完整的模拟数据
       setState(() {
@@ -119,14 +143,219 @@ class _CheckInScreenState extends State<CheckInScreen>
     }
   }
 
-  Map<String, dynamic> _createMockCalendar() {
-    // 创建30天日历，初始化时所有天都未签到
+  /// 播放签到广告并执行签到
+  Future<void> _playCheckInAd() async {
+    // 首先检查今日是否已签到
+    final lastCheckInDate = _storageService.getLastCheckInDate();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    
+    print('🔍 [CheckIn Screen] 签到检查: lastCheckInDate=$lastCheckInDate, today=$today');
+
+    if (lastCheckInDate == today) {
+      // 今日已签到，显示提示
+      print('⚠️ [CheckIn Screen] 今日已签到，阻止播放广告');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ You have already checked in today! Please try again after UTC 00:00'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    
+    print('✅ [CheckIn Screen] 未签到，准备播放广告');
+
+    // 检查广告是否已准备好
+    if (!_adMobService.isAdReady) {
+      // 显示加载提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📺 Loading ad, please wait...'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // 开始加载广告
+      await _adMobService.loadRewardedAd();
+      
+      // 等待广告加载完成（最多10秒）
+      final startTime = DateTime.now();
+      while (!_adMobService.isAdReady && DateTime.now().difference(startTime).inSeconds < 10) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      if (!mounted) return;
+
+      // 检查广告是否加载成功
+      if (!_adMobService.isAdReady) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Ad not available. Please check your network connection and try again later.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    // 播放广告
+    try {
+      final earnedReward = await _adMobService.showRewardedAd();
+      
+      if (!mounted) return;
+
+      if (earnedReward) {
+        // 用户看完广告，执行签到
+        setState(() => _isCheckingIn = true);
+        
+        final success = await _performCheckIn();
+        
+        setState(() => _isCheckingIn = false);
+        
+        if (!mounted) return;
+
+        if (success) {
+          // 签到成功，手动增加totalDays并重新创建日历
+          final newTotalDays = (_status?.totalDays ?? 0) + 1;
+          if (_status != null) {
+            setState(() {
+              _status = CheckInStatus(
+                checkedInToday: true,
+                totalDays: newTotalDays,
+                lastCheckInDate: DateTime.now(),
+                nextMilestone: _status!.nextMilestone,
+                daysUntilMilestone: _status!.daysUntilMilestone,
+              );
+              // 立即重新创建日历数据，使用新的totalDays
+              _calendarData = _createMockCalendar(totalDays: newTotalDays);
+            });
+          }
+          // 再重新加载其他数据
+          await _loadData();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Check-in successful!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('❌ Check-in failed, please try again'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } else {
+        // 用户未看完广告
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Please watch the complete ad to check in'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isCheckingIn = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 执行签到（调用后端API）
+  Future<bool> _performCheckIn() async {
+    try {
+      print('📡 开始执行每日签到...');
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        print('❌ 获取用户ID失败');
+        return false;
+      }
+      final userId = userIdResult.data!;
+      print('✅ 用户ID: $userId, 准备调用签到API');
+
+      // 调用签到接口
+      final response = await _checkInApiService.performCheckIn(userId: userId);
+
+      print('📦 签到API响应: $response');
+      
+      // 检查是否是"今日已签到"的特殊情况
+      if (response['alreadyCheckedIn'] == true) {
+        print('ℹ️ 检测到后端返回已签到标记，保存今日日期到本地');
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        await _storageService.saveLastCheckInDate(today);
+        final verified = _storageService.getLastCheckInDate();
+        print('🔍 保存已签到日期: $today, 验证结果: $verified');
+        
+        // 虽然后端说已签到，但仍然返回true让调用方知道应该显示成功消息
+        return true;
+      }
+      
+      final success = response['success'] == true;
+      
+      if (success) {
+        // 签到成功,保存今日日期到本地存储
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        final saved = await _storageService.saveLastCheckInDate(today);
+        print('✅ 签到成功! 保存日期: $today, saved=$saved');
+        // 验证是否真的保存成功
+        final verified = _storageService.getLastCheckInDate();
+        print('🔍 验证保存结果: $verified');
+      } else {
+        print('❌ 签到失败');
+      }
+      
+      return success;
+    } catch (e) {
+      print('❌ 签到失败: $e');
+      return false;
+    }
+  }
+
+  Map<String, dynamic> _createMockCalendar({int? totalDays}) {
+    // 获取用户已签到的总天数
+    final checkedDays = totalDays ?? _status?.totalDays ?? 0;
+    print('📅 [CheckIn Screen] 创建日历数据: checkedDays=$checkedDays');
+    
+    // 创建30天日历，根据totalDays标记已签到的天
     final calendar = List.generate(30, (index) {
       final day = index + 1;
+      final isChecked = day <= checkedDays; // 已签到天数内的都标记为已签到
+      final isToday = day == checkedDays + 1; // 下一个要签到的天是"今天"
+      
+      if (day <= 3) {
+        print('  Day $day: isChecked=$isChecked, isToday=$isToday');
+      }
+      
       return {
         'day': day,
-        'isChecked': false, // 初始化时所有天都未签到
-        'isToday': day == 1, // 第1天是今天
+        'isChecked': isChecked,
+        'isToday': isToday,
         'date': DateTime.now().add(Duration(days: day - 1)),
       };
     });
@@ -164,42 +393,6 @@ class _CheckInScreenState extends State<CheckInScreen>
         {'day': 30, 'bonus': 60}, // 累计30天
       ],
     };
-  }
-
-  Future<void> _performCheckIn() async {
-    if (_status?.checkedInToday == true || _isCheckingIn) return;
-
-    setState(() => _isCheckingIn = true);
-
-    try {
-      _animationController.forward().then(
-        (_) => _animationController.reverse(),
-      );
-
-      final result = await _apiService.performCheckIn();
-
-      if (result.success) {
-        await _loadData();
-
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => _buildSuccessDialog(result),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Check-in failed: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    } finally {
-      setState(() => _isCheckingIn = false);
-    }
   }
 
   Future<void> _claimMilestone(int days) async {
@@ -253,7 +446,7 @@ class _CheckInScreenState extends State<CheckInScreen>
                     _buildCheckInCard(),
                     const SizedBox(height: 16),
                     _build30DayCalendar(),
-                    const SizedBox(height: 16),
+                    SizedBox(height: MediaQuery.of(context).padding.bottom + 32),
                   ],
                 ),
               ),
@@ -315,88 +508,6 @@ class _CheckInScreenState extends State<CheckInScreen>
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          ScaleTransition(
-            scale: _scaleAnimation,
-            child: ElevatedButton(
-              onPressed: _isCheckingIn
-                  ? null
-                  : () async {
-                      // 检查今日是否已签到
-                      final lastCheckInDate = _storageService
-                          .getLastCheckInDate();
-                      final today = DateTime.now().toIso8601String().split(
-                        'T',
-                      )[0];
-
-                      if (lastCheckInDate == today) {
-                        // 今日已签到，显示提示
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                '⚠️ You have already checked in today',
-                              ),
-                              backgroundColor: Colors.orange,
-                              duration: Duration(seconds: 3),
-                            ),
-                          );
-                        }
-                        return;
-                      }
-
-                      // 未签到，跳转到签到页面（广告观看）
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const AdRewardScreen(isDailyCheckIn: true),
-                        ),
-                      );
-
-                      // 签到成功后重新加载数据
-                      if (result == true && mounted) {
-                        _loadData();
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                disabledBackgroundColor: Colors.white.withOpacity(0.5),
-                foregroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 48,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                elevation: 0,
-              ),
-              child: _isCheckingIn
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          checkedIn ? Icons.check_circle : Icons.touch_app,
-                          size: 24,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          checkedIn ? 'Checked In' : 'Check In Now',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
           ),
         ],
       ),
@@ -501,113 +612,125 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   Widget _build30DayCalendar() {
     if (_calendarData == null || _config == null) {
+      print('⚠️ 日历数据或配置为空');
       return const SizedBox.shrink();
     }
 
-    final calendar = _calendarData!['calendar'] as List<dynamic>;
-    final dailyRewards = _config!['dailyRewards'] as Map<String, dynamic>;
-    final milestones = _config!['milestones'] as List<dynamic>;
+    try {
+      final calendar = _calendarData!['calendar'] as List<dynamic>?;
+      final dailyRewards = _config!['dailyRewards'] as Map<String, dynamic>?;
+      final milestones = _config!['milestones'] as List<dynamic>?;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '30-Day Check-in Challenge',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete daily check-ins to unlock special rewards!',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.cardDark,
-                  AppColors.cardDark.withOpacity(0.8),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.2),
-                width: 1,
+      if (calendar == null || dailyRewards == null || milestones == null) {
+        print('⚠️ 日历数据结构不完整: calendar=${calendar != null}, dailyRewards=${dailyRewards != null}, milestones=${milestones != null}');
+        return const SizedBox.shrink();
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '30-Day Check-in Challenge',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            child: Column(
-              children: [
-                // 标题
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '30-Day Challenge',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.primary.withOpacity(0.5),
-                          width: 1,
-                        ),
-                      ),
-                      child: Text(
-                        '${(_status?.totalDays ?? 0)}/30',
+            const SizedBox(height: 8),
+            Text(
+              'Complete daily check-ins to unlock special rewards!',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.cardDark,
+                    AppColors.cardDark.withOpacity(0.8),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                children: [
+                  // 标题
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '30-Day Challenge',
                         style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 14,
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                // 构建5行6列的30天网格
-                for (int row = 0; row < 5; row++)
-                  Padding(
-                    padding: EdgeInsets.only(bottom: row < 4 ? 12 : 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        for (int col = 0; col < 6; col++)
-                          _build30DayCell(
-                            row * 6 + col + 1,
-                            calendar,
-                            dailyRewards,
-                            milestones,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.primary.withOpacity(0.5),
+                            width: 1,
                           ),
-                      ],
-                    ),
+                        ),
+                        child: Text(
+                          '${(_status?.totalDays ?? 0)}/30',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                const SizedBox(height: 20),
-                _buildLegend(),
-              ],
+                  const SizedBox(height: 20),
+                  // 构建5行6列的30天网格
+                  for (int row = 0; row < 5; row++)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: row < 4 ? 12 : 0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          for (int col = 0; col < 6; col++)
+                            _build30DayCell(
+                              row * 6 + col + 1,
+                              calendar,
+                              dailyRewards,
+                              milestones,
+                            ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 20),
+                  _buildLegend(),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    } catch (e, stackTrace) {
+      print('❌ 构建30天日历失败: $e');
+      print('堆栈: $stackTrace');
+      return const SizedBox.shrink();
+    }
   }
 
   Widget _build30DayCell(

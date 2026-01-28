@@ -56,13 +56,13 @@ async function checkMySQL() {
       "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'bitcoin_mining_master' AND table_name = 'check_in_reward_config'"
     );
     const [countryConfig] = await connection.execute(
-      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'bitcoin_mining_master' AND table_name = 'country_config'"
+      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'bitcoin_mining_master' AND table_name = 'country_mining_config'"
     );
     
     console.log('   关键配置表状态:');
     console.log('     - level_config:', levelConfig[0].count > 0 ? '✅ 存在' : '❌ 缺失');
     console.log('     - check_in_reward_config:', checkInConfig[0].count > 0 ? '✅ 存在' : '❌ 缺失');
-    console.log('     - country_config:', countryConfig[0].count > 0 ? '✅ 存在' : '❌ 缺失');
+    console.log('     - country_mining_config:', countryConfig[0].count > 0 ? '✅ 存在' : '❌ 缺失');
     
     return {
       status: 'success',
@@ -201,7 +201,7 @@ async function runAllChecks() {
   if (results.mysql.status === 'success') {
     console.log('  ' + (results.mysql.levelConfig ? '✅' : '❌') + ' level_config');
     console.log('  ' + (results.mysql.checkInConfig ? '✅' : '❌') + ' check_in_reward_config');
-    console.log('  ' + (results.mysql.countryConfig ? '✅' : '❌') + ' country_config');
+    console.log('  ' + (results.mysql.countryConfig ? '✅' : '❌') + ' country_mining_config');
   } else {
     console.log('  ⚠️  无法检查 (MySQL未连接)');
   }

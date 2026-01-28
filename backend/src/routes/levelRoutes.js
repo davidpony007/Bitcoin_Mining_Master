@@ -27,18 +27,20 @@ router.get('/info', async (req, res) => {
 
     const levelInfo = await LevelService.getUserLevel(user_id);
 
-    res.json({
+    return res.json({
       success: true,
       data: levelInfo
     });
 
   } catch (error) {
     console.error('获取用户等级信息失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取用户等级信息失败',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: '获取用户等级信息失败',
+        error: error.message
+      });
+    }
   }
 });
 
@@ -51,18 +53,20 @@ router.get('/config', async (req, res) => {
   try {
     const configList = await LevelService.getLevelConfigList();
 
-    res.json({
+    return res.json({
       success: true,
       data: configList
     });
 
   } catch (error) {
     console.error('获取等级配置失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取等级配置失败',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: '获取等级配置失败',
+        error: error.message
+      });
+    }
   }
 });
 
@@ -78,18 +82,20 @@ router.get('/leaderboard', async (req, res) => {
 
     const leaderboard = await LevelService.getLevelLeaderboard(limit);
 
-    res.json({
+    return res.json({
       success: true,
       data: leaderboard
     });
 
   } catch (error) {
     console.error('获取等级排行榜失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '获取等级排行榜失败',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: '获取等级排行榜失败',
+        error: error.message
+      });
+    }
   }
 });
 
@@ -114,18 +120,20 @@ router.get('/mining-speed', authenticate, async (req, res) => {
     const baseSpeed = base_speed ? parseFloat(base_speed) : 0.00000001;
     const speedInfo = await LevelService.calculateMiningSpeed(user_id, baseSpeed);
 
-    res.json({
+    return res.json({
       success: true,
       data: speedInfo
     });
 
   } catch (error) {
     console.error('计算挖矿速率失败:', error);
-    res.status(500).json({
-      success: false,
-      message: '计算挖矿速率失败',
-      error: error.message
-    });
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: '计算挖矿速率失败',
+        error: error.message
+      });
+    }
   }
 });
 

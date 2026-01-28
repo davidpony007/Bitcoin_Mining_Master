@@ -62,12 +62,13 @@ router.get('/realtime/:userId', async (req, res) => {
     // 3. 计算从上次更新到现在的挖矿收益
     const lastUpdateTime = new Date(userStatus[0].last_balance_update_time || Date.now());
     const now = new Date();
-    const elapsedSeconds = Math.floor((now - lastUpdateTime) / 1000);
+    // 确保elapsedSeconds为正数,防止时间错误导致负值
+    const elapsedSeconds = Math.max(0, Math.floor((now - lastUpdateTime) / 1000));
     const minedSinceLastUpdate = speedPerSecond * elapsedSeconds;
     
     // 4. 计算当前实时余额
     const balanceInDb = parseFloat(userStatus[0].current_bitcoin_balance) || 0;
-    const currentBalance = balanceInDb + minedSinceLastUpdate;
+    const currentBalance = Math.max(0, balanceInDb + minedSinceLastUpdate); // 确保余额不为负
     
     // 5. 计算距离下次同步的时间（2小时 = 7200秒）
     const twoHours = 2 * 60 * 60;

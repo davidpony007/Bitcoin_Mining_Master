@@ -94,6 +94,66 @@ class StorageService {
     return _prefs?.getString('user_email');
   }
 
+  /// 设置离线用户标记
+  Future<bool> setOfflineUser(bool isOffline) async {
+    return await _prefs?.setBool('is_offline_user', isOffline) ?? false;
+  }
+
+  /// 检查是否是离线用户
+  bool isOfflineUser() {
+    return _prefs?.getBool('is_offline_user') ?? false;
+  }
+
+  /// 保存AndroidId（用于离线用户同步）
+  Future<bool> saveAndroidId(String androidId) async {
+    return await _prefs?.setString('android_id', androidId) ?? false;
+  }
+
+  /// 获取AndroidId
+  String? getAndroidId() {
+    return _prefs?.getString('android_id');
+  }
+
+  /// 清除用户ID
+  Future<bool> clearUserId() async {
+    return await _prefs?.remove(AppConstants.keyUserId) ?? false;
+  }
+
+  /// 清除邀请码
+  Future<bool> clearInvitationCode() async {
+    return await _prefs?.remove(AppConstants.keyInvitationCode) ?? false;
+  }
+
+  /// 保存Google登录状态
+  Future<bool> saveGoogleSignInStatus(bool isSignedIn) async {
+    return await _prefs?.setBool('google_signed_in', isSignedIn) ?? false;
+  }
+
+  /// 获取Google登录状态
+  bool isGoogleSignedIn() {
+    return _prefs?.getBool('google_signed_in') ?? false;
+  }
+
+  /// 保存Google邮箱
+  Future<bool> saveGoogleEmail(String email) async {
+    return await _prefs?.setString('google_email', email) ?? false;
+  }
+
+  /// 获取Google邮箱
+  String? getGoogleEmail() {
+    return _prefs?.getString('google_email');
+  }
+
+  /// 保存登出状态（用于区分"从未登录"和"已登出"）
+  Future<bool> saveIsLoggedOut(bool isLoggedOut) async {
+    return await _prefs?.setBool('is_logged_out', isLoggedOut) ?? false;
+  }
+
+  /// 获取登出状态
+  bool isLoggedOut() {
+    return _prefs?.getBool('is_logged_out') ?? false;
+  }
+
   /// 清除所有数据
   Future<bool> clearAll() async {
     return await _prefs?.clear() ?? false;

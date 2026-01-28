@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../services/admob_service.dart';
 import '../widgets/welcome_dialog.dart';
 import '../providers/user_provider.dart';
 import 'dashboard_screen.dart';
@@ -27,6 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // 预加载广告
+    AdMobService().loadRewardedAd();
     // 延迟显示欢迎弹窗，确保界面已加载
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _showWelcomeDialogIfNeeded();
@@ -154,11 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {
               _currentIndex = index;
             });
-            
-            // 当切换到Mining页面(index=0)或钱包页面(index=3)时，刷新余额
-            if ((index == 0 || index == 3) && mounted) {
-              context.read<UserProvider>().fetchBitcoinBalance();
-            }
           },
           items: _navigationItems,
           backgroundColor: Colors.transparent,

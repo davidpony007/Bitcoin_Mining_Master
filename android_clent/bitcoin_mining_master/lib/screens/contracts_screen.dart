@@ -19,7 +19,7 @@ class _ContractsScreenState extends State<ContractsScreen>
   late TabController _tabController;
   final _storageService = StorageService();
   final _apiService = ApiService();
-  bool _isPageVisible = true;
+  final bool _isPageVisible = true;
 
   // 合约状态
   bool _isLoadingContracts = true;
@@ -146,7 +146,7 @@ class _ContractsScreenState extends State<ContractsScreen>
         });
 
         print(
-          '🔄 状态更新: Daily=${_isDailyCheckInActive}, Ad=${_isAdRewardActive}',
+          '🔄 状态更新: Daily=$_isDailyCheckInActive, Ad=$_isAdRewardActive',
         );
       } else {
         print('❌ API响应失败或数据为空');

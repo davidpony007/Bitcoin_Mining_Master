@@ -1,6 +1,28 @@
 // 主入口文件，负责初始化 Express 应用、加载中间件、路由、数据库连接及安全配置
 // 加载环境变量配置（.env 文件），用于管理敏感信息和环境参数
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+// 验证关键环境变量
+if (!process.env.DB_HOST || !process.env.DB_USER || !process.env.DB_PASSWORD) {
+  console.error('❌ 严重错误：数据库配置缺失！');
+  console.error('请检查 backend/.env 文件中的配置：');
+  console.error({
+    DB_HOST: process.env.DB_HOST || '❌ 未设置',
+    DB_USER: process.env.DB_USER || '❌ 未设置',
+    DB_PASSWORD: process.env.DB_PASSWORD ? '✅ 已设置' : '❌ 未设置',
+    DB_NAME: process.env.DB_NAME || '❌ 未设置'
+  });
+  process.exit(1);
+}
+
+console.log('✅ 环境变量加载成功:', {
+  DB_HOST: process.env.DB_HOST,
+  DB_NAME: process.env.DB_NAME,
+  DB_USER: process.env.DB_USER,
+  REDIS_HOST: process.env.REDIS_HOST,
+  REDIS_PORT: process.env.REDIS_PORT
+});
 
 // 引入第三方核心模块
 const express = require('express'); // Web 框架
@@ -219,19 +241,11 @@ async function initGameMechanics() {
       // 启动游戏机制定时任务
       startAllScheduledTasks();
       
-      // 启动余额同步和返利定时任务 - 暂时禁用以避免数据库连接池耗尽
-      // BalanceSyncTask.start();
-      // logger.info('✓ 余额同步任务已启动（每2小时执行一次）');
+      // 启动返利定时任务
+      ReferralRebateTask.start();
+      logger.info('✓ 推荐返利任务已启动（每2小时执行一次）');
     
-    
-    // ReferralRebateTask.start();
-    // logger.info('✓ 推荐返利任务已启动（每2小时执行一次）');
-    logger.info('⚠️ 余额同步和返利任务已临时禁用（避免连接池耗尽）');
-    
-    // 启动分组余额调度
-    // startMiningBalanceScheduler(); // 暂时禁用,等待修复数据库连接问题
-    // 启动用户状态调度
-    // startUserStatusScheduler(); // 暂时禁用
+    // 旧调度器已废弃
     logger.info('旧调度器已暂时禁用,等待数据库连接稳定后启用');
     });
   } catch (err) {

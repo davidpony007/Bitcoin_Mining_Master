@@ -43,6 +43,56 @@ class BitcoinPriceService {
   }
 
   /**
+   * 从币安国际 API 获取比特币价格（使用 IP 地址避免 DNS 问题）
+   */
+  async fetchPriceFromBinanceGlobal() {
+    return new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'data.binance.com',
+        port: 443,
+        path: '/api/v3/ticker/price?symbol=BTCUSDT',
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Bitcoin-Mining-Master/1.0',
+          'Host': 'data.binance.com'
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (json.price) {
+              resolve(parseFloat(json.price));
+            } else {
+              reject(new Error('Invalid response format'));
+            }
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+
+      req.on('error', (error) => {
+        reject(error);
+      });
+
+      req.setTimeout(15000, () => {
+        req.abort();
+        reject(new Error('Request timeout'));
+      });
+
+      req.end();
+    });
+  }
+
+  /**
    * 从欧易(OKX) API获取比特币价格（国内可访问）
    */
   async fetchPriceFromOKX() {
@@ -82,7 +132,7 @@ class BitcoinPriceService {
         reject(error);
       });
 
-      req.setTimeout(8000, () => {
+      req.setTimeout(15000, () => {
         req.abort();
         reject(new Error('Request timeout'));
       });
@@ -131,7 +181,7 @@ class BitcoinPriceService {
         reject(error);
       });
 
-      req.setTimeout(8000, () => {
+      req.setTimeout(15000, () => {
         req.abort();
         reject(new Error('Request timeout'));
       });
@@ -180,7 +230,7 @@ class BitcoinPriceService {
         reject(error);
       });
 
-      req.setTimeout(5000, () => {
+      req.setTimeout(20000, () => {
         req.abort();
         reject(new Error('Request timeout'));
       });
@@ -229,7 +279,7 @@ class BitcoinPriceService {
         reject(error);
       });
 
-      req.setTimeout(10000, () => {
+      req.setTimeout(20000, () => {
         req.abort();
         reject(new Error('Request timeout'));
       });
@@ -247,27 +297,58 @@ class BitcoinPriceService {
       
       let price;
       const apis = [
+        { name: 'Binance Global', fn: () => this.fetchPriceFromBinanceGlobal() },
         { name: 'OKX', fn: () => this.fetchPriceFromOKX() },
         { name: 'Huobi', fn: () => this.fetchPriceFromHuobi() },
         { name: 'Binance', fn: () => this.fetchPriceFromBinance() },
         { name: 'CoinGecko', fn: () => this.fetchPriceFromAPI() }
       ];
 
-      // 依次尝试各个API源
+      // 依次尝试各个API源（每个API重试2次）
       for (const api of apis) {
-        try {
-          console.log(`📡 尝试从 ${api.name} 获取价格...`);
-          price = await api.fn();
-          console.log(`✅ 成功从 ${api.name} 获取价格: $${price.toFixed(2)}`);
-          break;
-        } catch (error) {
-          console.log(`⚠️ ${api.name} API失败: ${error.message}`);
+        for (let retry = 0; retry < 2; retry++) {
+          try {
+            console.log(`📡 尝试从 ${api.name} 获取价格...${retry > 0 ? `(重试 ${retry}/1)` : ''}`);
+            price = await api.fn();
+            console.log(`✅ 成功从 ${api.name} 获取价格: $${price.toFixed(2)}`);
+            break;
+          } catch (error) {
+            console.log(`⚠️ ${api.name} API失败: ${error.message}`);
+            if (retry === 0) {
+              // 第一次失败，等待2秒后重试
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          }
         }
+        
+        // 如果获取到价格，跳出外层循环
+        if (price) break;
+        
+        // 尝试下一个API前等待2秒，避免请求过快
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      // 如果所有API都失败
+      // 如果所有API都失败，使用缓存或默认价格
       if (!price) {
-        throw new Error('所有价格源都不可用');
+        console.log('⚠️ 所有价格源都不可用，尝试使用缓存或默认价格...');
+        
+        // 尝试从Redis获取缓存
+        if (redisClient.isReady()) {
+          const cached = await redisClient.get(this.CACHE_KEY);
+          if (cached) {
+            const data = JSON.parse(cached);
+            price = data.price;
+            console.log(`📦 使用缓存的比特币价格: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
+            console.log(`📅 缓存时间: ${data.updatedAt}`);
+            return price;
+          }
+        }
+        
+        // 如果连缓存都没有，使用默认价格
+        price = this.currentPrice;
+        console.log(`💰 使用默认比特币价格: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
+        console.log(`ℹ️ 提示: 可以使用 setManualPrice() 方法手动设置价格`);
+        return price;
       }
       
       this.currentPrice = price;

@@ -9,6 +9,14 @@ const authController = require('../controllers/authController');
 // 用户首次打开APP时自动创建账号或登录
 router.post('/device-login', authController.deviceLogin);
 
+// POST /api/auth/email-register
+// 邮箱注册接口
+router.post('/email-register', authController.emailRegister);
+
+// POST /api/auth/email-login
+// 邮箱+密码登录接口
+router.post('/email-login', authController.emailLogin);
+
 // POST /api/auth/bind-google
 // 绑定Google账号
 router.post('/bind-google', authController.bindGoogleAccount);

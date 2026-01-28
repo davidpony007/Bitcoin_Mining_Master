@@ -31,39 +31,40 @@ class _WalletScreenState extends State<WalletScreen>
   void initState() {
     super.initState();
 
-    // 初始化跳动动画控制器
+    // 初始化余额数字递增动画控制器
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
 
-    _scaleAnimation = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1.0,
-          end: 1.15,
-        ).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 50,
-      ),
-      TweenSequenceItem(
-        tween: Tween<double>(
-          begin: 1.15,
-          end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeIn)),
-        weight: 50,
-      ),
-    ]).animate(_animationController);
+    // 初始化为0，稍后会在_triggerBalanceBounce中设置正确的Tween
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 0.0)
+        .animate(CurvedAnimation(
+          parent: _animationController,
+          curve: Curves.easeOutCubic,
+        ));
 
     // 加载交易记录和检查活跃合约
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<UserProvider>().fetchTransactions();
-      _checkActiveContracts();
-      _loadBitcoinPrice();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await context.read<UserProvider>().fetchTransactions();
+      await _checkActiveContracts();
+      await _loadBitcoinPrice();
       _startPriceUpdateTimer();
     });
 
     // 监听余额变化
     _previousBalance = context.read<UserProvider>().bitcoinBalance;
+  }
+
+  /// 公共方法：手动刷新余额（由HomeScreen调用）
+  Future<void> refreshBalance() async {
+    if (!mounted) return;
+    final prevBalance = context.read<UserProvider>().bitcoinBalance;
+    await context.read<UserProvider>().fetchBitcoinBalance();
+    final newBalance = context.read<UserProvider>().bitcoinBalance;
+    if (prevBalance != newBalance) {
+      _triggerBalanceBounce();
+    }
   }
 
   @override
@@ -95,6 +96,41 @@ class _WalletScreenState extends State<WalletScreen>
     });
   }
 
+  /// 触发余额数字递增动画
+  void _triggerBalanceBounce() {
+    if (!mounted) return;
+    final currentBalanceStr = context.read<UserProvider>().bitcoinBalance;
+    final currentBalance = double.tryParse(currentBalanceStr) ?? 0.0;
+    final previousBalance = double.tryParse(_previousBalance) ?? 0.0;
+    
+    if (currentBalance != previousBalance) {
+      // 创建从旧值到新值的数字递增动画
+      _scaleAnimation = Tween<double>(
+        begin: previousBalance,
+        end: currentBalance,
+      ).animate(CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ));
+      
+      _previousBalance = currentBalanceStr;
+      _animationController.forward(from: 0.0);
+      print('💰 Wallet: 余额从 ${previousBalance.toStringAsFixed(15)} 递增到 ${currentBalance.toStringAsFixed(15)}');
+    } else if (_previousBalance == '0.000000000000000') {
+      // 首次加载，直接显示当前值
+      _scaleAnimation = Tween<double>(
+        begin: currentBalance,
+        end: currentBalance,
+      ).animate(CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutCubic,
+      ));
+      _previousBalance = currentBalanceStr;
+      _animationController.value = 1.0;
+      print('💰 Wallet: 首次加载余额 ${currentBalance.toStringAsFixed(15)}');
+    }
+  }
+
   /// 检查用户是否有活跃的挖矿合约
   Future<void> _checkActiveContracts() async {
     try {
@@ -103,21 +139,15 @@ class _WalletScreenState extends State<WalletScreen>
 
       final response = await _apiService.checkActiveContracts(userId);
       if (response['success'] == true && response['data'] != null) {
-        setState(() {
-          _hasActiveContract = response['data']['hasActiveContract'] ?? false;
-        });
+        final hasActiveContract = response['data']['hasActiveContract'] ?? false;
+        if (mounted) {
+          setState(() {
+            _hasActiveContract = hasActiveContract;
+          });
+        }
       }
     } catch (e) {
       print('检查活跃合约失败: $e');
-    }
-  }
-
-  /// 触发余额跳动动画
-  void _triggerBalanceAnimation(String newBalance) {
-    // 仅在有活跃合约且余额发生变化时触发动画
-    if (_hasActiveContract && newBalance != _previousBalance) {
-      _animationController.forward(from: 0.0);
-      _previousBalance = newBalance;
     }
   }
 
@@ -128,11 +158,6 @@ class _WalletScreenState extends State<WalletScreen>
       appBar: AppBar(title: const Text('Wallet')),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          // 检查余额变化并触发动画
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _triggerBalanceAnimation(userProvider.bitcoinBalance);
-          });
-
           return RefreshIndicator(
             onRefresh: () async {
               await userProvider.fetchBitcoinBalance();
@@ -168,6 +193,9 @@ class _WalletScreenState extends State<WalletScreen>
 
   /// 构建余额区域
   Widget _buildBalanceSection(UserProvider provider) {
+    // 直接使用provider的余额，不依赖动画
+    final balance = double.tryParse(provider.bitcoinBalance) ?? 0.0;
+    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -187,23 +215,15 @@ class _WalletScreenState extends State<WalletScreen>
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 8),
-          AnimatedBuilder(
-            animation: _scaleAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _scaleAnimation.value,
-                child: Text(
-                  '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(15) ?? '0.000000000000000'} BTC',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              );
-            },
+          Text(
+            '${balance.toStringAsFixed(15)} BTC',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(

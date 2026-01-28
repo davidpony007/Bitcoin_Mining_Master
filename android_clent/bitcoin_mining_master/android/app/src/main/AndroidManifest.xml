@@ -1,9 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- AdMob required permissions -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
         android:label="bitcoin_mining_master"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/launcher_icons"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
@@ -33,10 +35,11 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
-        <!-- AdMob App ID -->
+        <!-- AdMob App ID - 临时使用测试ID -->
+        <!-- 生产ID备份: ca-app-pub-1048949483424060~9044706379 -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-1048949483424060~1234567890"/>
+            android:value="ca-app-pub-3940256099942544~3347511713"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

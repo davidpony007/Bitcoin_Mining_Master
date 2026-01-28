@@ -120,6 +120,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       body: Consumer<UserProvider>(
         builder: (context, provider, child) {
           return SingleChildScrollView(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).padding.bottom + 20,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -150,8 +153,6 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
                 // Binance 广告（最底部）
                 _buildBinanceAd(),
-
-                const SizedBox(height: 20),
               ],
             ),
           );

@@ -52,12 +52,19 @@ class _ReferralScreenState extends State<ReferralScreen> {
         }
       }
 
-      // 2. 首先尝试从本地存储读取邀请码
+      // 2. 首先尝试从本地存储读取邀请码（过滤 OFFLINE 前缀）
       String? cachedCode = _storageService.getInvitationCode();
+      
+      // 过滤 OFFLINE 前缀的邀请码
+      if (cachedCode != null && cachedCode.startsWith('OFFLINE_')) {
+        print('⚠️ [Referral] Detected OFFLINE invitation code, ignoring: $cachedCode');
+        cachedCode = null; // 不使用离线数据
+      }
+      
       if (cachedCode != null && cachedCode.isNotEmpty) {
         print('✅ Loaded invitation code from cache: $cachedCode');
         setState(() {
-          _invitationCode = cachedCode;
+          _invitationCode = cachedCode!;  // 添加 ! 非空断言
           _isLoading = false;
         });
       }
@@ -68,6 +75,13 @@ class _ReferralScreenState extends State<ReferralScreen> {
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
         final invCode = data['invitation_code'];
+        
+        // 过滤 OFFLINE 前缀的邀请码
+        if (invCode != null && invCode.startsWith('OFFLINE_')) {
+          print('⚠️ [Referral] Backend returned OFFLINE invitation code, treating as error');
+          throw Exception('Backend returned offline invitation code');
+        }
+        
         if (invCode != null && invCode.isNotEmpty) {
           // 保存到本地存储
           await _storageService.saveInvitationCode(invCode);
@@ -85,7 +99,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         if (cachedCode != null && cachedCode.isNotEmpty) {
           print('⚠️ API failed but using cached invitation code');
           setState(() {
-            _invitationCode = cachedCode;
+            _invitationCode = cachedCode!;  // 添加 ! 非空断言
             _isLoading = false;
           });
         } else {
@@ -94,10 +108,17 @@ class _ReferralScreenState extends State<ReferralScreen> {
       }
     } catch (e) {
       print('❌ Error loading invitation data: $e');
-      // 最后尝试使用缓存
+      // 最后尝试使用缓存（过滤 OFFLINE 前缀）
       String? cachedCode = _storageService.getInvitationCode();
+      
+      // 过滤 OFFLINE 前缀
+      if (cachedCode != null && cachedCode.startsWith('OFFLINE_')) {
+        print('⚠️ [Referral] Cached OFFLINE code detected in error handler, ignoring');
+        cachedCode = null;
+      }
+      
       setState(() {
-        _invitationCode = cachedCode ?? 'Error';
+        _invitationCode = cachedCode ?? 'Tap to Retry';
         _isLoading = false;
       });
     }
@@ -145,6 +166,22 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   void _copyInvitationCode() {
+    // 过滤无效状态（包括 OFFLINE 前缀）
+    if (_invitationCode == 'Loading...' || 
+        _invitationCode == 'Error' || 
+        _invitationCode == 'N/A' ||
+        _invitationCode == 'Tap to Retry' ||
+        _invitationCode.startsWith('OFFLINE_')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Please wait for invitation code to load'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    
     if (_invitationCode != 'Loading...' && _invitationCode != 'Error' && _invitationCode != 'N/A') {
       Clipboard.setData(ClipboardData(text: _invitationCode));
       ScaffoldMessenger.of(context).showSnackBar(
@@ -158,6 +195,22 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   void _shareInvitationCode() {
+    // 过滤无效状态（包括 OFFLINE 前缀）
+    if (_invitationCode == 'Loading...' || 
+        _invitationCode == 'Error' || 
+        _invitationCode == 'N/A' ||
+        _invitationCode == 'Tap to Retry' ||
+        _invitationCode.startsWith('OFFLINE_')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Please wait for invitation code to load'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    
     if (_invitationCode != 'Loading...' && _invitationCode != 'Error' && _invitationCode != 'N/A') {
       final String shareText = '''
 🎁 Join Bitcoin Mining Master!
@@ -179,69 +232,127 @@ Download now and start mining!
 
   void _showAddReferrerDialog() {
     final codeController = TextEditingController();
+    String? errorMessage; // 用于存储错误信息
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardDark,
-        title: const Text('Enter Referrer\'s Invitation Code'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Enter your referrer\'s invitation code to get a free mining contract!',
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: codeController,
-              decoration: InputDecoration(
-                hintText: 'INV...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                prefixIcon: const Icon(Icons.code),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: const Text(
+            'Enter Referrer\'s Invitation Code',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Enter your referrer\'s invitation code to get a free mining contract!',
+                style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
               ),
-              textCapitalization: TextCapitalization.characters,
+              const SizedBox(height: 12),
+              const Text(
+                'You can only bind your upline referrer once. Once successfully bound, the referrer cannot be unbound or changed.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.orange,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: codeController,
+                decoration: InputDecoration(
+                  hintText: 'INV...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: errorMessage != null ? Colors.red : AppColors.primary,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: errorMessage != null ? Colors.red : Colors.grey,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: errorMessage != null ? Colors.red : AppColors.primary,
+                    ),
+                  ),
+                  errorText: errorMessage,
+                  errorMaxLines: 2,
+                ),
+                textCapitalization: TextCapitalization.characters,
+                onChanged: (value) {
+                  // 清除错误信息当用户输入时
+                  if (errorMessage != null) {
+                    setState(() {
+                      errorMessage = null;
+                    });
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final code = codeController.text.trim();
+                if (code.isEmpty) {
+                  setState(() {
+                    errorMessage = 'Please enter invitation code';
+                  });
+                  return;
+                }
+                
+                // 尝试添加推荐人
+                final result = await _addReferrer(code);
+                
+                if (result['success'] == true) {
+                  // 成功，关闭对话框
+                  Navigator.pop(context);
+                } else {
+                  // 失败，显示错误信息但不关闭对话框
+                  setState(() {
+                    errorMessage = result['error'] ?? 'Failed to add referrer';
+                  });
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+              ),
+              child: const Text('Confirm'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final code = codeController.text.trim();
-              if (code.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter invitation code')),
-                );
-                return;
-              }
-              
-              Navigator.pop(context);
-              await _addReferrer(code);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-            ),
-            child: const Text('Confirm'),
-          ),
-        ],
       ),
     );
   }
 
-  Future<void> _addReferrer(String referrerCode) async {
+  Future<Map<String, dynamic>> _addReferrer(String referrerCode) async {
     try {
       final userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User ID not found')),
-        );
-        return;
+        return {
+          'success': false,
+          'error': 'User ID not found'
+        };
+      }
+
+      // 🔒 检查：不能填写自己的邀请码
+      if (referrerCode.trim() == _invitationCode.trim()) {
+        return {
+          'success': false,
+          'error': 'You cannot use your own invitation code. Please enter your upline referrer\'s code.'
+        };
       }
 
       // 显示加载
@@ -260,6 +371,11 @@ Download now and start mining!
       Navigator.pop(context); // 关闭加载
 
       if (response['success'] == true) {
+        // 更新状态：已有推荐人
+        setState(() {
+          _hasReferrer = true;
+        });
+        
         // 创建免费广告合约
         await _createAdContract(userId);
         
@@ -272,19 +388,37 @@ Download now and start mining!
         
         // 重新加载数据
         _loadInvitationData();
+        
+        return {'success': true};
       } else {
-        throw Exception(response['message'] ?? 'Failed to add referrer');
+        // 检查是否是邀请码不存在的错误
+        String errorMsg = response['message'] ?? 'Failed to add referrer';
+        if (errorMsg.toLowerCase().contains('not found') || 
+            errorMsg.toLowerCase().contains('not exist') ||
+            errorMsg.toLowerCase().contains('invalid')) {
+          errorMsg = 'Invitation code does not exist. Please confirm and re-enter.';
+        }
+        return {
+          'success': false,
+          'error': errorMsg
+        };
       }
     } catch (e) {
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      
+      String errorMsg = e.toString();
+      if (errorMsg.toLowerCase().contains('not found') || 
+          errorMsg.toLowerCase().contains('not exist') ||
+          errorMsg.toLowerCase().contains('invalid')) {
+        errorMsg = 'Invitation code does not exist. Please confirm and re-enter.';
+      }
+      
+      return {
+        'success': false,
+        'error': errorMsg
+      };
     }
   }
 
@@ -368,6 +502,187 @@ Download now and start mining!
     }
   }
 
+  /// 显示帮助说明对话框
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Text('Rebate System Info'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildInfoItem('1', 'The rebate ratio is 20%.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('2', 'Rebates are updated every 2 hours.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('3', 'Rebate earnings don\'t have a corresponding mining task queue display. They are calculated automatically on a scheduled basis.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('4', 'Invite more friends to get more rebate earnings. All your friends\' mining revenue will contribute to your rebate calculation.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('5', 'Successfully inviting more friends can increase your points, which can upgrade your miner level and mining speed.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('6', 'How to successfully invite and bind friends: Copy and share your "My Invitation Code" with friends. After your friends install and open the app, they enter your Invitation Code, and the system will successfully bind the invitation relationship.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('7', 'For each friend you successfully invite and bind, you will receive an "Invite Friend Reward" mining contract.'),
+              const SizedBox(height: 12),
+              _buildInfoItem('8', 'Enter your referrer\'s Invitation Code to receive a "Bind Referrer Reward" mining contract.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Got it',
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String number, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.2),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: AppColors.primary,
+              width: 1.5,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              number,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.white70,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 领取绑定推荐人奖励
+  Future<void> _receiveBindReferrerReward() async {
+    try {
+      final userId = _storageService.getUserId();
+      if (userId == null || userId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User ID not found')),
+        );
+        return;
+      }
+
+      // 显示加载
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // 获取邀请信息，查看是否有未领取的绑定奖励
+      final response = await _apiService.getInvitationInfo(userId);
+      Navigator.pop(context); // 关闭加载
+
+      if (response['success'] == true && response['data'] != null) {
+        final referrer = response['data']['referrer'];
+        
+        if (referrer == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No referrer found'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        // 显示领取奖励对话框
+        _showReceiveRewardDialog();
+      } else {
+        throw Exception('Failed to get invitation info');
+      }
+    } catch (e) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showReceiveRewardDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Row(
+          children: [
+            Icon(Icons.card_giftcard, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text('Bind Referrer Reward!'),
+          ],
+        ),
+        content: const Text(
+          'You have received a free 2-hour mining contract for binding a referrer! Watch an ad to activate it now.',
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              // 创建广告合约
+              final userId = _storageService.getUserId();
+              if (userId != null) {
+                await _createAdContract(userId);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+            ),
+            child: const Text('Get Reward'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -377,7 +692,7 @@ Download now and start mining!
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
-            onPressed: () {},
+            onPressed: _showHelpDialog,
           ),
         ],
       ),
@@ -418,11 +733,37 @@ Download now and start mining!
   }
 
   Widget _buildAddReferrerButton() {
-    // 如果已有推荐人或正在加载，不显示按钮
-    if (_hasReferrer || _isLoading) {
+    // 如果正在加载，不显示按钮
+    if (_isLoading) {
       return const SizedBox.shrink();
     }
     
+    // 如果已有推荐人，显示领取奖励按钮
+    if (_hasReferrer) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: ElevatedButton(
+          onPressed: _receiveBindReferrerReward,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          child: const Text(
+            'Receive Bind Referrer Reward',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // 如果没有推荐人，显示添加推荐人按钮
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Container(
@@ -503,14 +844,14 @@ Download now and start mining!
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF7B2CBF),
-            Color(0xFF5A189A),
+            Color(0xFFFFA500), // 橙黄色
+            Color(0xFF4CAF50), // 绿色
           ],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF7B2CBF).withOpacity(0.3),
+            color: const Color(0xFFFFA500).withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -534,6 +875,22 @@ Download now and start mining!
                   color: Colors.white70,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '20%',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -560,14 +917,6 @@ Download now and start mining!
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildStatItem('Invited', _invitedCount.toString()),
-              _buildStatItem("Today's Earnings", _todayEarnings),
             ],
           ),
         ],

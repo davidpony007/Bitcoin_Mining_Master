@@ -445,9 +445,21 @@ function startContractRewardDistribution() {
 
 /**
  * 启动所有定时任务
+ * 在PM2 cluster模式下，只在第一个实例（instance_id=0）运行定时任务
+ * 避免重复执行导致余额重复更新等问题
  */
 function startAllScheduledTasks() {
+  // 检查是否在cluster模式下运行
+  const isClusterMode = process.env.NODE_APP_INSTANCE !== undefined;
+  const instanceId = process.env.NODE_APP_INSTANCE || '0';
+  
+  if (isClusterMode && instanceId !== '0') {
+    console.log(`\n[实例 ${instanceId}] PM2 cluster模式：跳过定时任务启动（仅实例0运行定时任务）\n`);
+    return;
+  }
+  
   console.log('\n========== 启动游戏机制定时任务 ==========');
+  console.log(`[实例 ${instanceId}] 定时任务主实例`);
   
   startDailyBonusCleanup();          // 每日加成过期清理（每分钟）
   startDailyAdCountReset();          // 每日广告计数重置（每天凌晨）
@@ -459,9 +471,9 @@ function startAllScheduledTasks() {
   startAutoReferralRewards();        // 邀请奖励自动发放（每2小时）
   startContractRewardDistribution(); // 合约奖励发放（每2小时UTC整点）
   
-  // 启动实时余额更新服务（每秒执行） - 暂时禁用以避免数据库连接池耗尽
-  // RealtimeBalanceService.startRealtimeUpdates();
-  console.log('⚠️ 实时余额更新服务已临时禁用（避免连接池耗尽）');
+  // 启动实时余额更新服务（每秒执行）
+  RealtimeBalanceService.startRealtimeUpdates();
+  console.log('✅ 实时余额更新服务已启动（每秒更新活跃用户余额）');
   
   console.log('==========================================\n');
 }

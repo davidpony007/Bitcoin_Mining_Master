@@ -13,6 +13,15 @@ class ReferralRebateTask {
    * 启动定时任务
    */
   static start() {
+    // 在PM2 cluster模式下，只在第一个实例运行返利任务
+    const isClusterMode = process.env.NODE_APP_INSTANCE !== undefined;
+    const instanceId = process.env.NODE_APP_INSTANCE || '0';
+    
+    if (isClusterMode && instanceId !== '0') {
+      console.log(`⏰ [实例 ${instanceId}] PM2 cluster模式：跳过返利任务启动（仅实例0运行）`);
+      return;
+    }
+    
     // 每2小时的5分执行（比余额结算晚5分钟）
     cron.schedule('5 */2 * * *', async () => {
       console.log('🎁 [定时任务] 开始执行下级返利发放...');
@@ -65,7 +74,7 @@ class ReferralRebateTask {
       }
     });
     
-    console.log('⏰ 下级返利发放定时任务已启动 (每2小时5分执行)');
+    console.log(`⏰ [实例 ${instanceId}] 下级返利发放定时任务已启动 (每2小时5分执行)`);
   }
   
   /**
@@ -145,7 +154,7 @@ class ReferralRebateTask {
         return 0;
       }
       
-      // 4. 获取推荐人当前余额
+      // 4. 获取推荐人当前余额和邀请码
       const [referrerStatus] = await connection.query(
         'SELECT current_bitcoin_balance FROM user_status WHERE user_id = ?',
         [referrerId]
@@ -155,18 +164,48 @@ class ReferralRebateTask {
         throw new Error('推荐人不存在');
       }
       
-      // 5. 发放返利给推荐人
+      const [referrerInfo] = await connection.query(
+        'SELECT invitation_code FROM user_information WHERE user_id = ?',
+        [referrerId]
+      );
+      const invitationCode = referrerInfo[0]?.invitation_code || '';
+      
+      // 5. 发放返利给推荐人（更新余额和累计返利）
       await connection.query(`
         UPDATE user_status 
         SET 
           current_bitcoin_balance = current_bitcoin_balance + ?,
-          bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?
+          bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?,
+          total_invitation_rebate = total_invitation_rebate + ?
         WHERE user_id = ?
-      `, [rebateAmount, rebateAmount, referrerId]);
+      `, [rebateAmount, rebateAmount, rebateAmount, referrerId]);
       
       const newBalance = parseFloat(referrerStatus[0].current_bitcoin_balance) + rebateAmount;
       
-      // 6. 记录返利发放日志
+      // 6. 记录每个下级的返利明细到 invitation_rebate 表
+      for (const sub of subordinateDetails) {
+        const subRebate = sub.revenue * 0.20;
+        
+        // 获取下级用户的邀请码
+        const [subInfo] = await connection.query(
+          'SELECT invitation_code FROM user_information WHERE user_id = ?',
+          [sub.userId]
+        );
+        const subInvitationCode = subInfo[0]?.invitation_code || '';
+        
+        await connection.query(`
+          INSERT INTO invitation_rebate (
+            user_id,
+            invitation_code,
+            subordinate_user_id,
+            subordinate_user_invitation_code,
+            subordinate_rebate_amount,
+            rebate_creation_time
+          ) VALUES (?, ?, ?, ?, ?, NOW())
+        `, [referrerId, invitationCode, sub.userId, subInvitationCode, subRebate]);
+      }
+      
+      // 7. 记录返利发放日志到交易记录表
       await connection.query(`
         INSERT INTO bitcoin_transaction_records (
           user_id,

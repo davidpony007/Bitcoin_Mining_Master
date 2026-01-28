@@ -16,13 +16,13 @@ class CheckInMiningContractService {
   static CHECKIN_MINING_DURATION = 2 * 60 * 60 * 1000; // 2小时（毫秒）
 
   /**
-   * 每日签到并创建挖矿合约
+   * 创建签到挖矿合约（不验证签到，由调用方负责）
    * 业务逻辑：
-   * 1. 每日只能签到一次（UTC+00:00重置）
-   * 2. 签到成功后创建独立的2小时挖矿合约
-   * 3. 该合约使用1.36倍特殊加成系数
-   * 4. 📌 重要：不影响普通广告挖矿合约的时间
-   * 5. 📌 重要：不会增加电池数量显示（电池只显示Ad Reward合约）
+   * 1. 创建独立的2小时挖矿合约
+   * 2. 该合约使用1.36倍特殊加成系数
+   * 3. 📌 重要：不影响普通广告挖矿合约的时间
+   * 4. 📌 重要：不会增加电池数量显示（电池只显示Ad Reward合约）
+   * 5. 📌 签到验证由调用方（路由层）负责
    */
   static async checkInAndCreateMiningContract(userId) {
     try {
@@ -38,17 +38,14 @@ class CheckInMiningContractService {
         };
       }
 
-      // 2. 执行签到（CheckInService会验证今天是否已签到）
-      const checkInResult = await CheckInService.checkIn(userId);
-
-      if (!checkInResult.success) {
-        return checkInResult; // 返回签到失败的结果（如：今天已签到）
-      }
-
-      // 3. 计算挖矿速度（基础奖励 × 国家系数 × 矿工等级速率系数 × 1.36倍签到加成）
+      // 2. 计算挖矿速度（基础奖励 × 国家系数 × 矿工等级速率系数 × 1.36倍签到加成）
+      // 签到成功后，直接使用1.36倍加成（不依赖Redis查询，避免时序问题）
       const speedInfo = await LevelService.calculateMiningSpeed(userId);
+      
+      // 确保使用1.36倍加成的速度
+      const finalHashrate = speedInfo.finalSpeedWithoutBonus * 1.36;
 
-      // 4. 创建签到挖矿合约（独立队列，使用特殊加成速度）
+      // 3. 创建签到挖矿合约（独立队列，使用特殊加成速度）
       const now = new Date();
       const endTime = new Date(now.getTime() + this.CHECKIN_MINING_DURATION);
 
@@ -58,21 +55,19 @@ class CheckInMiningContractService {
         free_contract_revenue: 0,
         free_contract_creation_time: now,
         free_contract_end_time: endTime,
-        hashrate: speedInfo.finalSpeedWithBonus, // 使用包含1.36倍签到加成的速度
+        hashrate: finalHashrate, // 明确使用1.36倍加成的速度
         mining_status: 'mining'
       });
 
-      console.log(`✅ 创建签到挖矿合约: 用户 ${userId}, 结束时间 ${endTime}, 速度 ${speedInfo.finalSpeedWithBonus} BTC/s (包含1.36個加成)`);
+      console.log(`✅ 创建签到挖矿合约: 用户 ${userId}, 结束时间 ${endTime}, 速度 ${finalHashrate.toExponential(2)} BTC/s (包含1.36倍加成)`);
+
 
       return {
         success: true,
         message: '签到成功，开始挖矿2小时（含1.36倍加成）',
         checkInInfo: {
-          consecutiveDays: checkInResult.consecutiveDays,
-          pointsEarned: checkInResult.pointsEarned,
-          dailyBonusActive: checkInResult.dailyBonusActive,
-          dailyBonusExpire: checkInResult.dailyBonusExpire,
-          dailyBonusMultiplier: checkInResult.dailyBonusMultiplier
+          dailyBonusActive: true,
+          dailyBonusMultiplier: 1.36  // 明确返回1.36倍加成
         },
         contract: {
           id: contract.id,
@@ -86,14 +81,14 @@ class CheckInMiningContractService {
           baseSpeed: speedInfo.baseSpeed,
           baseHashrate: speedInfo.baseHashrateGhs + ' Gh/s',
           levelMultiplier: speedInfo.levelMultiplier,
-          dailyBonusMultiplier: speedInfo.dailyBonusMultiplier, // 1.36倍特殊加成
+          dailyBonusMultiplier: 1.36, // 签到合约固定使用1.36倍加成
           countryMultiplier: speedInfo.countryMultiplier,
-          finalSpeed: speedInfo.finalSpeedWithBonus // 包含1.36倍加成的速度
+          finalSpeed: finalHashrate // 包含1.36倍加成的速度
         }
       };
 
     } catch (err) {
-      console.error('❌ 签到并创建挖矿合约失败:', err);
+      console.error('❌ 创建签到挖矿合约失败:', err);
       throw err;
     }
   }

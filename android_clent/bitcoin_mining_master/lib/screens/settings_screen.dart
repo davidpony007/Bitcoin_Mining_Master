@@ -4,6 +4,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/user_repository.dart';
+import '../services/api_service.dart';
+import 'login_screen.dart';
 
 /// 设置页面 - Settings Screen
 class SettingsScreen extends StatefulWidget {
@@ -16,15 +18,15 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _pushNotifications = true;
   bool _isGoogleSignedIn = false; // Google登录状态
+  GoogleSignInAccount? _googleAccount; // 保存Google账号信息
   String _userId = 'Loading...'; // 用户ID
   String _userName = 'Guest User'; // 用户昵称，可编辑
   final _storageService = StorageService();
   final _userRepository = UserRepository();
+  final _apiService = ApiService();
   bool _isLoading = false;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-  );
-  
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+
   // UTC时间显示
   String _utcTime = '';
   Timer? _timeTimer;
@@ -54,8 +56,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _updateUtcTime() {
     final now = DateTime.now().toUtc();
     setState(() {
-      _utcTime = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
-                 '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      _utcTime =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     });
   }
 
@@ -66,34 +69,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
 
     try {
-      // 从本地存储加载（应该已在APP启动时通过deviceLogin保存）
+      // 优先从本地存储加载（UserProvider已在APP启动时初始化）
       final savedUserId = _storageService.getUserId();
       if (savedUserId != null && savedUserId.isNotEmpty) {
         setState(() {
           _userId = savedUserId;
           _isLoading = false;
         });
-      } else {
-        // 本地没有，尝试设备登录/注册
-        final result = await _userRepository.fetchUserId();
-        if (result.isSuccess && result.data != null && result.data!.isNotEmpty) {
+        
+        // 加载Google登录状态
+        _loadGoogleSignInStatus();
+        return; // 找到缓存直接返回，不要再次调用API
+      }
+
+      // 如果本地确实没有（极少见），等待UserProvider完成初始化
+      print('⚠️ Settings: 本地未找到userId，等待UserProvider初始化...');
+
+      // 等待UserProvider完成初始化（最多5秒，每100ms检查一次）
+      for (int i = 0; i < 50; i++) {
+        await Future.delayed(Duration(milliseconds: 100));
+        final retryUserId = _storageService.getUserId();
+        if (retryUserId != null && retryUserId.isNotEmpty) {
           setState(() {
-            _userId = result.data!;
+            _userId = retryUserId;
             _isLoading = false;
           });
-        } else {
-          setState(() {
-            _userId = 'Login failed';
-            _isLoading = false;
-          });
+          print('✅ Settings: 从缓存获取userId: $retryUserId (等待${i * 100}ms)');
+          
+          // 加载Google登录状态
+          _loadGoogleSignInStatus();
+          return;
         }
       }
+
+      // 超时后显示错误信息
+      print('❌ Settings: UserProvider初始化超时（5秒）');
+      setState(() {
+        _userId = 'Tap to Retry';
+        _isLoading = false;
+      });
     } catch (e) {
       print('Error loading user ID: $e');
       setState(() {
         _userId = 'Error: ${e.toString()}';
         _isLoading = false;
       });
+    }
+  }
+
+  /// 加载Google登录状态
+  Future<void> _loadGoogleSignInStatus() async {
+    try {
+      // 从本地存储检查Google登录状态
+      final isGoogleSignedIn = _storageService.isGoogleSignedIn();
+      final googleEmail = _storageService.getGoogleEmail();
+      
+      if (isGoogleSignedIn == true) {
+        // 尝试静默登录获取账号信息
+        final account = await _googleSignIn.signInSilently();
+        
+        setState(() {
+          _isGoogleSignedIn = true;
+          _googleAccount = account;
+        });
+        
+        print('✅ Settings: Google账号已绑定 - ${account?.email ?? googleEmail ?? "Unknown"}');
+      } else {
+        setState(() {
+          _isGoogleSignedIn = false;
+          _googleAccount = null;
+        });
+        print('ℹ️ Settings: Google账号未绑定');
+      }
+    } catch (e) {
+      print('⚠️ Settings: 加载Google登录状态失败: $e');
+      // 即使失败也不影响页面显示
     }
   }
 
@@ -110,17 +160,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SizedBox(height: 16),
-            
+
             // User Info
             _buildUserCard(),
-            
+
             const SizedBox(height: 16),
-            
+
             // UTC Time Display
             _buildUtcTimeCard(),
-            
+
             const SizedBox(height: 20),
-            
+
             // General Settings
             _buildSectionTitle('General'),
             _buildSettingsCard([
@@ -145,31 +195,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ]),
-            
+
             const SizedBox(height: 20),
-            
+
             // Account
             _buildSectionTitle('Account'),
             _buildSettingsCard([
               _buildNavigationItem(
                 icon: _isGoogleSignedIn ? Icons.account_circle : Icons.login,
-                iconColor: _isGoogleSignedIn ? const Color(0xFF4CAF50) : AppColors.primary,
-                title: _isGoogleSignedIn ? 'Google Account' : 'Sign In with Google',
-                subtitle: _isGoogleSignedIn ? 'Connected' : 'Bind your Google account',
+                iconColor: _isGoogleSignedIn
+                    ? const Color(0xFF4CAF50)
+                    : AppColors.primary,
+                title: _isGoogleSignedIn
+                    ? 'Google Account'
+                    : 'Sign In with Google',
+                subtitle: _isGoogleSignedIn
+                    ? (_googleAccount?.email ?? 'Connected')
+                    : 'Bind your Google account',
                 onTap: () {
                   if (_isGoogleSignedIn) {
-                    // TODO: Show sign out dialog
+                    // Show sign out dialog
                     _showSignOutDialog();
                   } else {
-                    // TODO: Implement Google Sign In
-                    _handleGoogleSignIn();
+                    // Show binding confirmation dialog first
+                    _showBindingConfirmationDialog();
                   }
                 },
               ),
             ]),
-            
+
             const SizedBox(height: 20),
-            
+
             // About
             _buildSectionTitle('About'),
             _buildSettingsCard([
@@ -202,12 +258,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () {},
               ),
             ]),
-            
+
             const SizedBox(height: 32),
-            
+
+            // Log Out Button
+            _buildLogOutButton(),
+
+            const SizedBox(height: 16),
+
             // Delete Account
             _buildDeleteAccountButton(),
-            
+
             const SizedBox(height: 32),
           ],
         ),
@@ -234,11 +295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: AppColors.surface,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.person,
-                size: 32,
-                color: AppColors.primary,
-              ),
+              child: Icon(Icons.person, size: 32, color: AppColors.primary),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -257,7 +314,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Row(
                     children: [
                       Text(
-                        'ID: ',
+                        'User ID: ',
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 13,
@@ -275,7 +332,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(4),
@@ -292,10 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            Icon(
-              Icons.edit,
-              color: AppColors.textSecondary,
-            ),
+            Icon(Icons.edit, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -309,10 +366,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: AppColors.cardDark,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.primary.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
@@ -323,11 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: AppColors.primary.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              Icons.schedule,
-              size: 28,
-              color: AppColors.primary,
-            ),
+            child: Icon(Icons.schedule, size: 28, color: AppColors.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -380,10 +430,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Text(
         title,
-        style: TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 14,
-        ),
+        style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
       ),
     );
   }
@@ -395,9 +442,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: AppColors.cardDark,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        children: children,
-      ),
+      child: Column(children: children),
     );
   }
 
@@ -430,10 +475,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                    ),
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 4),
@@ -448,10 +490,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            Icon(
-              Icons.chevron_right,
-              color: AppColors.textSecondary,
-            ),
+            Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -486,10 +525,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
                 ),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
@@ -517,9 +553,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildDivider() {
     return Padding(
       padding: const EdgeInsets.only(left: 72),
-      child: Divider(
-        height: 1,
-        color: AppColors.divider,
+      child: Divider(height: 1, color: AppColors.divider),
+    );
+  }
+
+  Widget _buildLogOutButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: OutlinedButton.icon(
+        onPressed: () {
+          _showLogOutDialog();
+        },
+        icon: const Icon(Icons.logout),
+        label: const Text(
+          'Log Out',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: BorderSide(color: AppColors.primary),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }
@@ -541,10 +598,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         child: const Text(
           'Delete Account',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -554,28 +608,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       // 先尝试静默登录
       GoogleSignInAccount? account = await _googleSignIn.signInSilently();
-      
+
       // 如果静默登录失败，弹出登录界面
       account ??= await _googleSignIn.signIn();
-      
+
       if (account != null) {
         // 获取认证信息
         final GoogleSignInAuthentication auth = await account.authentication;
-        
+
         print('✅ Google登录成功！');
         print('用户ID: ${account.id}');
         print('用户名: ${account.displayName}');
         print('邮箱: ${account.email}');
-        
+
+        // 调用后端API绑定Google账号到MySQL数据库
+        try {
+          final apiService = ApiService();
+          final response = await apiService.bindGoogle(
+            userId: _userId,
+            googleAccount: account.email ?? '',
+          );
+
+          if (response['success'] == true) {
+            print('✅ Google账号已绑定到MySQL数据库: ${account.email}');
+          } else {
+            print('❌ Google账号绑定到数据库失败: ${response['error']}');
+          }
+        } catch (apiError) {
+          print('❌ 调用绑定API失败: $apiError');
+          // 即使API调用失败，也继续显示登录成功（因为Google OAuth成功了）
+        }
+
         if (mounted) {
           setState(() {
             _isGoogleSignedIn = true;
+            _googleAccount = account; // 保存Google账号信息以便显示邮箱
           });
-          
+
           // 显示成功消息
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Welcome, ${account.displayName ?? account.email}!'),
+              content: Text(
+                'Welcome, ${account.displayName ?? account.email}!',
+              ),
               backgroundColor: const Color(0xFF4CAF50),
               duration: const Duration(seconds: 2),
             ),
@@ -584,10 +659,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (error) {
       print('❌ Google登录失败: $error');
-      
+
       if (mounted) {
         String errorMessage = 'Failed to sign in';
-        if (error.toString().contains('DEVELOPER_ERROR') || 
+        if (error.toString().contains('DEVELOPER_ERROR') ||
             error.toString().contains('10')) {
           errorMessage = 'OAuth配置错误，请检查Google Cloud Console设置';
         } else if (error.toString().contains('network')) {
@@ -595,7 +670,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         } else if (error.toString().contains('sign_in_canceled')) {
           errorMessage = '登录已取消';
         }
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
@@ -618,7 +693,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(color: AppColors.textPrimary),
           ),
           content: Text(
-            'Are you sure you want to sign out from your Google account?',
+            'Sign out from your Google account? You can sign in with another Google account later.',
             style: TextStyle(color: AppColors.textSecondary),
           ),
           actions: [
@@ -631,15 +706,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             TextButton(
               onPressed: () async {
+                // 只做本地登出，不解绑数据库
                 await _googleSignIn.signOut();
                 Navigator.of(context).pop();
                 setState(() {
                   _isGoogleSignedIn = false;
+                  _googleAccount = null;
                 });
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Google account disconnected'),
+                      content: Text(
+                        'Signed out successfully. You can sign in with another Google account.',
+                      ),
+                      duration: Duration(seconds: 3),
                     ),
                   );
                 }
@@ -655,9 +735,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showBindingConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+              SizedBox(width: 8),
+              Text(
+                'Important Notice',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            'Each User ID can only be bound to ONE Google account permanently. Once bound, it cannot be unbound or changed.\n\nAre you sure you want to bind your Google account to this User ID?',
+            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _handleGoogleSignIn();
+              },
+              child: Text(
+                'I Understand',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showEditNameDialog() {
     final nameController = TextEditingController(text: _userName);
-    
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -691,30 +818,233 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 final newName = nameController.text.trim();
                 if (newName.isNotEmpty) {
-                  setState(() {
-                    _userName = newName;
-                  });
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Username updated successfully'),
-                      backgroundColor: Colors.green,
+                  
+                  // 显示加载指示器
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
                     ),
                   );
+
+                  try {
+                    // 调用API更新昵称
+                    final result = await _apiService.updateNickname(
+                      userId: _userId,
+                      nickname: newName,
+                    );
+
+                    // 关闭加载指示器
+                    if (mounted) Navigator.of(context).pop();
+
+                    if (result['success'] == true) {
+                      setState(() {
+                        _userName = newName;
+                      });
+                      
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Username updated successfully'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(result['message'] ?? 'Failed to update username'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    // 关闭加载指示器
+                    if (mounted) Navigator.of(context).pop();
+                    
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error: ${e.toString()}'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
                 }
               },
+              child: Text('Save', style: TextStyle(color: AppColors.primary)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showLogOutDialog() {
+    // 检查用户是否绑定了Google账户
+    if (!_isGoogleSignedIn) {
+      // 游客用户 - 显示警告对话框
+      _showGuestLogOutWarningDialog();
+    } else {
+      // 已绑定Google账户 - 显示普通退出对话框
+      _showNormalLogOutDialog();
+    }
+  }
+
+  /// 游客用户退出警告对话框
+  void _showGuestLogOutWarningDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+              const SizedBox(width: 8),
+              Text(
+                'Warning',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            'Your account is a guest user. To avoid losing profits, you should bind a Google account first. If you do not have a Google account, please register one first!',
+            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                'Save',
-                style: TextStyle(color: AppColors.primary),
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _handleLogOut();
+              },
+              child: Text(
+                'Still Log Out',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
         );
       },
     );
+  }
+
+  /// 普通退出对话框（已绑定Google账户）
+  void _showNormalLogOutDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Row(
+            children: [
+              Icon(Icons.logout, color: AppColors.primary, size: 28),
+              const SizedBox(width: 8),
+              Text(
+                'Log Out',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          content: Text(
+            'Are you sure you want to log out? You will need to sign in again to access your account.',
+            style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _handleLogOut();
+              },
+              child: Text(
+                'Log Out',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _handleLogOut() async {
+    try {
+      // 1. 退出Google账号（如果已登录）
+      if (_isGoogleSignedIn) {
+        await _googleSignIn.signOut();
+      }
+
+      // 2. 清除登录状态（但保留 user_id 和 invitation_code 用于账号恢复）
+      // 注意：不删除 user_id 和 invitation_code，这样用户下次登录时可以恢复账号
+      // await _storageService.clearUserId();  // ❌ 不删除
+      // await _storageService.clearInvitationCode();  // ❌ 不删除
+      await _storageService.saveGoogleSignInStatus(false);
+      await _storageService.saveGoogleEmail('');
+      await _storageService.saveIsLoggedOut(true);  // ✅ 标记为已登出状态
+
+      // 3. 显示成功提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Logged out successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // 4. 等待一下再跳转，让用户看到提示
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // 5. 导航到登录页面（清除所有路由栈）
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+            (route) => false, // 清除所有路由
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Log out error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Log out failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   void _showDeleteAccountDialog() {

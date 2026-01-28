@@ -19,6 +19,7 @@ const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  connectTimeout: 30000, // 连接超时30秒
   timezone: '+00:00' // 使用UTC时区
 });
 

@@ -18,14 +18,29 @@ class CheckInStatus {
   });
 
   factory CheckInStatus.fromJson(Map<String, dynamic> json) {
+    // 支持多种字段名：cumulativeDays(新API), total_days, consecutive_days
+    final totalDays = json['cumulativeDays'] ?? 
+                     json['cumulative_days'] ?? 
+                     json['total_days'] ?? 
+                     json['consecutive_days'] ?? 
+                     0;
+    
+    // 支持多种字段名：hasCheckedInToday(新API), checked_in_today
+    final checkedInToday = json['hasCheckedInToday'] ?? 
+                          json['has_checked_in_today'] ?? 
+                          json['checked_in_today'] ?? 
+                          false;
+    
+    print('📦 [CheckInStatus.fromJson] totalDays=$totalDays, checkedInToday=$checkedInToday, json=$json');
+    
     return CheckInStatus(
-      checkedInToday: json['checked_in_today'] ?? false,
-      totalDays: json['total_days'] ?? json['consecutive_days'] ?? 0,
+      checkedInToday: checkedInToday,
+      totalDays: totalDays,
       lastCheckInDate: json['last_check_in_date'] != null
           ? DateTime.parse(json['last_check_in_date'])
           : null,
-      nextMilestone: json['next_milestone'],
-      daysUntilMilestone: json['days_until_milestone'],
+      nextMilestone: json['next_milestone'] ?? json['nextMilestone'],
+      daysUntilMilestone: json['days_until_milestone'] ?? json['daysUntilMilestone'],
     );
   }
 }

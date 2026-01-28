@@ -25,6 +25,7 @@ dependencies:
   url_launcher: ^6.2.2
   google_sign_in: ^6.2.1
   google_mobile_ads: ^5.1.0
+  connectivity_plus: ^6.1.2
 
 dev_dependencies:
   flutter_test:
@@ -32,8 +33,16 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   build_runner: ^2.4.7
   json_serializable: ^6.7.1
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
+flutter_launcher_icons:
+  android: "launcher_icons"
+  ios: true
+  image_path: "assets/images/bitcoin_chip_logo.png"
+  # 使用传统方式生成图标，不使用adaptive icon，避免被系统裁剪
+  remove_alpha_ios: true

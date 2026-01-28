@@ -6,11 +6,14 @@ import '../constants/app_constants.dart';
 import '../services/points_api_service.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/admob_service.dart';
+import '../services/user_repository.dart';
 import '../models/points_model.dart';
 import 'points_screen.dart';
 import 'checkin_screen.dart';
 import 'paid_contracts_screen.dart';
 import 'ad_reward_screen.dart';
+
 
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
 class DashboardScreen extends StatefulWidget {
@@ -27,6 +30,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   final PointsApiService _pointsApi = PointsApiService();
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
+  final AdMobService _adMobService = AdMobService();
+  final UserRepository _userRepository = UserRepository();
   PointsBalance? _pointsBalance;
   Map<String, dynamic>? _todayAdInfo;
   bool _isLoadingPoints = true;
@@ -47,6 +52,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   late List<BatteryState> _batteries;
   Timer? _miningTimer;
   late AnimationController _breathingController;
+  
+  // Balance bounce animation
+  late AnimationController _balanceAnimationController;
+  late Animation<double> _balanceScaleAnimation;
+  String _previousBalance = '0.000000000000000';
 
   @override
   void initState() {
@@ -60,9 +70,33 @@ class _DashboardScreenState extends State<DashboardScreen>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
+    
+    // 初始化余额数字递增动画控制器
+    _balanceAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    // 初始化为0，稍后会在_triggerBalanceBounce中设置正确的Tween
+    _balanceScaleAnimation = Tween<double>(begin: 0.0, end: 0.0)
+        .animate(CurvedAnimation(
+          parent: _balanceAnimationController,
+          curve: Curves.easeOutCubic,
+        ));
+    
     _loadPointsData();
     _loadUserLevel(); // 加载用户等级
     _loadContractAndUpdateBatteries();
+  }
+
+  /// 公共方法：手动刷新余额（由HomeScreen调用）
+  Future<void> refreshBalance() async {
+    if (!mounted) return;
+    final prevBalance = context.read<UserProvider>().bitcoinBalance;
+    await context.read<UserProvider>().fetchBitcoinBalance();
+    final newBalance = context.read<UserProvider>().bitcoinBalance;
+    if (prevBalance != newBalance) {
+      _triggerBalanceBounce();
+    }
   }
 
   @override
@@ -74,6 +108,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       _loadContractAndUpdateBatteries();
       _loadPointsData();
       _loadUserLevel();
+      _triggerBalanceBounce();
     }
   }
 
@@ -90,15 +125,353 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
+  /// 触发余额数字递增动画
+  void _triggerBalanceBounce() {
+    if (!mounted) return;
+    final currentBalanceStr = context.read<UserProvider>().bitcoinBalance;
+    final currentBalance = double.tryParse(currentBalanceStr) ?? 0.0;
+    final previousBalance = double.tryParse(_previousBalance) ?? 0.0;
+    
+    if (currentBalance != previousBalance) {
+      // 创建从旧值到新值的数字递增动画
+      _balanceScaleAnimation = Tween<double>(
+        begin: previousBalance,
+        end: currentBalance,
+      ).animate(CurvedAnimation(
+        parent: _balanceAnimationController,
+        curve: Curves.easeOutCubic,
+      ));
+      
+      _previousBalance = currentBalanceStr;
+      _balanceAnimationController.forward(from: 0.0);
+      print('💰 Dashboard: 余额从 ${previousBalance.toStringAsFixed(15)} 递增到 ${currentBalance.toStringAsFixed(15)}');
+    } else if (_previousBalance == '0.000000000000000') {
+      // 首次加载，直接显示当前值
+      _balanceScaleAnimation = Tween<double>(
+        begin: currentBalance,
+        end: currentBalance,
+      ).animate(CurvedAnimation(
+        parent: _balanceAnimationController,
+        curve: Curves.easeOutCubic,
+      ));
+      _previousBalance = currentBalanceStr;
+      _balanceAnimationController.value = 1.0;
+      print('💰 Dashboard: 首次加载余额 ${currentBalance.toStringAsFixed(15)}');
+    }
+  }
+
+  /// 直接播放广告并领取奖励（无中间页）
+  Future<void> _playAdAndClaimReward() async {
+    // 检查广告是否已准备好
+    if (!_adMobService.isAdReady) {
+      // 显示加载提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📺 Loading ad, please wait...'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // 开始加载广告
+      await _adMobService.loadRewardedAd();
+      
+      // 等待广告加载完成（最多10秒）
+      final startTime = DateTime.now();
+      while (!_adMobService.isAdReady && DateTime.now().difference(startTime).inSeconds < 10) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      if (!_adMobService.isAdReady) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Ad not available. Please check your network connection and try again later.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    // 播放广告
+    try {
+      final earnedReward = await _adMobService.showRewardedAd();
+      
+      if (!mounted) return;
+
+      if (earnedReward) {
+        // 用户看完广告，发放奖励
+        final success = await _extendContract();
+        
+        if (!mounted) return;
+
+        if (success) {
+          // 立即刷新所有数据
+          await _loadContractAndUpdateBatteries();
+          await _loadUserLevel();
+          await _loadPointsData();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Reward claimed! Mining Pool and Experience updated!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('❌ Failed to claim reward, please try again'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } else {
+        // 用户未看完广告
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Please watch the complete ad to claim reward'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 延长Free Ad Reward合约（调用后端API）
+  Future<bool> _extendContract() async {
+    try {
+      print('📡 开始延长Free Ad Reward合约...');
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        print('❌ 获取用户ID失败');
+        return false;
+      }
+      final userId = userIdResult.data!;
+      print('✅ 用户ID: $userId, 准备延长2小时');
+
+      final response = await _apiService.extendAdRewardContract(
+        userId: userId,
+        hours: 2,
+      );
+
+      print('📦 延长合约API响应: $response');
+      final success = response['success'] == true;
+      print(success ? '✅ 合约延长成功!' : '❌ 合约延长失败');
+      return success;
+    } catch (e) {
+      print('❌ 延长合约失败: $e');
+      return false;
+    }
+  }
+
+  /// 播放每日签到广告并领取奖励
+  Future<void> _playDailyCheckInAd() async {
+    // 检查今日是否已签到
+    final lastCheckInDate = _storageService.getLastCheckInDate();
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    
+    print('🔍 [Dashboard] 签到检查: lastCheckInDate=$lastCheckInDate, today=$today');
+
+    if (lastCheckInDate == today) {
+      // 今日已签到，显示提示
+      print('⚠️ [Dashboard] 今日已签到，阻止播放广告');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ You have already checked in today! Please try again after UTC 00:00'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    
+    print('✅ [Dashboard] 未签到，准备播放广告');
+
+    // 检查广告是否已准备好
+    if (!_adMobService.isAdReady) {
+      // 显示加载提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📺 Loading ad, please wait...'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // 开始加载广告
+      await _adMobService.loadRewardedAd();
+      
+      // 等待广告加载完成（最多10秒）
+      final startTime = DateTime.now();
+      while (!_adMobService.isAdReady && DateTime.now().difference(startTime).inSeconds < 10) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      if (!mounted) return;
+
+      // 检查广告是否加载成功
+      if (!_adMobService.isAdReady) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Ad not available. Please check your network connection and try again later.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    // 播放广告
+    try {
+      final earnedReward = await _adMobService.showRewardedAd();
+      
+      if (!mounted) return;
+
+      if (earnedReward) {
+        // 用户看完广告，调用签到接口
+        final success = await _performCheckIn();
+        
+        if (!mounted) return;
+
+        if (success) {
+          // 立即刷新所有数据
+          await _loadContractAndUpdateBatteries();
+          await _loadUserLevel();
+          await _loadPointsData();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Check-in successful! Daily contract activated!'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('❌ Check-in failed, please try again'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } else {
+        // 用户未看完广告
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Please watch the complete ad to check in'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// 执行签到（调用后端API）
+  Future<bool> _performCheckIn() async {
+    try {
+      print('📡 开始执行每日签到...');
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        print('❌ 获取用户ID失败');
+        return false;
+      }
+      final userId = userIdResult.data!;
+      print('✅ 用户ID: $userId, 准备调用签到API');
+
+      // 调用签到接口
+      final response = await _apiService.performCheckIn(userId: userId);
+
+      print('📦 签到API响应: $response');
+      
+      // 检查是否是"今日已签到"的特殊情况
+      if (response['alreadyCheckedIn'] == true) {
+        print('ℹ️ 检测到后端返回已签到标记，保存今日日期到本地');
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        await _storageService.saveLastCheckInDate(today);
+        final verified = _storageService.getLastCheckInDate();
+        print('🔍 保存已签到日期: $today, 验证结果: $verified');
+        
+        // 虽然后端说已签到，但仍然返回true让调用方知道应该显示成功消息
+        return true;
+      }
+      
+      final success = response['success'] == true;
+      
+      if (success) {
+        // 签到成功,保存今日日期到本地存储
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        await _storageService.saveLastCheckInDate(today);
+        final verified = _storageService.getLastCheckInDate();
+        print('✅ 签到成功! 保存日期: $today, 验证结果: $verified');
+      } else {
+        print('❌ 签到失败');
+      }
+      
+      return success;
+    } catch (e) {
+      print('❌ 签到失败: $e');
+      return false;
+    }
+  }
+
   void _startMiningTimer() {
-    _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
 
       bool hasChanges = false;
       bool needsResort = false;
+      bool hasMiningBatteries = false;
 
       for (int i = 0; i < _batteries.length; i++) {
         if (_batteries[i].isMining && _batteries[i].remainingSeconds > 0) {
+          hasMiningBatteries = true;
           _batteries[i].remainingSeconds--;
           hasChanges = true;
 
@@ -121,6 +494,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   _batteries[j].isMining = true;
                   _batteries[j].totalSeconds = 4 * 15 * 60;
                   _batteries[j].remainingSeconds = 4 * 15 * 60;
+                  hasMiningBatteries = true;
                   break;
                 }
               }
@@ -132,6 +506,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       // 如果有电池状态变化需要重新排序
       if (needsResort) {
         _sortBatteries();
+      }
+
+      // 每秒刷新余额（只要有任何挖矿任务，包括付费合约、签到合约等）
+      if (mounted) {
+        // 每秒刷新余额，触发数字递增动画
+        await context.read<UserProvider>().fetchBitcoinBalance();
+        if (hasMiningBatteries) {
+          _triggerBalanceBounce();
+        }
       }
 
       if (hasChanges && mounted) {
@@ -146,6 +529,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _miningTimer?.cancel();
     _priceUpdateTimer?.cancel(); // 取消价格更新定时器
     _breathingController.dispose();
+    _balanceAnimationController.dispose();
     super.dispose();
   }
 
@@ -211,13 +595,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     // 每小时 = 3600秒 = 1个电池
     // 每15分钟 = 900秒 = 电池的1格（共4格）
     // 📌 最大48小时（48个电池槽）
-    const int MAX_HOURS = 48;
-    const int MAX_SECONDS = MAX_HOURS * 3600;
+    const int maxHours = 48;
+    const int maxSeconds = maxHours * 3600;
 
     // 限制为48小时上限
-    if (remainingSeconds > MAX_SECONDS) {
+    if (remainingSeconds > maxSeconds) {
       print('⚠️ 剩余时间超过48小时上限，限制为48小时');
-      remainingSeconds = MAX_SECONDS;
+      remainingSeconds = maxSeconds;
     }
 
     final totalHours = remainingSeconds ~/ 3600; // 完整小时数
@@ -456,15 +840,20 @@ class _DashboardScreenState extends State<DashboardScreen>
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 8),
-          Text(
-            '${double.tryParse(provider.bitcoinBalance)?.toStringAsFixed(15) ?? '0.000000000000000'} BTC',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          AnimatedBuilder(
+            animation: _balanceScaleAnimation,
+            builder: (context, child) {
+              return Text(
+                '${_balanceScaleAnimation.value.toStringAsFixed(15)} BTC',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              );
+            },
           ),
           const SizedBox(height: 4),
           Text(
@@ -783,6 +1172,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: ElevatedButton(
                   onPressed: isMiningPoolFull
                       ? () {
+                          print('⚠️ Free Ad Mining 点击 - 电池槽已满');
                           // 电池槽已满，显示提示
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -792,41 +1182,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                           );
                         }
-                      : () async {
-                          final result = await Navigator.push(
+                      : () {
+                          print('✅ Free Ad Mining 点击 - 准备导航到AdRewardScreen');
+                          // 跳转到广告奖励页面（非签到模式）
+                          Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const AdRewardScreen(),
+                              builder: (context) => const AdRewardScreen(isDailyCheckIn: false),
                             ),
-                          );
-
-                          // 如果返回true（延长成功），立即刷新所有数据
-                          if (result == true && mounted) {
-                            // 立即刷新电池、等级和积分，无延迟
-                            await _loadContractAndUpdateBatteries();
-                            await _loadUserLevel();
-                            await _loadPointsData();
-                            
-                            // 显示成功提示
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✅ Reward claimed! Mining Pool and Experience updated!'),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            }
-                          } else if (result == false && mounted) {
-                            // 显示失败提示
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('❌ Failed to claim reward, please try again'),
-                                backgroundColor: Colors.red,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
+                          ).then((_) {
+                            print('✅ 从AdRewardScreen返回,刷新数据');
+                            // 返回后刷新数据
+                            _loadContractAndUpdateBatteries();
+                            _loadUserLevel();
+                            _loadPointsData();
+                          });
                         },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: isMiningPoolFull
@@ -895,7 +1265,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                              '⚠️ You have already checked in today',
+                              '⚠️ You have already checked in today! Please try again after UTC 00:00',
                             ),
                             backgroundColor: Colors.orange,
                             duration: Duration(seconds: 3),
@@ -905,46 +1275,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                       return;
                     }
 
-                    // 未签到，跳转到签到页面
+                    // 未签到，跳转到广告奖励页面（签到模式）
+                    // AdRewardScreen 会在签到成功后自动跳转到 CheckInScreen
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            const AdRewardScreen(isDailyCheckIn: true),
+                        builder: (context) => const AdRewardScreen(isDailyCheckIn: true),
                       ),
                     );
-
-                    // 📌 处理签到返回值
-                    if (result is Map &&
-                        result['action'] == 'switchToContracts' &&
-                        mounted) {
-                      // 通知父组件（HomeScreen）切换到Contracts标签
-                      widget.onSwitchTab?.call(1); // 切换到Contracts标签（索引1）
-                    } else if (result == true && mounted) {
-                      // 签到成功，立即刷新所有数据
+                    
+                    // 签到成功后刷新数据（不需要跳转，AdRewardScreen已经处理）
+                    if (result == true && mounted) {
+                      print('✅ [Dashboard] 签到成功，刷新数据');
                       await _loadContractAndUpdateBatteries();
                       await _loadUserLevel();
                       await _loadPointsData();
-                      
-                      // 显示成功提示
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('✅ Check-in successful! Daily contract activated!'),
-                            backgroundColor: Colors.green,
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    } else if (result == false && mounted) {
-                      // 显示失败提示
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('❌ Check-in failed, please try again'),
-                          backgroundColor: Colors.red,
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
                     }
                   },
                   style: ElevatedButton.styleFrom(

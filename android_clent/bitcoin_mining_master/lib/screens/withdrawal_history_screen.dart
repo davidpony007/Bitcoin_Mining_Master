@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/app_constants.dart';
-import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 

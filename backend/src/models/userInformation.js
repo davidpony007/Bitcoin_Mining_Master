@@ -26,6 +26,11 @@ const UserInformation = sequelize.define('user_information', {
     allowNull: true,
     comment: '用户邮箱地址'
   },
+  password: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: '用户密码(bcrypt加密)'
+  },
   google_account: {
     type: DataTypes.STRING(100),
     allowNull: true,
@@ -33,10 +38,10 @@ const UserInformation = sequelize.define('user_information', {
     comment: '绑定的Google账号邮箱'
   },
   android_id: { 
-    type: DataTypes.STRING(32), 
+    type: DataTypes.STRING(255),  // 扩展长度支持长指纹
     allowNull: true,  // 允许为空：支持多平台、隐私限制、获取失败等情况
     defaultValue: null,
-    comment: 'Android设备ID(可选)'
+    comment: 'Android设备ID（支持长指纹）'
   },
   gaid: { 
     type: DataTypes.STRING(36), 
@@ -96,12 +101,34 @@ const UserInformation = sequelize.define('user_information', {
       name: 'idx_user_id'
     },
     {
+      unique: true,  // 唯一约束
       fields: ['invitation_code'],
-      name: 'idx_invitation_code'
+      name: 'idx_invitation_code_unique'
+    },
+    {
+      unique: true,  // 唯一约束
+      fields: ['android_id'],
+      name: 'idx_android_id_unique'
     },
     {
       fields: ['email'],
       name: 'idx_email'
+    },
+    {
+      fields: ['gaid'],
+      name: 'idx_gaid'
+    },
+    {
+      fields: ['register_ip'],
+      name: 'idx_register_ip'
+    },
+    {
+      fields: ['country'],
+      name: 'idx_country'
+    },
+    {
+      fields: ['user_creation_time'],
+      name: 'idx_user_creation_time'
     }
   ],
   comment: '用户基本信息表'

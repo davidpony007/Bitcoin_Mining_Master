@@ -102,11 +102,17 @@ class RedisClient {
     }
     
     try {
+      // 参数验证和默认值处理
+      if (!userId) {
+        console.warn('⚠️  缓存用户等级失败: userId 为空');
+        return false;
+      }
+      
       const key = `user:level:${userId}`;
       const data = {
-        level: level.toString(),
-        points: points.toString(),
-        speed_multiplier: speedMultiplier.toString(),
+        level: (level !== undefined && level !== null) ? level.toString() : '1',
+        points: (points !== undefined && points !== null) ? points.toString() : '0',
+        speed_multiplier: (speedMultiplier !== undefined && speedMultiplier !== null) ? speedMultiplier.toString() : '1.0',
         daily_bonus_active: dailyBonusActive ? '1' : '0',
         daily_bonus_expire: dailyBonusExpire || ''
       };

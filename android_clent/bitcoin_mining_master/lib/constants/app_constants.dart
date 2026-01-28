@@ -5,8 +5,10 @@ import 'dart:io' show Platform;
 /// API配置常量
 class ApiConstants {
   // 基础URL - 后端Node.js服务器地址
-  // 使用adb reverse端口转发，所有平台统一使用localhost
+  // 物理设备使用电脑局域网IP，模拟器使用localhost
   static String get baseUrl {
+    // 使用 adb reverse 端口转发，所有设备都使用 localhost
+    // 需要在开发时执行：adb reverse tcp:8888 tcp:8888
     return 'http://localhost:8888/api';
   }
   
@@ -22,7 +24,7 @@ class ApiConstants {
   static const String activateAdContract = '/auth/activate-ad-contract';
   
   // 用户相关端点
-  static const String getBitcoinBalance = '/user/bitcoin-balance';
+  static const String getBitcoinBalance = '/balance/realtime'; // 使用实时余额API
   static const String getTransactions = '/bitcoin-transactions/records';
   static const String getReferrals = '/user/referrals';
   static const String getContracts = '/contracts';

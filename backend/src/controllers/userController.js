@@ -137,3 +137,64 @@ exports.createUser = async (req, res) => {
     });
   }
 };
+
+// 更新用户昵称的接口
+// 处理 PUT 请求，更新用户昵称到 user_information 表
+exports.updateNickname = async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const { nickname } = req.body;
+
+    // 验证参数
+    if (!nickname || nickname.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        message: '昵称不能为空'
+      });
+    }
+
+    // 验证昵称长度
+    const trimmedNickname = nickname.trim();
+    if (trimmedNickname.length > 50) {
+      return res.status(400).json({
+        success: false,
+        message: '昵称长度不能超过50个字符'
+      });
+    }
+
+    // 查找用户
+    const user = await UserInformation.findOne({
+      where: { user_id }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '用户不存在'
+      });
+    }
+
+    // 更新昵称
+    await UserInformation.update(
+      { nickname: trimmedNickname },
+      { where: { user_id } }
+    );
+
+    res.json({
+      success: true,
+      message: '昵称更新成功',
+      data: {
+        user_id,
+        nickname: trimmedNickname
+      }
+    });
+
+  } catch (err) {
+    console.error('更新昵称失败:', err);
+    res.status(500).json({
+      success: false,
+      message: '更新昵称失败',
+      error: err.message
+    });
+  }
+};

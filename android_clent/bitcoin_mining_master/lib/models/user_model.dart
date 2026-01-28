@@ -161,13 +161,14 @@ class BitcoinBalanceResponse {
   });
 
   factory BitcoinBalanceResponse.fromJson(Map<String, dynamic> json) {
-    // 处理新的API响应格式：{"success":true,"data":{"currentBalance":0.98234234536,"accumulatedAmount":0.98234234536}}
+    // 处理实时余额API响应格式：{"success":true,"data":{"balance":0.000000139,"balanceInDb":0.0,"speedPerSecond":0.000000000000139,...}}
     if (json['data'] != null && json['data'] is Map) {
       final data = json['data'] as Map<String, dynamic>;
-      final currentBalance = data['currentBalance'];
+      // 使用 balance（实时余额，包含未持久化的挖矿收益）
+      final balance = data['balance'] ?? data['currentBalance'];
       return BitcoinBalanceResponse(
         success: json['success'] as bool? ?? false,
-        balance: currentBalance?.toString() ?? '0.00000000',
+        balance: balance?.toString() ?? '0.000000000000000',
         message: json['message'] as String?,
       );
     }
@@ -175,7 +176,7 @@ class BitcoinBalanceResponse {
     // 兼容旧格式：{"success":true,"balance":"0.00000000"}
     return BitcoinBalanceResponse(
       success: json['success'] as bool? ?? false,
-      balance: json['balance'] as String? ?? '0.00000000',
+      balance: json['balance'] as String? ?? '0.000000000000000',
       message: json['message'] as String?,
     );
   }

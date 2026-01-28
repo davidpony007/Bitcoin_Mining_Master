@@ -47,19 +47,14 @@ exports.deviceLogin = async (req, res) => {
       });
     }
 
-    // 1. 查找是否已存在该设备的用户
-    let user = await UserInformation.findOne({
-      where: { android_id: android_id.trim() }
-    });
+    console.log('🔍 [Device Login] 收到请求:');
+    console.log('   android_id:', android_id);
+    console.log('   android_id长度:', android_id.length);
+    console.log('   gaid:', gaid);
+    console.log('   country:', country);
 
-    let isNewUser = false;
-    let referrerInfo = null;
-
-    // 2. 如果用户不存在，自动创建新用户
-    if (!user) {
-      isNewUser = true;
-
-      // 生成唯一的 user_id 和 invitation_code
+    // 生成 user_id 和 invitation_code
+    const generateUserIds = () => {
       const now = new Date();
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -70,19 +65,28 @@ exports.deviceLogin = async (req, res) => {
       const random = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
       
       const timeString = `${year}${month}${day}${hour}${minute}${second}${random}`;
-      const user_id = `U${timeString}`;
-      const invitation_code = `INV${timeString}`;
+      return {
+        user_id: `U${timeString}`,
+        invitation_code: `INV${timeString}`
+      };
+    };
 
-      // 获取真实IP
-      const register_ip = 
-        req.headers['x-forwarded-for']?.split(',')[0].trim() ||
-        req.headers['x-real-ip'] ||
-        req.ip ||
-        req.connection.remoteAddress ||
-        '未知';
+    // 获取真实IP
+    const register_ip = 
+      req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+      req.headers['x-real-ip'] ||
+      req.ip ||
+      req.connection.remoteAddress ||
+      '未知';
 
-      // 创建新用户
-      user = await UserInformation.create({
+    // 🔧 使用 findOrCreate 原子操作（防止并发重复创建）
+    const { user_id, invitation_code } = generateUserIds();
+    
+    const [user, created] = await UserInformation.findOrCreate({
+      where: { 
+        android_id: android_id.trim() 
+      },
+      defaults: {
         user_id,
         invitation_code,
         email: email || null,
@@ -91,9 +95,15 @@ exports.deviceLogin = async (req, res) => {
         gaid: gaid || null,
         register_ip,
         country: country || null
-      });
+      }
+    });
 
-      // 2.1 自动创建用户状态记录
+    console.log('   数据库操作结果:', created ? `✨ 创建新用户 ${user.user_id}` : `♻️ 找到现有用户 ${user.user_id}`);
+
+    let referrerInfo = null;
+
+    // 如果是新用户，执行额外初始化
+    if (created) {
       try {
         await UserStatus.create({
           user_id: user.user_id,
@@ -104,9 +114,9 @@ exports.deviceLogin = async (req, res) => {
           last_login_time: new Date(),
           user_status: 'normal'
         });
-        console.log(`用户状态初始化成功: ${user.user_id}`);
+        console.log(`   ✅ 用户状态初始化成功: ${user.user_id}`);
       } catch (statusErr) {
-        console.error('创建用户状态失败:', statusErr);
+        console.error('   ❌ 创建用户状态失败:', statusErr);
         // 状态创建失败不影响用户注册
       }
 
@@ -118,7 +128,16 @@ exports.deviceLogin = async (req, res) => {
           });
 
           if (referrer) {
-            await InvitationRelationship.create({
+            // 🔒 检查：不能邀请自己
+            if (referrer.invitation_code === user.invitation_code) {
+              console.warn(`用户尝试使用自己的邀请码: ${user.user_id}`);
+              // 不建立邀请关系，但不阻止用户注册
+              referrerInfo = {
+                error: '不能使用自己的邀请码',
+                rejected: true
+              };
+            } else {
+              await InvitationRelationship.create({
               user_id: user.user_id,
               invitation_code: user.invitation_code,
               referrer_user_id: referrer.user_id,
@@ -183,6 +202,7 @@ exports.deviceLogin = async (req, res) => {
               console.error('创建新用户绑定推荐人挖矿合约失败:', bindErr);
               // 挖矿合约失败不影响用户注册和邀请关系建立
             }
+            }
           } else {
             console.warn(`推荐人邀请码不存在: ${referrer_invitation_code}`);
           }
@@ -207,17 +227,46 @@ exports.deviceLogin = async (req, res) => {
     const token = jwt.sign({ user_id: user.user_id }, secret, { expiresIn: '30d' });
 
     // 5. 返回用户信息
+    console.log(`   ✅ 登录成功: ${created ? '新用户' : '现有用户'} - ${user.user_id}`);
+    
     res.json({
       success: true,
-      isNewUser,
-      message: isNewUser ? '账号创建成功' : '登录成功',
+      isNewUser: created,
+      message: created ? '账号创建成功' : '登录成功',
       data: user,
       referrer: referrerInfo,
       token
     });
 
   } catch (err) {
-    console.error('设备登录失败:', err);
+    console.error('❌ [Device Login] 失败:', err);
+    
+    // 🔧 处理唯一约束冲突（并发情况下的兜底）
+    if (err.name === 'SequelizeUniqueConstraintError') {
+      console.log('   ⚠️ 检测到唯一约束冲突，重新查询用户...');
+      
+      try {
+        const user = await UserInformation.findOne({
+          where: { android_id: req.body.android_id.trim() }
+        });
+        
+        if (user) {
+          const secret = process.env.JWT_SECRET || 'dev_secret_change_me';
+          const token = jwt.sign({ user_id: user.user_id }, secret, { expiresIn: '30d' });
+          
+          return res.json({
+            success: true,
+            isNewUser: false,
+            message: '登录成功',
+            data: user,
+            token
+          });
+        }
+      } catch (retryErr) {
+        console.error('   ❌ 重新查询失败:', retryErr);
+      }
+    }
+    
     res.status(500).json({
       success: false,
       error: '登录失败',
@@ -266,6 +315,15 @@ exports.bindGoogleAccount = async (req, res) => {
       });
     }
 
+    // 🔒 检查该用户是否已经绑定了Google账号（不可换绑）
+    if (user.google_account && user.google_account.trim() !== '') {
+      return res.status(400).json({
+        success: false,
+        error: 'Google账号已绑定，不可更换',
+        message: `该账户已绑定Google账号: ${user.google_account}，一旦绑定不可更换。`
+      });
+    }
+
     // 检查该Google账号是否已被其他用户绑定
     const existingUser = await UserInformation.findOne({
       where: { google_account: google_account.trim() }
@@ -274,14 +332,17 @@ exports.bindGoogleAccount = async (req, res) => {
     if (existingUser && existingUser.user_id !== user_id.trim()) {
       return res.status(400).json({
         success: false,
-        error: '该Google账号已被其他用户绑定'
+        error: '该Google账号已被其他用户绑定',
+        message: `该Google账号已被账户 ${existingUser.user_id} 绑定。`
       });
     }
 
-    // 更新Google账号
+    // 更新Google账号（仅在未绑定时才能执行）
     await user.update({
       google_account: google_account.trim()
     });
+
+    console.log(`✅ Google账号绑定成功: ${user_id} -> ${google_account}`);
 
     res.json({
       success: true,
@@ -364,6 +425,7 @@ exports.switchByGoogleAccount = async (req, res) => {
 
 /**
  * 解绑Google账号
+ * ⚠️ 已禁用：为保证账号安全性，Google账号一旦绑定不可解绑
  * 
  * 请求体:
  * {
@@ -372,11 +434,19 @@ exports.switchByGoogleAccount = async (req, res) => {
  * 
  * 响应:
  * {
- *   success: true,
- *   message: "Google账号解绑成功"
+ *   success: false,
+ *   message: "Google账号绑定后不可解绑"
  * }
  */
 exports.unbindGoogleAccount = async (req, res) => {
+  // 🔒 禁用解绑功能，确保账号绑定的永久性和唯一性
+  return res.status(403).json({
+    success: false,
+    error: 'Google账号绑定后不可解绑',
+    message: '为保证账号安全性，Google账号一旦绑定，将永久关联该账户，无法解绑或更换。'
+  });
+
+  /* 原解绑逻辑已禁用
   try {
     const { user_id } = req.body;
 
@@ -416,6 +486,7 @@ exports.unbindGoogleAccount = async (req, res) => {
       details: err.message
     });
   }
+  */
 };
 
 /**
@@ -888,6 +959,275 @@ exports.activateAdFreeContract = async (req, res) => {
     res.status(500).json({
       success: false,
       error: '激活失败',
+      details: err.message
+    });
+  }
+};
+
+/**
+ * 邮箱注册
+ * 使用邮箱和密码创建新账号
+ * 
+ * 请求体:
+ * {
+ *   email: "用户邮箱",
+ *   password: "密码",
+ *   referrer_invitation_code: "推荐人邀请码(可选)"
+ * }
+ */
+exports.emailRegister = async (req, res) => {
+  try {
+    const { email, password, referrer_invitation_code } = req.body;
+
+    // 验证必填字段
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: '邮箱和密码是必填字段'
+      });
+    }
+
+    // 验证邮箱格式
+    const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: '邮箱格式不正确'
+      });
+    }
+
+    // 验证密码长度
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: '密码长度至少为6个字符'
+      });
+    }
+
+    console.log('📧 [Email Register] 收到注册请求:', email);
+
+    // 检查邮箱是否已存在
+    const existingUser = await UserInformation.findOne({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: '该邮箱已被注册'
+      });
+    }
+
+    // 生成 user_id 和 invitation_code
+    const generateUserIds = () => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hour = String(now.getHours()).padStart(2, '0');
+      const minute = String(now.getMinutes()).padStart(2, '0');
+      const second = String(now.getSeconds()).padStart(2, '0');
+      const random = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      
+      const timeString = `${year}${month}${day}${hour}${minute}${second}${random}`;
+      return {
+        user_id: `U${timeString}`,
+        invitation_code: `INV${timeString}`
+      };
+    };
+
+    // 获取真实IP
+    const register_ip = 
+      req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+      req.headers['x-real-ip'] ||
+      req.ip ||
+      req.connection.remoteAddress ||
+      '未知';
+
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const { user_id, invitation_code } = generateUserIds();
+
+    // 创建新用户
+    const newUser = await UserInformation.create({
+      user_id,
+      invitation_code,
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      register_ip
+    });
+
+    console.log('✅ [Email Register] 用户创建成功:', user_id);
+
+    // 处理推荐人邀请码（如果提供）
+    let referrerInfo = null;
+    if (referrer_invitation_code) {
+      try {
+        const referrer = await UserInformation.findOne({
+          where: { invitation_code: referrer_invitation_code }
+        });
+
+        if (referrer) {
+          // 创建邀请关系
+          await InvitationRelationship.create({
+            inviter_user_id: referrer.user_id,
+            invitee_user_id: user_id
+          });
+
+          console.log(`✅ 邀请关系创建成功: ${referrer.user_id} -> ${user_id}`);
+
+          // 发放推荐人奖励
+          try {
+            const InvitationRewardService = require('../services/invitationRewardService');
+            const rewardResult = await InvitationRewardService.onSuccessfulInvitation(
+              referrer.user_id,
+              user_id
+            );
+            console.log('邀请奖励发放成功:', rewardResult);
+          } catch (rewardErr) {
+            console.error('发放邀请奖励失败:', rewardErr);
+          }
+
+          // 创建邀请挖矿合约
+          try {
+            const InvitationMiningContractService = require('../services/invitationMiningContractService');
+            await InvitationMiningContractService.onSuccessfulInvitation(
+              referrer.user_id,
+              user_id
+            );
+          } catch (miningErr) {
+            console.error('创建邀请挖矿合约失败:', miningErr);
+          }
+
+          // 创建被邀请人挖矿合约
+          try {
+            const RefereeMiningContractService = require('../services/refereeMiningContractService');
+            await RefereeMiningContractService.onBindReferrer(
+              user_id,
+              referrer.user_id
+            );
+          } catch (bindErr) {
+            console.error('创建被邀请人挖矿合约失败:', bindErr);
+          }
+
+          referrerInfo = {
+            referrer_user_id: referrer.user_id,
+            referrer_invitation_code: referrer.invitation_code
+          };
+        }
+      } catch (inviteErr) {
+        console.error('处理邀请关系失败:', inviteErr);
+      }
+    }
+
+    // 创建初始余额记录
+    await UserStatus.create({
+      user_id,
+      bitcoin_balance: '0.000000000000000',
+      total_invitation_rebate: '0.000000000000000'
+    });
+
+    res.json({
+      success: true,
+      message: '注册成功',
+      data: {
+        user_id: newUser.user_id,
+        email: newUser.email,
+        invitation_code: newUser.invitation_code,
+        referrer: referrerInfo
+      }
+    });
+
+  } catch (err) {
+    console.error('邮箱注册失败:', err);
+    res.status(500).json({
+      success: false,
+      error: '注册失败',
+      details: err.message
+    });
+  }
+};
+
+/**
+ * 邮箱登录
+ * 使用邮箱和密码登录
+ * 
+ * 请求体:
+ * {
+ *   email: "用户邮箱",
+ *   password: "密码"
+ * }
+ */
+exports.emailLogin = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // 验证必填字段
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: '邮箱和密码是必填字段'
+      });
+    }
+
+    console.log('📧 [Email Login] 收到登录请求:', email);
+
+    // 查找用户
+    const user = await UserInformation.findOne({
+      where: { email: email.toLowerCase() }
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: '邮箱或密码错误'
+      });
+    }
+
+    // 检查是否设置了密码
+    if (!user.password) {
+      return res.status(401).json({
+        success: false,
+        error: '该账号未设置密码，请使用其他方式登录'
+      });
+    }
+
+    // 验证密码
+    const bcrypt = require('bcrypt');
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: '邮箱或密码错误'
+      });
+    }
+
+    console.log('✅ [Email Login] 登录成功:', user.user_id);
+
+    // 更新最后登录时间
+    await UserStatus.update(
+      { last_login_time: new Date() },
+      { where: { user_id: user.user_id } }
+    );
+
+    res.json({
+      success: true,
+      message: '登录成功',
+      data: {
+        user_id: user.user_id,
+        email: user.email,
+        invitation_code: user.invitation_code,
+        google_account: user.google_account
+      }
+    });
+
+  } catch (err) {
+    console.error('邮箱登录失败:', err);
+    res.status(500).json({
+      success: false,
+      error: '登录失败',
       details: err.message
     });
   }

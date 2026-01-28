@@ -12,5 +12,9 @@ router.get('/', userController.getAllUsers);
 // 创建新用户信息
 router.post('/', userController.createUser);
 
+// PUT /api/userInformation/:user_id/nickname
+// 更新用户昵称
+router.put('/:user_id/nickname', userController.updateNickname);
+
 // 导出路由模块，供主应用挂载
 module.exports = router;

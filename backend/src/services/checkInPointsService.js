@@ -36,7 +36,7 @@ class CheckInPointsService {
 
       // 1. 检查今日是否已签到
       const [existingRows] = await connection.query(
-        'SELECT id FROM check_in_record WHERE user_id = ? AND check_in_date = ?',
+        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',
         [userId, today]
       );
 
@@ -51,7 +51,7 @@ class CheckInPointsService {
 
       // 2. 计算累计签到天数（不要求连续）
       const [totalCheckInsRows] = await connection.query(
-        'SELECT COUNT(*) as total FROM check_in_record WHERE user_id = ?',
+        'SELECT COUNT(*) as total FROM user_check_in WHERE user_id = ?',
         [userId]
       );
       const cumulativeDays = (totalCheckInsRows[0].total || 0) + 1; // 加上今天
@@ -61,9 +61,9 @@ class CheckInPointsService {
 
       // 4. 创建签到记录（只记录累计天数）
       await connection.query(
-        `INSERT INTO check_in_record (user_id, check_in_date, points_earned)
-         VALUES (?, ?, ?)`,
-        [userId, today, dailyPoints]
+        `INSERT INTO user_check_in (user_id, check_in_date, points_earned, consecutive_days)
+         VALUES (?, ?, ?, ?)`,
+        [userId, today, dailyPoints, cumulativeDays]
       );
 
       // 5. 增加每日签到积分
@@ -119,7 +119,7 @@ class CheckInPointsService {
 
       // 获取累计签到天数
       const [totalRows] = await db.query(
-        'SELECT COUNT(*) as total FROM check_in_record WHERE user_id = ?',
+        'SELECT COUNT(*) as total FROM user_check_in WHERE user_id = ?',
         [userId]
       );
       const cumulativeDays = totalRows[0].total || 0;
@@ -139,7 +139,7 @@ class CheckInPointsService {
 
       // 1. 检查今日是否已签到
       const [todayRows] = await db.query(
-        'SELECT points_earned, created_at FROM check_in_record WHERE user_id = ? AND check_in_date = ?',
+        'SELECT points_earned, created_at FROM user_check_in WHERE user_id = ? AND check_in_date = ?',
         [userId, today]
       );
 
@@ -191,7 +191,7 @@ class CheckInPointsService {
           check_in_date,
           points_earned,
           created_at
-        FROM check_in_record
+        FROM user_check_in
         WHERE user_id = ?
         AND check_in_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
         ORDER BY check_in_date DESC`,
@@ -258,7 +258,7 @@ class CheckInPointsService {
       // 3. 验证用户是否达到累计签到天数（不要求连续）
       const [checkInRows] = await connection.query(
         `SELECT COUNT(*) as total_check_ins 
-         FROM check_in_record 
+         FROM user_check_in 
          WHERE user_id = ?`,
         [userId]
       );
@@ -318,7 +318,7 @@ class CheckInPointsService {
     try {
       // 1. 获取用户累计签到天数（不要求连续）
       const [totalRows] = await db.query(
-        'SELECT COUNT(*) as total_check_ins FROM check_in_record WHERE user_id = ?',
+        'SELECT COUNT(*) as total_check_ins FROM user_check_in WHERE user_id = ?',
         [userId]
       );
 
@@ -399,7 +399,7 @@ class CheckInPointsService {
       // 获取用户最近30天的签到记录
       const [records] = await db.query(
         `SELECT check_in_date, points_earned
-         FROM check_in_record
+         FROM user_check_in
          WHERE user_id = ?
          AND check_in_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
          ORDER BY check_in_date DESC`,
@@ -412,7 +412,7 @@ class CheckInPointsService {
 
       // 获取用户累计签到天数
       const [totalRows] = await db.query(
-        'SELECT COUNT(*) as total FROM check_in_record WHERE user_id = ?',
+        'SELECT COUNT(*) as total FROM user_check_in WHERE user_id = ?',
         [userId]
       );
       const cumulativeDays = totalRows[0].total || 0;
