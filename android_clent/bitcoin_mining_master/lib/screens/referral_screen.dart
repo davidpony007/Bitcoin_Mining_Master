@@ -239,11 +239,6 @@ Download now and start mining!
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           backgroundColor: AppColors.cardDark,
-          title: const Text(
-            'Enter Referrer\'s Invitation Code',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -395,8 +390,9 @@ Download now and start mining!
         String errorMsg = response['message'] ?? 'Failed to add referrer';
         if (errorMsg.toLowerCase().contains('not found') || 
             errorMsg.toLowerCase().contains('not exist') ||
-            errorMsg.toLowerCase().contains('invalid')) {
-          errorMsg = 'Invitation code does not exist. Please confirm and re-enter.';
+            errorMsg.toLowerCase().contains('not exist') ||
+            errorMsg.toLowerCase().contains('does not exist')) {
+          errorMsg = 'The invitation code you entered does not exist. Please confirm and try again.';
         }
         return {
           'success': false,
@@ -409,10 +405,12 @@ Download now and start mining!
       }
       
       String errorMsg = e.toString();
-      if (errorMsg.toLowerCase().contains('not found') || 
+      // 检查404错误或邀请码不存在的相关错误
+      if (errorMsg.contains('404') ||
+          errorMsg.toLowerCase().contains('not found') || 
           errorMsg.toLowerCase().contains('not exist') ||
-          errorMsg.toLowerCase().contains('invalid')) {
-        errorMsg = 'Invitation code does not exist. Please confirm and re-enter.';
+          errorMsg.toLowerCase().contains('does not exist')) {
+        errorMsg = 'The invitation code you entered does not exist. Please confirm and try again.';
       }
       
       return {

@@ -37,11 +37,13 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     super.initState();
     print('🚀 AdRewardScreen initState 启动 - isDailyCheckIn: ${widget.isDailyCheckIn}');
     if (widget.isDailyCheckIn) {
-      _checkIfAlreadyCheckedIn();
+      // 先检查后端签到状态，再决定是否播放广告
+      _checkBackendCheckInStatus();
+    } else {
+      // 广告奖励模式直接播放广告
+      print('🎬 准备调用 _loadAndPlayAd()');
+      _loadAndPlayAd();
     }
-    // 预加载广告并自动播放
-    print('🎬 准备调用 _loadAndPlayAd()');
-    _loadAndPlayAd();
   }
   
   @override
@@ -92,14 +94,14 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         setState(() {
           _isLoadingAd = false;
           _isAdReady = false;
-          _lastErrorMessage = '广告加载失败: $error';
+          _lastErrorMessage = 'Ad loading failed: $error';
         });
         print('❌ 广告加载失败: $error');
         // 广告加载失败，返回上一页
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ 广告加载失败，请稍后再试'),
+            content: Text('❌ Ad loading failed, please try again later'),
             backgroundColor: Colors.red,
           ),
         );
@@ -158,13 +160,103 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     }
   }
   
+  // 🆕 检查后端签到状态（在播放广告前调用）
+  Future<void> _checkBackendCheckInStatus() async {
+    print('🔍 检查后端签到状态...');
+    
+    try {
+      final userIdResult = await _userRepository.fetchUserId();
+      if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
+        print('❌ 用户未登录');
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('User not logged in, please try again'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      final userId = userIdResult.data!;
+      
+      // 获取JWT token
+      final token = _storageService.getAuthToken();
+      if (token == null || token.isEmpty) {
+        print('❌ 认证失败');
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Authentication failed, please login again'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // 调用后端API检查签到状态
+      final apiUrl = '${ApiConstants.baseUrl}/check-in/status';
+      print('📍 检查签到状态 API URL: $apiUrl');
+      
+      final response = await http.get(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('请求超时，请检查网络连接');
+        },
+      );
+      
+      print('📥 签到状态API响应: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final alreadyCheckedIn = data['data']?['alreadyCheckedIn'] ?? false;
+        
+        if (alreadyCheckedIn) {
+          print('⚠️ 今日已签到');
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠️ You have already checked in today! Please try again after UTC 00:00'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        } else {
+          print('✅ 今日未签到，可以播放广告');
+          // 今日未签到，播放广告
+          _loadAndPlayAd();
+        }
+      } else {
+        print('❌ 签到状态检查失败: ${response.statusCode}');
+        // API失败，为了用户体验，允许播放广告（后端会再次验证）
+        _loadAndPlayAd();
+      }
+    } catch (e) {
+      print('❌ 检查签到状态异常: $e');
+      // 网络异常，为了用户体验，允许播放广告（后端会再次验证）
+      _loadAndPlayAd();
+    }
+  }
+  
   // 调用后端API执行签到并创建Daily Check-in合约
   // 📌 签到会激活Daily Check-in合约（7.5Gh/s，2小时），不影响Free Ad Reward
   Future<bool> _performCheckIn() async {
     try {
       final userIdResult = await _userRepository.fetchUserId();
       if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
-        _lastErrorMessage = '用户未登录，请返回重试';
+        _lastErrorMessage = 'User not logged in, please try again';
         return false;
       }
       final userId = userIdResult.data!;
@@ -172,7 +264,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       // 获取JWT token
       final token = _storageService.getAuthToken();
       if (token == null || token.isEmpty) {
-        _lastErrorMessage = '认证失败，请重新登录';
+        _lastErrorMessage = 'Authentication failed, please login again';
         return false;
       }
       
@@ -245,13 +337,13 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
               _hasCheckedInToday = true;
             });
           } else {
-            _lastErrorMessage = data['message'] ?? '签到失败，请稍后重试';
+            _lastErrorMessage = data['message'] ?? 'Check-in failed, please try again later';
           }
           print('❌ API返回失败: ${data['message']}');
           return false;
         }
       } else {
-        _lastErrorMessage = '签到失败，请稍后重试';
+        _lastErrorMessage = 'Check-in failed, please try again later';
         return false;
       }
     } catch (e) {
@@ -267,7 +359,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     try {
       final userIdResult = await _userRepository.fetchUserId();
       if (!userIdResult.isSuccess || userIdResult.data == null || userIdResult.data!.isEmpty) {
-        _lastErrorMessage = '用户未登录，请返回重试';
+        _lastErrorMessage = 'User not logged in, please try again';
         return false;
       }
       final userId = userIdResult.data!;
@@ -327,17 +419,17 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         if (data['success'] == true) {
           return true;
         } else {
-          _lastErrorMessage = data['message'] ?? '奖励领取失败，请稍后重试';
+          _lastErrorMessage = data['message'] ?? 'Reward collection failed, please try again later';
           print('❌ API返回失败: ${data['message']}');
           return false;
         }
       } else {
-        _lastErrorMessage = '服务器错误 (${response.statusCode})';
+        _lastErrorMessage = 'Server error (${response.statusCode})';
         print('❌ 延长合约失败 (${response.statusCode}): ${response.body}');
         return false;
       }
     } catch (e) {
-      _lastErrorMessage = '网络连接失败，请检查网络设置或稍后重试';
+      _lastErrorMessage = 'Network connection failed, please check settings or try again later';
       print('❌ 调用API异常: $e');
       return false;
     }
@@ -362,7 +454,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     print('✅ [AdReward] 未签到，准备播放广告');
 
     if (!_isAdReady) {
-      _showMessage('广告尚未加载完成，请稍候...');
+      _showMessage('Ad is not loaded yet, please wait...');
       return;
     }
 
@@ -388,7 +480,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         setState(() {
           _isWatchingAd = false;
           _isProcessing = false;
-          _lastErrorMessage = '您未完整观看广告，无法获得奖励';
+          _lastErrorMessage = 'You did not watch the ad completely, cannot get reward';
         });
       }
     } catch (e) {
@@ -397,7 +489,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         setState(() {
           _isWatchingAd = false;
           _isProcessing = false;
-          _lastErrorMessage = '播放广告时出现错误: $e';
+          _lastErrorMessage = 'Error occurred while playing ad: $e';
         });
       }
     }
@@ -447,7 +539,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
           ).timeout(
             const Duration(seconds: 10),
             onTimeout: () {
-              throw Exception('请求超时');
+              throw Exception('Request timeout');
             },
           );
           if (response.statusCode == 200) {
@@ -521,7 +613,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         _isProcessing = false;
         _isWatchingAd = false;
       });
-      _showMessage(_lastErrorMessage ?? '操作失败，请重试');
+      _showMessage(_lastErrorMessage ?? 'Operation failed, please try again');
     }
   }
 
@@ -889,21 +981,38 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
+                  backgroundColor: _isProcessing 
+                    ? AppColors.primary.withOpacity(0.8)  // loading状态下保持主色调但稍微透明
+                    : AppColors.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  disabledBackgroundColor: AppColors.primary.withOpacity(0.8), // 禁用状态也保持主色调
                 ),
                 child: _isProcessing 
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Processing...',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
                     )
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,

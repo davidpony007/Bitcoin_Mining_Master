@@ -127,7 +127,7 @@ class UserRepository {
           print('✅ 用户创建成功（在线）: $userId');
           return Result.success(userId);
         } else {
-          final errorMsg = response.message ?? '后端返回失败';
+          final errorMsg = response.message ?? 'Backend returned failure';
           print('❌ API返回失败: $errorMsg');
           throw Exception(errorMsg);
         }

@@ -47,7 +47,7 @@ class UserProvider with ChangeNotifier {
       
       if (_isOfflineMode) {
         print('⚠️ 当前为离线模式，等待网络恢复后将自动同步');
-        _setError('离线模式：数据将在网络恢复后同步');
+        _setError('Offline mode: Data will be synced after network recovery');
       }
     } else {
       _setError('Initialization failed: ${userIdResult.error}');
@@ -83,9 +83,9 @@ class UserProvider with ChangeNotifier {
       await _syncOfflineData();
     } else if (!hasConnection && !_isOfflineMode) {
       print('📴 网络断开连接');
-      _setError('网络连接已断开，使用离线模式');
+      _setError('Network connection lost, using offline mode');
       Fluttertoast.showToast(
-        msg: '网络连接错误，请重试！',
+        msg: 'Network connection error, please try again!',
         toastLength: Toast.LENGTH_SHORT,
         gravity: ToastGravity.CENTER,
       );

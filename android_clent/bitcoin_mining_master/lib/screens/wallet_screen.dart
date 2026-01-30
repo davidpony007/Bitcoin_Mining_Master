@@ -147,7 +147,7 @@ class _WalletScreenState extends State<WalletScreen>
         }
       }
     } catch (e) {
-      print('检查活跃合约失败: $e');
+      print('Failed to check active contracts: $e');
     }
   }
 

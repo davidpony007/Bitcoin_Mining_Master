@@ -21,6 +21,10 @@ router.post('/email-login', authController.emailLogin);
 // 绑定Google账号
 router.post('/bind-google', authController.bindGoogleAccount);
 
+// POST /api/auth/google-login-create
+// Google登录或创建用户（如果Google账号已绑定则登录，否则创建新用户）
+router.post('/google-login-create', authController.googleLoginOrCreate);
+
 // POST /api/auth/switch-google
 // 通过Google账号切换用户
 router.post('/switch-google', authController.switchByGoogleAccount);

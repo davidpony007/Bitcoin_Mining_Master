@@ -26,6 +26,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _apiService = ApiService();
   bool _isLoading = false;
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+  
+  // 用户等级相关
+  int _userLevel = 1;
+  String _levelName = 'Lv.1';
 
   // UTC时间显示
   String _utcTime = '';
@@ -35,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadUserId();
+    _loadUserLevel();
     _startUtcTimeUpdater();
   }
 
@@ -124,7 +129,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final isGoogleSignedIn = _storageService.isGoogleSignedIn();
       final googleEmail = _storageService.getGoogleEmail();
       
-      if (isGoogleSignedIn == true) {
+      if (isGoogleSignedIn == true && googleEmail != null && googleEmail.isNotEmpty) {
         // 尝试静默登录获取账号信息
         final account = await _googleSignIn.signInSilently();
         
@@ -133,7 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _googleAccount = account;
         });
         
-        print('✅ Settings: Google账号已绑定 - ${account?.email ?? googleEmail ?? "Unknown"}');
+        print('✅ Settings: Google账号已绑定 - ${account?.email ?? googleEmail}');
       } else {
         setState(() {
           _isGoogleSignedIn = false;
@@ -143,7 +148,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       print('⚠️ Settings: 加载Google登录状态失败: $e');
-      // 即使失败也不影响页面显示
+      // 即使失败也不影响页面显示，但要确保未绑定状态
+      setState(() {
+        _isGoogleSignedIn = false;
+        _googleAccount = null;
+      });
+    }
+  }
+  
+  /// 加载用户等级
+  Future<void> _loadUserLevel() async {
+    try {
+      final userId = _storageService.getUserId();
+      if (userId != null && userId.isNotEmpty) {
+        final response = await _apiService.getUserLevel(userId);
+        if (response['success'] == true && response['data'] != null) {
+          final data = response['data'];
+          setState(() {
+            _userLevel = data['level'] ?? 1;
+            _levelName = 'Lv.$_userLevel';
+          });
+          // 同步到本地存储
+          await _storageService.saveUserLevel(_userLevel);
+          print('✅ Settings: 等级加载成功 - $_levelName');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Settings: 加载等级失败: $e');
+      // 使用本地缓存
+      setState(() {
+        _userLevel = _storageService.getUserLevel();
+        _levelName = 'Lv.$_userLevel';
+      });
     }
   }
 
@@ -210,8 +246,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? 'Google Account'
                     : 'Sign In with Google',
                 subtitle: _isGoogleSignedIn
-                    ? (_googleAccount?.email ?? 'Connected')
-                    : 'Bind your Google account',
+                    ? (_googleAccount?.email ?? 'Bound')
+                    : 'Not Connected',
                 onTap: () {
                   if (_isGoogleSignedIn) {
                     // Show sign out dialog
@@ -341,7 +377,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
-                      'Lv.1',
+                      _levelName,
                       style: TextStyle(
                         color: AppColors.primary,
                         fontSize: 12,
@@ -617,44 +653,146 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final GoogleSignInAuthentication auth = await account.authentication;
 
         print('✅ Google登录成功！');
-        print('用户ID: ${account.id}');
-        print('用户名: ${account.displayName}');
-        print('邮箱: ${account.email}');
+        print('User ID: ${account.id}');
+        print('User Name: ${account.displayName}');
+        print('Email: ${account.email}');
 
-        // 调用后端API绑定Google账号到MySQL数据库
+        // 显示加载指示器
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => Center(
+              child: CircularProgressIndicator(
+                color: AppColors.primary,
+              ),
+            ),
+          );
+        }
+
+        // 绑定Google账号到当前用户
         try {
           final apiService = ApiService();
+          
+          // 调用绑定接口：把Google账号绑定到当前user_id
+          print('🔍 绑定Google账号到当前用户 - userId: $_userId, email: ${account.email}');
           final response = await apiService.bindGoogle(
             userId: _userId,
             googleAccount: account.email ?? '',
           );
 
+          // 关闭加载指示器
+          if (mounted) Navigator.of(context).pop();
+
+          print('🔍 绑定响应: $response');
+
           if (response['success'] == true) {
-            print('✅ Google账号已绑定到MySQL数据库: ${account.email}');
+            // 绑定成功
+            print('✅ Google账号已成功绑定到当前用户: $_userId');
+            
+            // 保存Google登录状态
+            final storageService = StorageService();
+            await storageService.saveGoogleSignInStatus(true);
+            await storageService.saveGoogleEmail(account.email ?? '');
+            
+            if (mounted) {
+              setState(() {
+                _isGoogleSignedIn = true;
+                _googleAccount = account;
+              });
+
+              // 显示成功消息
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Welcome, ${account.displayName ?? account.email}!',
+                  ),
+                  backgroundColor: const Color(0xFF4CAF50),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
           } else {
-            print('❌ Google账号绑定到数据库失败: ${response['error']}');
+            // 检查是否是"已绑定"错误
+            String errorMsg = response['message'] ?? response['error'] ?? 'Failed to bind Google account';
+            print('❌ 绑定响应失败: $errorMsg');
+            
+            if (errorMsg.contains('already bound')) {
+              // 检查是否绑定的是当前Google账号
+              if (errorMsg.contains(account.email ?? '')) {
+                // 是同一个账号，允许登录
+                print('✅ 检测到已绑定当前Google账号，允许登录');
+                
+                final storageService = StorageService();
+                await storageService.saveGoogleSignInStatus(true);
+                await storageService.saveGoogleEmail(account.email ?? '');
+                
+                if (mounted) {
+                  setState(() {
+                    _isGoogleSignedIn = true;
+                    _googleAccount = account;
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Welcome back, ${account.displayName ?? account.email}!',
+                      ),
+                      backgroundColor: const Color(0xFF4CAF50),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                }
+              } else {
+                // 不是同一个账号，拒绝登录
+                print('❌ 尝试用不同的Google账号登录已绑定的用户');
+                await _googleSignIn.signOut();
+                
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'This user ID is already linked to another Google account. Each user ID can only be permanently linked to one Google account. If you want to create a new user, please log out first and then sign in with another Google account.',
+                      ),
+                      backgroundColor: Colors.red.shade700,
+                      duration: const Duration(seconds: 6),
+                    ),
+                  );
+                }
+              }
+            } else {
+              // 其他错误，撤销登录
+              await _googleSignIn.signOut();
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(errorMsg),
+                    backgroundColor: Colors.red.shade700,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            }
           }
         } catch (apiError) {
-          print('❌ 调用绑定API失败: $apiError');
-          // 即使API调用失败，也继续显示登录成功（因为Google OAuth成功了）
-        }
-
-        if (mounted) {
-          setState(() {
-            _isGoogleSignedIn = true;
-            _googleAccount = account; // 保存Google账号信息以便显示邮箱
-          });
-
-          // 显示成功消息
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Welcome, ${account.displayName ?? account.email}!',
+          // 关闭加载指示器
+          if (mounted) Navigator.of(context).pop();
+          
+          print('❌ 调用API失败: $apiError');
+          
+          // API调用失败，撤销Google登录
+          await _googleSignIn.signOut();
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to switch account. Please try again.'),
+                backgroundColor: Colors.red.shade700,
+                duration: const Duration(seconds: 3),
               ),
-              backgroundColor: const Color(0xFF4CAF50),
-              duration: const Duration(seconds: 2),
-            ),
-          );
+            );
+          }
         }
       }
     } catch (error) {
@@ -664,11 +802,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         String errorMessage = 'Failed to sign in';
         if (error.toString().contains('DEVELOPER_ERROR') ||
             error.toString().contains('10')) {
-          errorMessage = 'OAuth配置错误，请检查Google Cloud Console设置';
+          errorMessage = 'OAuth configuration error, please check Google Cloud Console settings';
         } else if (error.toString().contains('network')) {
-          errorMessage = '网络错误，请检查网络连接';
+          errorMessage = 'Network error, please check your connection';
         } else if (error.toString().contains('sign_in_canceled')) {
-          errorMessage = '登录已取消';
+          errorMessage = 'Sign-in cancelled';
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -693,7 +831,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(color: AppColors.textPrimary),
           ),
           content: Text(
-            'Sign out from your Google account? You can sign in with another Google account later.',
+            'Sign out from your Google account?',
             style: TextStyle(color: AppColors.textSecondary),
           ),
           actions: [

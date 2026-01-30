@@ -4,17 +4,59 @@ import 'dart:io' show Platform;
 
 /// API配置常量
 class ApiConstants {
-  // 基础URL - 后端Node.js服务器地址
-  // 物理设备使用电脑局域网IP，模拟器使用localhost
+  // ====== 环境配置说明 ======
+  // 
+  // 【测试环境】- 本地开发调试
+  // 1. 使用USB连接手机 + adb reverse端口转发（推荐）
+  //    - 电脑端：后端运行在 localhost:8888
+  //    - 手机端：访问 localhost:8888 会自动转发到电脑
+  //    - 设置命令：adb reverse tcp:8888 tcp:8888
+  //    - 优点：无需修改代码，手机和电脑用同样的URL
+  //
+  // 2. 使用WiFi + 局域网IP（备选方案）
+  //    - 手机和电脑连接同一WiFi
+  //    - 查看电脑IP：ifconfig (Mac) 或 ipconfig (Windows)
+  //    - 手机访问：http://192.168.x.x:8888/api
+  //    - 修改下方 _developmentUrl 为你的电脑局域网IP
+  //
+  // 【生产环境】- 正式上线
+  // - 部署后端到云服务器（如阿里云、AWS、腾讯云）
+  // - 使用域名：https://api.yourdomain.com
+  // - 修改下方 _productionUrl 为你的正式域名
+  // - 建议使用HTTPS确保安全
+  // ========================
+  
+  // 生产环境URL - 需要替换为你的正式服务器地址
+  static const String _productionUrl = 'https://api.bitcoinmining.com/api';
+  
+  // 开发环境URL - 使用adb reverse端口转发
+  static const String _developmentUrl = 'http://localhost:8888/api';
+  
+  // 备用开发URL - WiFi局域网方案（替换为你的电脑IP）
+  static const String _developmentWifiUrl = 'http://192.168.1.5:8888/api';
+  
+  // Cloudflare隧道URL - 用于跨网络测试（模拟真实生产环境）
+  static const String _cloudflareUrl = 'https://bali-prescription-relying-labs.trycloudflare.com/api';
+  
+  // 自动选择环境
   static String get baseUrl {
-    // 使用 adb reverse 端口转发，所有设备都使用 localhost
-    // 需要在开发时执行：adb reverse tcp:8888 tcp:8888
-    return 'http://localhost:8888/api';
+    // kReleaseMode 为 true 时是生产环境，false 时是开发环境
+    if (kReleaseMode) {
+      // 开发测试：使用adb reverse端口转发（更稳定）
+      return _developmentUrl;  // localhost通过adb reverse转发
+      // return _cloudflareUrl;  // Cloudflare隧道（网络不稳定时会失效）
+      // return _productionUrl;  // 真正上线时使用
+    } else {
+      // 开发环境：使用adb reverse方案（USB连接更稳定）
+      return _developmentUrl;  // localhost通过adb reverse转发
+      // return _developmentWifiUrl;  // WiFi局域网方案
+    }
   }
   
   // 认证相关端点
   static const String deviceLogin = '/auth/device-login';
   static const String bindGoogle = '/auth/bind-google';
+  static const String googleLoginCreate = '/auth/google-login-create';
   static const String switchGoogle = '/auth/switch-google';
   static const String unbindGoogle = '/auth/unbind-google';
   static const String invitationInfo = '/auth/invitation-info';

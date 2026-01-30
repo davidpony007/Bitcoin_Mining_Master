@@ -225,6 +225,9 @@ class _CheckInScreenState extends State<CheckInScreen>
         if (success) {
           // 签到成功，手动增加totalDays并重新创建日历
           final newTotalDays = (_status?.totalDays ?? 0) + 1;
+          print('✅ 签到成功! 旧天数: ${_status?.totalDays}, 新天数: $newTotalDays');
+          
+          // 先更新状态显示新天数
           if (_status != null) {
             setState(() {
               _status = CheckInStatus(
@@ -238,7 +241,9 @@ class _CheckInScreenState extends State<CheckInScreen>
               _calendarData = _createMockCalendar(totalDays: newTotalDays);
             });
           }
-          // 再重新加载其他数据
+          
+          // 再重新加载服务器数据（可能需要一点时间同步）
+          await Future.delayed(Duration(milliseconds: 500));
           await _loadData();
           
           if (mounted) {
@@ -852,7 +857,6 @@ class _CheckInScreenState extends State<CheckInScreen>
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           _buildLegendItem(Icons.check_circle, 'Completed', AppColors.success),
-          _buildLegendItem(Icons.today, 'Today', AppColors.primary),
           _buildLegendItem(Icons.emoji_events, 'Bonus', Colors.amber),
         ],
       ),

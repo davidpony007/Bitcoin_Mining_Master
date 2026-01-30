@@ -1,0 +1,16 @@
+.main-layout {
+  min-height: 100vh;
+}
+
+.main-content {
+  margin: 24px 16px;
+  padding: 0;
+  min-height: 280px;
+}
+
+.content-wrapper {
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}

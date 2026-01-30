@@ -151,7 +151,7 @@ class LevelService {
         progressPercentage: levelInfo.progressPercentage
       };
 
-      // 3. 缓存到 Redis
+      // 3. 缓存到 Redis（包含完整的等级信息）
       if (redisClient.isReady()) {
         try {
           await redisClient.cacheUserLevel(
@@ -160,7 +160,11 @@ class LevelService {
             result.points,
             result.speedMultiplier,
             false,
-            null
+            null,
+            result.levelName,
+            result.maxPoints,
+            result.pointsToNextLevel,
+            result.progressPercentage
           );
         } catch (cacheError) {
           console.error(`缓存用户 ${userId} 等级失败:`, cacheError.message);

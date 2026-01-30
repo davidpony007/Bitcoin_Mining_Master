@@ -104,6 +104,15 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
+      // 如果是400错误，返回后端的错误信息，而不是抛出异常
+      if (e.response?.statusCode == 400 && e.response?.data != null) {
+        print('❌ bindGoogle API返回400: ${e.response?.data}');
+        return {
+          'success': false,
+          'error': e.response?.data['error'] ?? 'Failed to bind Google account',
+          'message': e.response?.data['message'] ?? e.response?.data['error'] ?? 'Unknown error',
+        };
+      }
       throw _handleError(e);
     }
   }
@@ -127,6 +136,48 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
+      // 如果是400错误，返回后端的错误信息，而不是抛出异常
+      if (e.response?.statusCode == 400 && e.response?.data != null) {
+        print('❌ bindGoogleAccount API返回400: ${e.response?.data}');
+        return {
+          'success': false,
+          'error': e.response?.data['error'] ?? 'Failed to bind Google account',
+          'message': e.response?.data['message'] ?? e.response?.data['error'] ?? 'Unknown error',
+        };
+      }
+      throw _handleError(e);
+    }
+  }
+
+  /// Google登录或创建用户 - 对应后端 /api/auth/google-login-create
+  /// 如果Google账号已绑定用户则登录，否则创建新用户
+  Future<Map<String, dynamic>> googleLoginOrCreate({
+    required String? googleId,
+    required String googleEmail,
+    required String googleName,
+    String? androidId,
+  }) async {
+    try {
+      final response = await _dio.post(
+        ApiConstants.googleLoginCreate,
+        data: {
+          'google_id': googleId,
+          'google_account': googleEmail,
+          'google_name': googleName,
+          'android_id': androidId,
+        },
+      );
+      return response.data;
+    } on DioException catch (e) {
+      // 如果是400错误，返回后端的错误信息，而不是抛出异常
+      if (e.response?.statusCode == 400 && e.response?.data != null) {
+        print('❌ googleLoginOrCreate API返回400: ${e.response?.data}');
+        return {
+          'success': false,
+          'error': e.response?.data['error'] ?? 'Failed to switch account',
+          'message': e.response?.data['message'] ?? e.response?.data['error'] ?? 'Unknown error',
+        };
+      }
       throw _handleError(e);
     }
   }
@@ -416,7 +467,7 @@ class ApiService {
 
     if (isNetworkError) {
       Fluttertoast.showToast(
-        msg: '网络连接错误，请重试！',
+        msg: 'Network connection error, please try again!',
         toastLength: Toast.LENGTH_SHORT,
         gravity: ToastGravity.CENTER,
       );
@@ -426,13 +477,13 @@ class ApiService {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
-        return Exception('网络连接错误，请重试！');
+        return Exception('Network connection error, please try again!');
       case DioExceptionType.badResponse:
         return Exception('Server error: ${error.response?.statusCode}');
       case DioExceptionType.cancel:
         return Exception('Request cancelled');
       default:
-        return Exception('网络连接错误，请重试！');
+        return Exception('Network connection error, please try again!');
     }
   }
 
@@ -503,7 +554,7 @@ class ApiService {
           return {
             'success': true,
             'alreadyCheckedIn': true,
-            'message': responseData['message'] ?? '今日已签到'
+            'message': responseData['message'] ?? 'Already checked in today'
           };
         }
       }

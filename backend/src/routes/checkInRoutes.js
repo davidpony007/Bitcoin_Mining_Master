@@ -61,7 +61,11 @@ router.get('/status', authenticate, async (req, res) => {
     // 使用新的CheckInPointsService
     const status = await CheckInPointsService.getCheckInStatus(user_id);
 
-    res.json(status);
+    // 包装数据以符合Flutter API期望的格式
+    res.json({
+      success: true,
+      data: status
+    });
 
   } catch (error) {
     console.error('获取签到状态失败:', error);

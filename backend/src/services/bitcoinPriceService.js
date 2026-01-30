@@ -11,7 +11,7 @@ class BitcoinPriceService {
   constructor() {
     // 2026年1月23日的实际比特币价格约为 $104,800 - $105,500 USD
     this.currentPrice = 105200.00; // 更新为当前市场价格
-    this.lastUpdate = null;
+    this.lastUpdate = new Date(); // 初始化为当前时间
     this.updateInterval = null;
     this.CACHE_KEY = 'bitcoin:price:usd';
     this.UPDATE_INTERVAL = 60 * 60 * 1000; // 1小时（毫秒）
@@ -337,17 +337,32 @@ class BitcoinPriceService {
           const cached = await redisClient.get(this.CACHE_KEY);
           if (cached) {
             const data = JSON.parse(cached);
-            price = data.price;
-            console.log(`📦 使用缓存的比特币价格: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
+            this.currentPrice = data.price;
+            this.lastUpdate = new Date(data.updatedAt);
+            console.log(`📦 使用缓存的比特币价格: $${this.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
             console.log(`📅 缓存时间: ${data.updatedAt}`);
-            return price;
+            return this.currentPrice;
           }
         }
         
-        // 如果连缓存都没有，使用默认价格
+        // 如果连缓存都没有，使用默认价格并更新时间戳
         price = this.currentPrice;
+        this.lastUpdate = new Date(); // 设置当前时间
         console.log(`💰 使用默认比特币价格: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
+        console.log(`📅 更新时间: ${this.lastUpdate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
         console.log(`ℹ️ 提示: 可以使用 setManualPrice() 方法手动设置价格`);
+        
+        // 将默认价格也保存到Redis，避免下次还是null
+        if (redisClient.isReady()) {
+          await redisClient.set(this.CACHE_KEY, JSON.stringify({
+            price: price,
+            updatedAt: this.lastUpdate.toISOString(),
+            source: 'default'
+          }), {
+            EX: 7200
+          }).catch(err => console.error('Redis保存默认价格失败:', err));
+        }
+        
         return price;
       }
       

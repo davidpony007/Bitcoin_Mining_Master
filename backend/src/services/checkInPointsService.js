@@ -461,6 +461,25 @@ class CheckInPointsService {
   }
 
   /**
+   * 检查用户今日是否已签到
+   */
+  static async hasCheckedInToday(userId) {
+    try {
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      const [rows] = await db.query(
+        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',
+        [userId, today]
+      );
+
+      return rows.length > 0;
+    } catch (error) {
+      console.error('检查今日签到状态失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 计算签到可获得的积分（统一为每日4积分）
    */
   static calculatePotentialPoints(cumulativeDays) {

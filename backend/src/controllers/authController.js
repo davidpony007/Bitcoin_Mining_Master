@@ -43,7 +43,7 @@ exports.deviceLogin = async (req, res) => {
     if (!android_id || android_id.trim() === '') {
       return res.status(400).json({
         success: false,
-        error: 'android_id 是必填字段'
+        error: 'android_id is required'
       });
     }
 
@@ -133,7 +133,7 @@ exports.deviceLogin = async (req, res) => {
               console.warn(`用户尝试使用自己的邀请码: ${user.user_id}`);
               // 不建立邀请关系，但不阻止用户注册
               referrerInfo = {
-                error: '不能使用自己的邀请码',
+                error: 'Cannot use your own invitation code',
                 rejected: true
               };
             } else {
@@ -226,20 +226,20 @@ exports.deviceLogin = async (req, res) => {
     const secret = process.env.JWT_SECRET || 'dev_secret_change_me';
     const token = jwt.sign({ user_id: user.user_id }, secret, { expiresIn: '30d' });
 
-    // 5. 返回用户信息
-    console.log(`   ✅ 登录成功: ${created ? '新用户' : '现有用户'} - ${user.user_id}`);
+    // 5. Return user information
+    console.log(`   ✅ Login successful: ${created ? 'New user' : 'Existing user'} - ${user.user_id}`);
     
     res.json({
       success: true,
       isNewUser: created,
-      message: created ? '账号创建成功' : '登录成功',
+      message: created ? 'Account created successfully' : 'Login successful',
       data: user,
       referrer: referrerInfo,
       token
     });
 
   } catch (err) {
-    console.error('❌ [Device Login] 失败:', err);
+    console.error('❌ [Device Login] Failed:', err);
     
     // 🔧 处理唯一约束冲突（并发情况下的兜底）
     if (err.name === 'SequelizeUniqueConstraintError') {
@@ -257,7 +257,7 @@ exports.deviceLogin = async (req, res) => {
           return res.json({
             success: true,
             isNewUser: false,
-            message: '登录成功',
+            message: 'Login successful',
             data: user,
             token
           });
@@ -269,14 +269,14 @@ exports.deviceLogin = async (req, res) => {
     
     res.status(500).json({
       success: false,
-      error: '登录失败',
+      error: 'Login failed',
       details: err.message
     });
   }
 };
 
 /**
- * 绑定Google账号
+ * Bind Google account
  * 
  * 请求体:
  * {
@@ -295,11 +295,18 @@ exports.bindGoogleAccount = async (req, res) => {
   try {
     const { user_id, google_account } = req.body;
 
+    console.log('🔍 Bind Google Account 请求:');
+    console.log('   - user_id:', user_id);
+    console.log('   - google_account:', google_account);
+    console.log('   - req.body:', JSON.stringify(req.body));
+
     // 验证必填字段
     if (!user_id || !google_account) {
+      console.log('❌ 缺少必填字段');
       return res.status(400).json({
         success: false,
-        error: 'user_id 和 google_account 是必填字段'
+        error: 'user_id and google_account are required',
+        debug: { user_id, google_account, body: req.body }
       });
     }
 
@@ -311,7 +318,7 @@ exports.bindGoogleAccount = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: '用户不存在'
+        error: 'User not found'
       });
     }
 
@@ -319,8 +326,8 @@ exports.bindGoogleAccount = async (req, res) => {
     if (user.google_account && user.google_account.trim() !== '') {
       return res.status(400).json({
         success: false,
-        error: 'Google账号已绑定，不可更换',
-        message: `该账户已绑定Google账号: ${user.google_account}，一旦绑定不可更换。`
+        error: 'Google account already bound, cannot be changed',
+        message: `This account is already linked to Google account: ${user.google_account}. Once bound, it cannot be changed.`
       });
     }
 
@@ -332,8 +339,8 @@ exports.bindGoogleAccount = async (req, res) => {
     if (existingUser && existingUser.user_id !== user_id.trim()) {
       return res.status(400).json({
         success: false,
-        error: '该Google账号已被其他用户绑定',
-        message: `该Google账号已被账户 ${existingUser.user_id} 绑定。`
+        error: 'This Google account is already linked to another user',
+        message: `This Google account is already linked to user ${existingUser.user_id}.`
       });
     }
 
@@ -346,7 +353,7 @@ exports.bindGoogleAccount = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Google账号绑定成功',
+      message: 'Google account bound successfully',
       data: user
     });
 
@@ -354,7 +361,156 @@ exports.bindGoogleAccount = async (req, res) => {
     console.error('绑定Google账号失败:', err);
     res.status(500).json({
       success: false,
-      error: '绑定失败',
+      error: 'Binding failed',
+      details: err.message
+    });
+  }
+};
+
+/**
+ * Google登录或创建用户
+ * 如果Google账号已绑定用户 → 返回该用户信息
+ * 如果Google账号未绑定用户 → 创建新用户并绑定
+ * 
+ * 请求体:
+ * {
+ *   google_id: "Google用户ID",
+ *   google_account: "Google账号邮箱",
+ *   google_name: "Google用户名",
+ *   android_id: "当前设备ID(可选)"
+ * }
+ * 
+ * 响应:
+ * {
+ *   success: true,
+ *   isNewUser: true/false,
+ *   message: "登录成功" or "创建成功",
+ *   data: {
+ *     user_id: "用户ID",
+ *     invitation_code: "邀请码",
+ *     google_account: "Google账号",
+ *     ...其他用户信息
+ *   }
+ * }
+ */
+exports.googleLoginOrCreate = async (req, res) => {
+  try {
+    const { google_id, google_account, google_name, android_id } = req.body;
+
+    console.log('🔍 [Google Login/Create] Received request:');
+    console.log('   - google_id:', google_id);
+    console.log('   - google_account:', google_account);
+    console.log('   - google_name:', google_name);
+
+    // Validate required fields
+    if (!google_account) {
+      return res.status(400).json({
+        success: false,
+        error: 'google_account is required'
+      });
+    }
+
+    // Function to generate user ID and invitation code
+    const generateUserIds = () => {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hour = String(now.getHours()).padStart(2, '0');
+      const minute = String(now.getMinutes()).padStart(2, '0');
+      const second = String(now.getSeconds()).padStart(2, '0');
+      const random = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+      
+      const timeString = `${year}${month}${day}${hour}${minute}${second}${random}`;
+      return {
+        user_id: `U${timeString}`,
+        invitation_code: `INV${timeString}`
+      };
+    };
+
+    // 获取真实IP
+    const register_ip = 
+      req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+      req.headers['x-real-ip'] ||
+      req.ip ||
+      req.connection.remoteAddress ||
+      '未知';
+
+    // 查找是否已有该Google账号绑定的用户
+    let user = await UserInformation.findOne({
+      where: { google_account: google_account.trim() }
+    });
+
+    let isNewUser = false;
+
+    if (user) {
+      // 用户已存在，更新设备绑定（如果提供了android_id）
+      console.log(`   ♻️ 找到现有用户: ${user.user_id}`);
+      
+      if (android_id && android_id.trim() !== '') {
+        await user.update({
+          android_id: android_id.trim()
+        });
+        console.log(`   📱 更新设备绑定: ${android_id}`);
+      }
+
+    } else {
+      // 用户不存在，创建新用户
+      console.log('   ✨ 创建新用户...');
+      
+      const { user_id, invitation_code } = generateUserIds();
+      
+      user = await UserInformation.create({
+        user_id,
+        invitation_code,
+        email: google_account.trim(),
+        google_account: google_account.trim(),
+        android_id: android_id ? android_id.trim() : null,
+        gaid: null,
+        register_ip,
+        country: null
+      });
+
+      isNewUser = true;
+      console.log(`   ✅ 新用户创建成功: ${user.user_id}`);
+
+      // 初始化用户状态
+      try {
+        await UserStatus.create({
+          user_id: user.user_id,
+          bitcoin_accumulated_amount: 0,
+          current_bitcoin_balance: 0,
+          total_invitation_rebate: 0,
+          total_withdrawal_amount: 0,
+          last_login_time: new Date(),
+          user_status: 'normal'
+        });
+        console.log(`   ✅ 用户状态初始化成功: ${user.user_id}`);
+      } catch (statusErr) {
+        console.error('   ❌ 创建用户状态失败:', statusErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      isNewUser,
+      message: isNewUser ? 'Account created successfully' : 'Login successful',
+      data: {
+        user_id: user.user_id,
+        userId: user.user_id, // 兼容前端
+        invitation_code: user.invitation_code,
+        invitationCode: user.invitation_code, // 兼容前端
+        google_account: user.google_account,
+        email: user.email,
+        android_id: user.android_id
+      }
+    });
+
+  } catch (err) {
+    console.error('❌ Google login/create failed:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Operation failed',
       details: err.message
     });
   }
@@ -380,15 +536,15 @@ exports.switchByGoogleAccount = async (req, res) => {
   try {
     const { google_account, android_id } = req.body;
 
-    // 验证必填字段
+    // Validate required fields
     if (!google_account) {
       return res.status(400).json({
         success: false,
-        error: 'google_account 是必填字段'
+        error: 'google_account is required'
       });
     }
 
-    // 查找绑定该Google账号的用户
+    // Find user bound to this Google account
     const user = await UserInformation.findOne({
       where: { google_account: google_account.trim() }
     });
@@ -396,7 +552,7 @@ exports.switchByGoogleAccount = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: '未找到绑定该Google账号的用户'
+        error: 'No user found with this Google account'
       });
     }
 
@@ -409,15 +565,15 @@ exports.switchByGoogleAccount = async (req, res) => {
 
     res.json({
       success: true,
-      message: '切换成功',
+      message: 'Account switched successfully',
       data: user
     });
 
   } catch (err) {
-    console.error('切换账号失败:', err);
+    console.error('Account switching failed:', err);
     res.status(500).json({
       success: false,
-      error: '切换失败',
+      error: 'Failed to switch account',
       details: err.message
     });
   }
@@ -439,11 +595,11 @@ exports.switchByGoogleAccount = async (req, res) => {
  * }
  */
 exports.unbindGoogleAccount = async (req, res) => {
-  // 🔒 禁用解绑功能，确保账号绑定的永久性和唯一性
+  // 🔒 Unbinding disabled to ensure permanent and unique account binding
   return res.status(403).json({
     success: false,
-    error: 'Google账号绑定后不可解绑',
-    message: '为保证账号安全性，Google账号一旦绑定，将永久关联该账户，无法解绑或更换。'
+    error: 'Google account cannot be unbound after binding',
+    message: 'For account security, once a Google account is bound, it will be permanently associated with this account and cannot be unbound or changed.'
   });
 
   /* 原解绑逻辑已禁用
@@ -512,11 +668,11 @@ exports.getInvitationInfo = async (req, res) => {
     if (!user_id) {
       return res.status(400).json({
         success: false,
-        error: 'user_id 是必填字段'
+        error: 'user_id is required'
       });
     }
 
-    // 查找我的邀请关系记录
+    // Find my invitation relationship record
     const myRelation = await InvitationRelationship.findOne({
       where: { user_id: user_id.trim() }
     });
@@ -558,10 +714,10 @@ exports.getInvitationInfo = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('查询邀请信息失败:', err);
+    console.error('Failed to query invitation information:', err);
     res.status(500).json({
       success: false,
-      error: '查询失败',
+      error: 'Query failed',
       details: err.message
     });
   }
@@ -594,11 +750,11 @@ exports.getUserStatus = async (req, res) => {
     if (!user_id) {
       return res.status(400).json({
         success: false,
-        error: 'user_id 是必填字段'
+        error: 'user_id is required'
       });
     }
 
-    // 查找用户状态
+    // Find user status
     const userStatus = await UserStatus.findOne({
       where: { user_id: user_id.trim() }
     });
@@ -606,7 +762,7 @@ exports.getUserStatus = async (req, res) => {
     if (!userStatus) {
       return res.status(404).json({
         success: false,
-        error: '用户状态不存在'
+        error: 'User status does not exist'
       });
     }
 
@@ -628,10 +784,10 @@ exports.getUserStatus = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('查询用户状态失败:', err);
+    console.error('Failed to query user status:', err);
     res.status(500).json({
       success: false,
-      error: '查询失败',
+      error: 'Query failed',
       details: err.message
     });
   }
@@ -651,15 +807,15 @@ exports.addReferrer = async (req, res) => {
   try {
     const { user_id, referrer_invitation_code } = req.body;
 
-    // 1. 验证参数
+    // 1. Validate parameters
     if (!user_id || !referrer_invitation_code) {
       return res.status(400).json({
         success: false,
-        message: '用户ID和推荐人邀请码不能为空'
+        message: 'User ID and referrer invitation code cannot be empty'
       });
     }
 
-    // 2. 检查用户是否存在
+    // 2. Check if user exists
     const user = await UserInformation.findOne({
       where: { user_id: user_id.trim() }
     });
@@ -667,11 +823,11 @@ exports.addReferrer = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: '用户不存在'
+        message: 'User does not exist'
       });
     }
 
-    // 3. 检查是否已经有推荐人
+    // 3. Check if already has a referrer
     const existingRelation = await InvitationRelationship.findOne({
       where: { user_id: user_id.trim() }
     });
@@ -679,11 +835,11 @@ exports.addReferrer = async (req, res) => {
     if (existingRelation) {
       return res.status(400).json({
         success: false,
-        message: '您已经绑定过推荐人，无法重复绑定'
+        message: 'You have already bound a referrer and cannot bind again'
       });
     }
 
-    // 4. 查找推荐人
+    // 4. Find referrer
     const referrer = await UserInformation.findOne({
       where: { invitation_code: referrer_invitation_code.trim() }
     });
@@ -691,15 +847,15 @@ exports.addReferrer = async (req, res) => {
     if (!referrer) {
       return res.status(404).json({
         success: false,
-        message: '推荐人邀请码不存在'
+        message: 'Referrer invitation code does not exist'
       });
     }
 
-    // 5. 不能邀请自己
+    // 5. Cannot invite yourself
     if (referrer.user_id === user_id.trim()) {
       return res.status(400).json({
         success: false,
-        message: '不能使用自己的邀请码'
+        message: 'Cannot use your own invitation code'
       });
     }
 
@@ -752,7 +908,7 @@ exports.addReferrer = async (req, res) => {
 
     res.json({
       success: true,
-      message: '推荐人绑定成功，您获得了2小时免费挖矿合约',
+      message: 'Referrer bound successfully, you have received a 2-hour free mining contract',
       data: {
         referrer_user_id: referrer.user_id,
         referrer_invitation_code: referrer.invitation_code,
@@ -763,10 +919,10 @@ exports.addReferrer = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('添加推荐人失败:', err);
+    console.error('Failed to add referrer:', err);
     res.status(500).json({
       success: false,
-      error: '绑定失败',
+      error: 'Binding failed',
       details: err.message
     });
   }
@@ -788,11 +944,11 @@ exports.createAdFreeContract = async (req, res) => {
     if (!user_id) {
       return res.status(400).json({
         success: false,
-        message: '用户ID不能为空'
+        message: 'User ID cannot be empty'
       });
     }
 
-    // 1. 验证用户存在
+    // 1. Verify user exists
     const user = await UserInformation.findOne({
       where: { user_id: user_id.trim() }
     });
@@ -800,23 +956,23 @@ exports.createAdFreeContract = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: '用户不存在'
+        message: 'User does not exist'
       });
     }
 
-    // 2. 检查是否已经有待激活的广告合约
+    // 2. Check if already has pending ad contract
     const existingContract = await FreeContractRecord.findOne({
       where: {
         user_id: user_id.trim(),
         free_contract_type: 'ad free contract',
-        mining_status: 'completed' // 查找未激活的合约
+        mining_status: 'completed' // Find unactivated contract
       }
     });
 
     if (existingContract) {
       return res.status(400).json({
         success: false,
-        message: '您已有待激活的广告合约'
+        message: 'You already have a pending ad contract'
       });
     }
 
@@ -852,7 +1008,7 @@ exports.createAdFreeContract = async (req, res) => {
 
     res.json({
       success: true,
-      message: '免费广告合约创建成功，请观看广告激活',
+      message: 'Free ad contract created successfully, please watch ad to activate',
       data: {
         contract,
         speedInfo: {
@@ -869,10 +1025,10 @@ exports.createAdFreeContract = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('创建免费广告合约失败:', err);
+    console.error('Failed to create free ad contract:', err);
     res.status(500).json({
       success: false,
-      error: '创建失败',
+      error: 'Creation failed',
       details: err.message
     });
   }
@@ -895,11 +1051,11 @@ exports.activateAdFreeContract = async (req, res) => {
     if (!user_id || !contract_id) {
       return res.status(400).json({
         success: false,
-        message: '用户ID和合约ID不能为空'
+        message: 'User ID and contract ID cannot be empty'
       });
     }
 
-    // 1. 查找合约
+    // 1. Find contract
     const contract = await FreeContractRecord.findOne({
       where: {
         id: contract_id,
@@ -912,7 +1068,7 @@ exports.activateAdFreeContract = async (req, res) => {
     if (!contract) {
       return res.status(404).json({
         success: false,
-        message: '合约不存在或已激活'
+        message: 'Contract does not exist or is already activated'
       });
     }
 
@@ -940,7 +1096,7 @@ exports.activateAdFreeContract = async (req, res) => {
 
     res.json({
       success: true,
-      message: '广告合约已激活，开始挖矿2小时',
+      message: 'Ad contract activated, mining started for 2 hours',
       data: {
         contract,
         speedInfo: {
@@ -955,10 +1111,10 @@ exports.activateAdFreeContract = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('激活广告合约失败:', err);
+    console.error('Failed to activate ad contract:', err);
     res.status(500).json({
       success: false,
-      error: '激活失败',
+      error: 'Activation failed',
       details: err.message
     });
   }
@@ -979,34 +1135,34 @@ exports.emailRegister = async (req, res) => {
   try {
     const { email, password, referrer_invitation_code } = req.body;
 
-    // 验证必填字段
+    // Validate required fields
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        error: '邮箱和密码是必填字段'
+        error: 'Email and password are required'
       });
     }
 
-    // 验证邮箱格式
+    // Validate email format
     const emailRegex = /^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({
         success: false,
-        error: '邮箱格式不正确'
+        error: 'Invalid email format'
       });
     }
 
-    // 验证密码长度
+    // Validate password length
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        error: '密码长度至少为6个字符'
+        error: 'Password must be at least 6 characters long'
       });
     }
 
-    console.log('📧 [Email Register] 收到注册请求:', email);
+    console.log('📧 [Email Register] Registration request received:', email);
 
-    // 检查邮箱是否已存在
+    // Check if email already exists
     const existingUser = await UserInformation.findOne({
       where: { email: email.toLowerCase() }
     });
@@ -1014,7 +1170,7 @@ exports.emailRegister = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        error: '该邮箱已被注册'
+        error: 'This email is already registered'
       });
     }
 
@@ -1130,7 +1286,7 @@ exports.emailRegister = async (req, res) => {
 
     res.json({
       success: true,
-      message: '注册成功',
+      message: 'Registration successful',
       data: {
         user_id: newUser.user_id,
         email: newUser.email,
@@ -1140,10 +1296,10 @@ exports.emailRegister = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('邮箱注册失败:', err);
+    console.error('Email registration failed:', err);
     res.status(500).json({
       success: false,
-      error: '注册失败',
+      error: 'Registration failed',
       details: err.message
     });
   }
@@ -1163,17 +1319,17 @@ exports.emailLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 验证必填字段
+    // Validate required fields
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        error: '邮箱和密码是必填字段'
+        error: 'Email and password are required'
       });
     }
 
-    console.log('📧 [Email Login] 收到登录请求:', email);
+    console.log('📧 [Email Login] Login request received:', email);
 
-    // 查找用户
+    // Find user
     const user = await UserInformation.findOne({
       where: { email: email.toLowerCase() }
     });
@@ -1181,30 +1337,30 @@ exports.emailLogin = async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: '邮箱或密码错误'
+        error: 'Invalid email or password'
       });
     }
 
-    // 检查是否设置了密码
+    // Check if password is set
     if (!user.password) {
       return res.status(401).json({
         success: false,
-        error: '该账号未设置密码，请使用其他方式登录'
+        error: 'This account has not set a password, please use another login method'
       });
     }
 
-    // 验证密码
+    // Verify password
     const bcrypt = require('bcrypt');
     const isPasswordValid = await bcrypt.compare(password, user.password);
 
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        error: '邮箱或密码错误'
+        error: 'Invalid email or password'
       });
     }
 
-    console.log('✅ [Email Login] 登录成功:', user.user_id);
+    console.log('✅ [Email Login] Login successful:', user.user_id);
 
     // 更新最后登录时间
     await UserStatus.update(
@@ -1214,7 +1370,7 @@ exports.emailLogin = async (req, res) => {
 
     res.json({
       success: true,
-      message: '登录成功',
+      message: 'Login successful',
       data: {
         user_id: user.user_id,
         email: user.email,
@@ -1224,10 +1380,10 @@ exports.emailLogin = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('邮箱登录失败:', err);
+    console.error('Email login failed:', err);
     res.status(500).json({
       success: false,
-      error: '登录失败',
+      error: 'Login failed',
       details: err.message
     });
   }

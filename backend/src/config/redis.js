@@ -95,7 +95,7 @@ class RedisClient {
   }
 
   // 用户等级缓存
-  async cacheUserLevel(userId, level, points, speedMultiplier, dailyBonusActive, dailyBonusExpire) {
+  async cacheUserLevel(userId, level, points, speedMultiplier, dailyBonusActive, dailyBonusExpire, levelName = null, maxPoints = null, pointsToNextLevel = null, progressPercentage = null) {
     if (!this.isReady()) {
       console.warn('⚠️  Redis 不可用,跳过缓存操作');
       return false;
@@ -114,7 +114,11 @@ class RedisClient {
         points: (points !== undefined && points !== null) ? points.toString() : '0',
         speed_multiplier: (speedMultiplier !== undefined && speedMultiplier !== null) ? speedMultiplier.toString() : '1.0',
         daily_bonus_active: dailyBonusActive ? '1' : '0',
-        daily_bonus_expire: dailyBonusExpire || ''
+        daily_bonus_expire: dailyBonusExpire || '',
+        level_name: levelName || `LV.${level || 1}`,
+        max_points: (maxPoints !== undefined && maxPoints !== null) ? maxPoints.toString() : '20',
+        points_to_next_level: (pointsToNextLevel !== undefined && pointsToNextLevel !== null) ? pointsToNextLevel.toString() : '20',
+        progress_percentage: (progressPercentage !== undefined && progressPercentage !== null) ? progressPercentage.toString() : '0'
       };
       
       await this.client.hmset(key, data);
@@ -140,7 +144,11 @@ class RedisClient {
         points: parseInt(data.points) || 0,
         speedMultiplier: parseFloat(data.speed_multiplier) || 1.0,
         dailyBonusActive: data.daily_bonus_active === '1',
-        dailyBonusExpire: data.daily_bonus_expire || null
+        dailyBonusExpire: data.daily_bonus_expire || null,
+        levelName: data.level_name || `LV.${parseInt(data.level) || 1}`,
+        maxPoints: parseInt(data.max_points) || 20,
+        pointsToNextLevel: parseInt(data.points_to_next_level) || 20,
+        progressPercentage: parseFloat(data.progress_percentage) || 0
       };
     } catch (error) {
       console.error('获取用户等级缓存失败:', error.message);

@@ -55,31 +55,64 @@ class _LoginScreenState extends State<LoginScreen> {
       final String? email = account.email;
       final String? displayName = account.displayName;
       
-      print('✅ Google login success: $email');
+      print('✅ Google login success');
+      print('   - Email: $email');
+      print('   - ID: $googleId');
+      print('   - Name: $displayName');
 
-      // 2. 调用后端API绑定Google账号
-      final userId = await _getOrCreateUserId();
-      final response = await _apiService.bindGoogleAccount(
-        userId: userId,
+      // 验证email不为空
+      if (email == null || email.isEmpty) {
+        throw Exception('Google account email is empty. Please make sure you grant email permission.');
+      }
+
+      // 2. 调用后端API：Google登录或创建新用户
+      print('🔍 Google登录或创建新用户: $email');
+      
+      final response = await _apiService.googleLoginOrCreate(
         googleId: googleId,
-        googleEmail: email ?? '',
+        googleEmail: email,
         googleName: displayName ?? '',
+        androidId: null, // 可以传递设备ID，但这里暂不需要
       );
+      print('🔍 Google登录/创建响应: $response');
 
-      if (response['success'] == true) {
-        // 3. 处理推荐人邀请码（如果有）
-        await _handleReferrerCode(userId);
+      if (response['success'] == true && response['data'] != null) {
+        final userId = response['data']['user_id'] ?? response['data']['userId'];
+        final invitationCode = response['data']['invitation_code'] ?? response['data']['invitationCode'];
+        final isNewUser = response['isNewUser'] ?? false;
         
-        // 4. 保存Google登录状态
+        print('✅ ${isNewUser ? "New user created successfully" : "User login successful"}: $userId');
+        
+        // 保存用户信息到本地
+        await _storageService.saveUserId(userId);
+        await _storageService.saveInvitationCode(invitationCode);
         await _storageService.saveGoogleSignInStatus(true);
-        await _storageService.saveGoogleEmail(email ?? '');
+        await _storageService.saveGoogleEmail(email);
         
+        // 3. 处理推荐人邀请码（如果有输入）
+        print('🔍 开始验证邀请码...');
+        final referrerResult = await _handleReferrerCode(userId);
+        print('🔍 邀请码验证结果: $referrerResult');
+        
+        if (!referrerResult) {
+          // 邀请码验证失败，撤销Google登录并阻止登录流程
+          print('❌ 邀请码验证失败，撤销Google登录');
+          await _googleSignIn.signOut();
+          return;
+        }
+        
+        print('✅ 邀请码验证通过，进入应用');
         _navigateToHome();
       } else {
-        throw Exception(response['message'] ?? 'Failed to bind Google account');
+        // 创建/登录失败
+        String errorMessage = response['message'] ?? response['error'] ?? 'Failed to sign in with Google';
+        print('❌ Google登录/创建失败: $errorMessage');
+        await _googleSignIn.signOut();
+        _showError(errorMessage);
       }
     } catch (e) {
       print('❌ Google sign-in error: $e');
+      await _googleSignIn.signOut();
       _showError('Google sign-in failed: ${e.toString()}');
     } finally {
       if (mounted) {
@@ -109,8 +142,12 @@ class _LoginScreenState extends State<LoginScreen> {
         print('✅ 账号恢复模式: 检测到已存在账号 $existingUserId');
         await _storageService.saveIsLoggedOut(false);  // 清除登出标记
         
-        // 处理推荐人邀请码（如果这次登录页输入了新的邀请码）
-        await _handleReferrerCode(existingUserId);
+        // 处理推荐人邀请码（如果这次登录页输入了新的邀请码）- 如果验证失败则阻止登录
+        final referrerResult = await _handleReferrerCode(existingUserId);
+        if (!referrerResult) {
+          // 邀请码验证失败，不继续登录流程
+          return;
+        }
         
         _navigateToHome();
       } else {
@@ -123,8 +160,12 @@ class _LoginScreenState extends State<LoginScreen> {
           final userId = _storageService.getUserId();
           if (userId != null && userId.isNotEmpty) {
             await _storageService.saveIsLoggedOut(false);  // 标记为已登录
-            // 处理推荐人邀请码（如果有）
-            await _handleReferrerCode(userId);
+            // 处理推荐人邀请码（如果有）- 如果验证失败则阻止登录
+            final referrerResult = await _handleReferrerCode(userId);
+            if (!referrerResult) {
+              // 邀请码验证失败，不继续登录流程
+              return;
+            }
           }
           _navigateToHome();
         } else {
@@ -158,25 +199,103 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// 处理推荐人邀请码
-  Future<void> _handleReferrerCode(String userId) async {
+  /// 处理邀请码验证
+  /// 返回 true 表示可以继续登录（邀请码为空或验证成功）
+  /// 返回 false 表示不能继续登录（邀请码验证失败）
+  Future<bool> _handleReferrerCode(String userId) async {
     final referrerCode = _referrerCodeController.text.trim();
-    if (referrerCode.isEmpty) return;
+    
+    print('🔍 _handleReferrerCode - referrerCode: "$referrerCode"');
+    
+    // 1. 如果邀请码为空，允许继续登录
+    if (referrerCode.isEmpty) {
+      print('✅ 邀请码为空，允许登录');
+      return true;
+    }
 
+    print('🔍 邀请码不为空，开始验证...');
+    
+    // 2. 有邀请码输入，必须验证成功才能继续
     try {
       final response = await _apiService.addReferrer(
         userId: userId,
         referrerInvitationCode: referrerCode,
       );
       
+      print('🔍 API响应: $response');
+      
       if (response['success'] == true) {
         print('✅ Referrer code added successfully');
         // 创建免费广告合约
         await _apiService.createAdFreeContract(userId: userId);
+        return true;  // 验证成功，允许继续登录
+      } else {
+        // 邀请码验证失败 - 阻止登录
+        print('❌ 邀请码验证失败: ${response['message']}');
+        String errorMsg = response['message'] ?? 'Invalid invitation code';
+        if (errorMsg.contains('not found') || 
+            errorMsg.contains('not exist')) {
+          errorMsg = 'The invitation code you entered does not exist. Please confirm and try again.';
+        }
+        _showInvitationCodeError(errorMsg);
+        return false;  // 验证失败，阻止登录
       }
     } catch (e) {
-      print('⚠️ Failed to add referrer code: $e');
-      // 不阻止登录流程，只记录错误
+      print('❌ 邀请码验证异常: $e');
+      // 检查是否是邀请码不存在的错误
+      String errorMsg = e.toString();
+      if (errorMsg.contains('404') || errorMsg.contains('not found') || 
+          errorMsg.contains('not exist')) {
+        _showInvitationCodeError('The invitation code you entered does not exist. Please confirm and try again.');
+      } else {
+        _showInvitationCodeError('Failed to verify invitation code. Please try again.');
+      }
+      return false;  // 验证失败，阻止登录
     }
+  }
+
+  /// 显示邀请码错误提示
+  void _showInvitationCodeError(String message) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.orangeAccent, size: 24),
+              const SizedBox(width: 8),
+              const Text(
+                'Invalid Invitation Code',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orangeAccent,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'OK',
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// 导航到主页
@@ -229,14 +348,28 @@ class _LoginScreenState extends State<LoginScreen> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('网络连接错误'),
-          content: const Text('网络连接错误，请重试！'),
+          backgroundColor: AppColors.cardDark,
+          title: const Text(
+            'Network Connection Error',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.redAccent,
+            ),
+          ),
+          content: const Text('Please check your network and try again!'),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
               },
-              child: const Text('确定'),
+              child: Text(
+                'OK',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         );

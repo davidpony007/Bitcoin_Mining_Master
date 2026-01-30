@@ -78,13 +78,17 @@ class _PointsScreenState extends State<PointsScreen> {
       final userId = _storageService.getUserId();
       if (userId != null && userId.isNotEmpty) {
         final response = await _levelApiService.getUserLevel(userId);
+        print('🔍 等级API响应: $response');
         if (response['success'] == true && response['data'] != null) {
           final data = response['data'];
+          print('📊 等级数据: level=${data['level']}, levelName=${data['levelName']}, maxPoints=${data['maxPoints']}');
           setState(() {
             _userLevel = data['level'] ?? 1;
             _levelName = data['levelName'] ?? 'LV.1';
+            // maxPoints是当前等级需要达到的最大积分（下一级所需积分）
             _maxPoints = data['maxPoints'] ?? 20;
           });
+          print('✅ 等级更新成功: $_userLevel, $_levelName, 下一级需要: $_maxPoints 积分');
         }
       }
     } catch (e) {

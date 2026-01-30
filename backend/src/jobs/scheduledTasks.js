@@ -143,14 +143,22 @@ function startLevelCacheWarmup() {
           // 检查是否有每日加成
           const bonusActive = await redisClient.isDailyBonusActive(user.user_id);
           
-          // 缓存用户等级信息
+          // 计算等级信息
+          const LevelService = require('../services/levelService');
+          const levelInfo = LevelService.calculateLevelInfo(user.user_level, user.user_points);
+          
+          // 缓存用户等级信息（包含完整的等级数据）
           await redisClient.cacheUserLevel(
             user.user_id,
             user.user_level,
             user.user_points,
             user.mining_speed_multiplier,
             bonusActive,
-            null
+            null,
+            levelInfo.levelName,
+            levelInfo.maxPoints,
+            levelInfo.pointsToNextLevel,
+            levelInfo.progressPercentage
           );
           
           warmedCount++;

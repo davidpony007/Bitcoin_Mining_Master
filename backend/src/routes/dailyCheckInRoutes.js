@@ -5,6 +5,40 @@ const CheckInMiningContractService = require('../services/checkInMiningContractS
 const CheckInPointsService = require('../services/checkInPointsService');
 
 /**
+ * GET /api/check-in/status
+ * 检查用户今日是否已经签到
+ */
+router.get('/status', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: '用户ID无效'
+      });
+    }
+
+    // 检查今日是否已签到
+    const alreadyCheckedIn = await CheckInPointsService.hasCheckedInToday(userId);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        alreadyCheckedIn: alreadyCheckedIn,
+        userId: userId
+      }
+    });
+  } catch (error) {
+    console.error('检查签到状态失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '检查签到状态失败'
+    });
+  }
+});
+
+/**
  * POST /api/check-in/daily
  * 用户每日签到并创建2小时挖矿合约 + 增加积分
  */

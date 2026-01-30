@@ -819,6 +819,26 @@ class _DashboardScreenState extends State<DashboardScreen>
       _isLoadingLevel = false;
     });
   }
+  
+  /// 获取挖矿速率加成文本
+  String _getMiningRateBonus() {
+    // LV.1: +0%, LV.2: +10%, LV.3: +30%, LV.4: +50%, LV.5: +75%,
+    // LV.6: +100%, LV.7: +130%, LV.8: +160%, LV.9: +200%
+    final bonusPercentages = {
+      1: 0,
+      2: 10,
+      3: 30,
+      4: 50,
+      5: 75,
+      6: 100,
+      7: 130,
+      8: 160,
+      9: 200,
+    };
+    
+    final bonus = bonusPercentages[_userLevel] ?? 0;
+    return '+$bonus%';
+  }
 
   Widget _buildBalanceCard(UserProvider provider) {
     return Container(
@@ -929,12 +949,25 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ],
                           ),
-                          Text(
-                            '$_userPoints / $_maxPoints',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                            ),
+                          Row(
+                            children: [
+                              Text(
+                                _getMiningRateBonus(),
+                                style: TextStyle(
+                                  color: AppColors.success,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Text(
+                                '$_userPoints / $_maxPoints',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
