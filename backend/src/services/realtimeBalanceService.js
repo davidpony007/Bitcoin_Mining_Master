@@ -184,20 +184,25 @@ class RealtimeBalanceService {
 
   /**
    * 启动实时余额更新定时器
-   * 每秒执行一次
+   * 每5秒执行一次（优化高并发性能）
+   * 
+   * 性能考量：
+   * - 20000日活（6000并发）× 1秒 = 6000 QPS → 超出2核2GB服务器负载
+   * - 调整为5秒后：1200 QPS → 在阿里云轻量服务器承受范围内
+   * - 前端仍每秒刷新（通过公式计算），用户体验无损
    */
   static startRealtimeUpdates() {
-    console.log('⚡ 启动实时余额更新服务（每秒执行）...');
+    console.log('⚡ 启动实时余额更新服务（每5秒执行）...');
     
     // 立即执行一次
     this.updateAllActiveBalances();
     
-    // 每秒执行一次
+    // 每5秒执行一次（针对高并发场景优化）
     this.updateInterval = setInterval(async () => {
       await this.updateAllActiveBalances();
-    }, 1000);
+    }, 5000);
     
-    console.log('✓ 实时余额更新服务已启动');
+    console.log('✓ 实时余额更新服务已启动（间隔5秒）');
   }
 
   /**

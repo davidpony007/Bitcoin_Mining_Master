@@ -81,6 +81,7 @@ router.get('/has-active/:userId', async (req, res) => {
 router.get('/my-contracts/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
+    console.log('[CONTRACT STATUS] Getting contracts for user:', userId);
 
     if (!userId) {
       return res.status(400).json({
@@ -137,6 +138,71 @@ router.get('/my-contracts/:userId', async (req, res) => {
       }
     );
 
+    // 查询Invite Friend Reward合约（推荐人获得的邀请奖励）
+    const inviteFriendContract = await sequelize.query(
+      `SELECT 
+        id,
+        free_contract_type,
+        hashrate,
+        free_contract_creation_time,
+        free_contract_end_time,
+        mining_status,
+        TIMESTAMPDIFF(SECOND, NOW(), free_contract_end_time) as remaining_seconds,
+        CASE 
+          WHEN mining_status = 'mining' AND free_contract_end_time > NOW() THEN 1
+          ELSE 0
+        END as is_active
+       FROM free_contract_records 
+       WHERE user_id = ? 
+       AND free_contract_type = 'invitation free contract'
+       ORDER BY free_contract_creation_time DESC
+       LIMIT 1`,
+      {
+        replacements: [userId],
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
+    // 查询Bind Referrer Reward合约（被推荐人获得的绑定奖励）
+    const bindReferrerContract = await sequelize.query(
+      `SELECT 
+        id,
+        free_contract_type,
+        hashrate,
+        free_contract_creation_time,
+        free_contract_end_time,
+        mining_status,
+        TIMESTAMPDIFF(SECOND, NOW(), free_contract_end_time) as remaining_seconds,
+        CASE 
+          WHEN mining_status = 'mining' AND free_contract_end_time > NOW() THEN 1
+          ELSE 0
+        END as is_active
+       FROM free_contract_records 
+       WHERE user_id = ? 
+       AND free_contract_type = 'bind referrer free contract'
+       ORDER BY free_contract_creation_time DESC
+       LIMIT 1`,
+      {
+        replacements: [userId],
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
+    console.log('[CONTRACT STATUS] Query results:', {
+      dailyCheckIn: dailyCheckInContract.length,
+      adReward: adRewardContract.length,
+      inviteFriend: inviteFriendContract.length,
+      bindReferrer: bindReferrerContract.length
+    });
+
+    // 将BTC/s算力转换为Gh/s显示值的辅助函数
+    // 基础算力：0.000000000000139 BTC/s = 5.5 Gh/s
+    const btcToGhs = (btcPerSecond) => {
+      if (!btcPerSecond || btcPerSecond === 0) return '0Gh/s';
+      const ghs = (btcPerSecond / 0.000000000000139) * 5.5;
+      return ghs.toFixed(1) + 'Gh/s';
+    };
+
     return res.json({
       success: true,
       data: {
@@ -153,6 +219,22 @@ router.get('/my-contracts/:userId', async (req, res) => {
           remainingSeconds: adRewardContract[0]?.remaining_seconds || 0,
           endTime: adRewardContract[0]?.free_contract_end_time || null,
           contractId: adRewardContract[0]?.id || null
+        },
+        inviteFriendReward: {
+          exists: inviteFriendContract.length > 0,
+          isActive: inviteFriendContract[0]?.is_active === 1,
+          hashrate: inviteFriendContract.length > 0 ? btcToGhs(inviteFriendContract[0]?.hashrate) : '0Gh/s',
+          remainingSeconds: inviteFriendContract[0]?.is_active === 1 ? (inviteFriendContract[0]?.remaining_seconds || 0) : 0,
+          endTime: inviteFriendContract[0]?.free_contract_end_time || null,
+          contractId: inviteFriendContract[0]?.id || null
+        },
+        bindReferrerReward: {
+          exists: bindReferrerContract.length > 0,
+          isActive: bindReferrerContract[0]?.is_active === 1,
+          hashrate: bindReferrerContract.length > 0 ? btcToGhs(bindReferrerContract[0]?.hashrate) : '0Gh/s',
+          remainingSeconds: bindReferrerContract[0]?.is_active === 1 ? (bindReferrerContract[0]?.remaining_seconds || 0) : 0,
+          endTime: bindReferrerContract[0]?.free_contract_end_time || null,
+          contractId: bindReferrerContract[0]?.id || null
         }
       }
     });

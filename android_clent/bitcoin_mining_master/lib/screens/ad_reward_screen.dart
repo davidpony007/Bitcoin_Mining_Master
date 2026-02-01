@@ -181,6 +181,50 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       }
       final userId = userIdResult.data!;
       
+      // 🔍 验证Google账户是否匹配（防止切换账户后使用旧的userId）
+      final isGoogleSignedIn = _storageService.isGoogleSignedIn();
+      if (isGoogleSignedIn) {
+        final savedGoogleEmail = _storageService.getGoogleEmail();
+        print('🔍 已保存的Google账户: $savedGoogleEmail');
+        
+        // 检查后端userId是否与保存的Google账户匹配
+        try {
+          final verifyResponse = await http.get(
+            Uri.parse('${ApiConstants.baseUrl}/auth/google-binding-status/$userId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${_storageService.getAuthToken()}',
+            },
+          ).timeout(const Duration(seconds: 10));
+          
+          if (verifyResponse.statusCode == 200) {
+            final verifyData = json.decode(verifyResponse.body);
+            final boundEmail = verifyData['data']?['googleEmail'];
+            
+            if (boundEmail != null && savedGoogleEmail != null && boundEmail != savedGoogleEmail) {
+              // Google账户不匹配！用户可能切换了账户
+              print('⚠️ 检测到Google账户不匹配！');
+              print('   保存的账户: $savedGoogleEmail');
+              print('   后端绑定账户: $boundEmail');
+              
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚠️ Account mismatch detected. Please log out and sign in with the correct Google account.'),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+              return;
+            }
+          }
+        } catch (e) {
+          print('⚠️ 验证Google账户时出错: $e (继续签到流程)');
+        }
+      }
+      
       // 获取JWT token
       final token = _storageService.getAuthToken();
       if (token == null || token.isEmpty) {
@@ -208,9 +252,9 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
           'Authorization': 'Bearer $token',
         },
       ).timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 30), // 增加超时时间到30秒
         onTimeout: () {
-          throw Exception('请求超时，请检查网络连接');
+          throw Exception('Server response timeout. Please check your network connection and try again.');
         },
       );
       
@@ -289,9 +333,9 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             },
             body: json.encode({'user_id': userId}),
           ).timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 30), // 增加超时时间到30秒
             onTimeout: () {
-              throw Exception('请求超时，请检查网络连接');
+              throw Exception('Server response timeout. Please try again in a moment.');
             },
           );
           if (response.statusCode == 200) {
@@ -304,7 +348,17 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       }
 
       if (response == null) {
-        _lastErrorMessage = lastError?.toString() ?? '网络连接失败，请检查网络设置或稍后重试';
+        // 提取更友好的错误信息
+        String errorMsg = 'Network connection failed. Please try again later.';
+        if (lastError != null) {
+          String errStr = lastError.toString();
+          if (errStr.contains('timeout')) {
+            errorMsg = 'Server response timeout. Please check your network and try again.';
+          } else if (errStr.contains('SocketException')) {
+            errorMsg = 'Unable to connect to server. Please check your internet connection.';
+          }
+        }
+        _lastErrorMessage = errorMsg;
         return false;
       }
       
@@ -389,9 +443,9 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
               'hours': 2, // 观看广告奖励2小时
             }),
           ).timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 30), // 增加超时时间到30秒
             onTimeout: () {
-              throw Exception('请求超时，请检查网络连接');
+              throw Exception('Server response timeout. Please try again in a moment.');
             },
           );
           if (response.statusCode == 200) {
@@ -404,7 +458,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       }
 
       if (response == null) {
-        _lastErrorMessage = lastError?.toString() ?? '网络连接失败，请检查网络设置或稍后重试';
+        _lastErrorMessage = lastError?.toString() ?? 'Network connection failed. Please check your network or try again later.';
         return false;
       }
       
@@ -537,9 +591,9 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
               'reason': widget.isDailyCheckIn ? 'daily_check_in' : 'ad_reward',
             }),
           ).timeout(
-            const Duration(seconds: 10),
+            const Duration(seconds: 30), // 增加超时时间到30秒
             onTimeout: () {
-              throw Exception('Request timeout');
+              throw Exception('Server response timeout. Please try again.');
             },
           );
           if (response.statusCode == 200) {

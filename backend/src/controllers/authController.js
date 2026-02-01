@@ -6,6 +6,7 @@ const InvitationRelationship = require('../models/invitationRelationship');
 const UserStatus = require('../models/userStatus');
 const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
+const InvitationValidationService = require('../services/invitationValidationService');
 const jwt = require('jsonwebtoken');
 
 /**
@@ -123,21 +124,29 @@ exports.deviceLogin = async (req, res) => {
       // 3. 如果填写了推荐人邀请码，建立邀请关系
       if (referrer_invitation_code && referrer_invitation_code.trim() !== '') {
         try {
-          const referrer = await UserInformation.findOne({
-            where: { invitation_code: referrer_invitation_code.trim() }
-          });
+          // ✅ 验证邀请关系合法性
+          const validation = await InvitationValidationService.validateInvitationRelationship(
+            user.user_id,
+            referrer_invitation_code.trim()
+          );
 
-          if (referrer) {
-            // 🔒 检查：不能邀请自己
-            if (referrer.invitation_code === user.invitation_code) {
-              console.warn(`用户尝试使用自己的邀请码: ${user.user_id}`);
-              // 不建立邀请关系，但不阻止用户注册
-              referrerInfo = {
-                error: 'Cannot use your own invitation code',
-                rejected: true
-              };
-            } else {
-              await InvitationRelationship.create({
+          if (!validation.valid) {
+            console.warn(`❌ 邀请关系验证失败: ${validation.error}`, {
+              userId: user.user_id,
+              referrerCode: referrer_invitation_code.trim(),
+              errorCode: validation.errorCode
+            });
+            
+            referrerInfo = {
+              error: validation.error,
+              errorCode: validation.errorCode,
+              rejected: true
+            };
+          } else {
+            // 验证通过，创建邀请关系
+            const referrer = validation.referrer;
+            
+            await InvitationRelationship.create({
               user_id: user.user_id,
               invitation_code: user.invitation_code,
               referrer_user_id: referrer.user_id,
@@ -156,14 +165,14 @@ exports.deviceLogin = async (req, res) => {
                 user.user_id,
                 referrer_invitation_code.trim()
               );
-              console.log('邀请奖励发放成功:', rewardResult);
+              console.log('✅ 邀请奖励发放成功:', rewardResult);
               
               // 将奖励信息附加到推荐人信息中
               if (referrerInfo) {
                 referrerInfo.rewards = rewardResult;
               }
             } catch (rewardErr) {
-              console.error('发放邀请奖励失败:', rewardErr);
+              console.error('❌ 发放邀请奖励失败:', rewardErr);
               // 奖励发放失败不影响用户注册和邀请关系建立
             }
 
@@ -174,14 +183,14 @@ exports.deviceLogin = async (req, res) => {
                 referrer.user_id,
                 user.user_id
               );
-              console.log('邀请挖矿合约创建/延长成功:', miningContractResult);
+              console.log('✅ 邀请挖矿合约创建/延长成功:', miningContractResult);
               
               // 将挖矿合约信息附加到推荐人信息中
               if (referrerInfo) {
                 referrerInfo.miningContract = miningContractResult;
               }
             } catch (miningErr) {
-              console.error('创建/延长邀请挖矿合约失败:', miningErr);
+              console.error('❌ 创建/延长邀请挖矿合约失败:', miningErr);
               // 挖矿合约失败不影响用户注册和邀请关系建立
             }
 
@@ -192,22 +201,19 @@ exports.deviceLogin = async (req, res) => {
                 user.user_id,
                 referrer.user_id
               );
-              console.log('新用户绑定推荐人挖矿合约创建成功:', refereeContractResult);
+              console.log('✅ 新用户绑定推荐人挖矿合约创建成功:', refereeContractResult);
               
               // 将被邀请人挖矿合约信息附加到返回数据中
               if (referrerInfo) {
                 referrerInfo.refereeContract = refereeContractResult;
               }
             } catch (bindErr) {
-              console.error('创建新用户绑定推荐人挖矿合约失败:', bindErr);
+              console.error('❌ 创建新用户绑定推荐人挖矿合约失败:', bindErr);
               // 挖矿合约失败不影响用户注册和邀请关系建立
             }
-            }
-          } else {
-            console.warn(`推荐人邀请码不存在: ${referrer_invitation_code}`);
           }
         } catch (inviteErr) {
-          console.error('创建邀请关系失败:', inviteErr);
+          console.error('❌ 创建邀请关系失败:', inviteErr);
         }
       }
     } else {
@@ -646,6 +652,67 @@ exports.unbindGoogleAccount = async (req, res) => {
 };
 
 /**
+ * 获取用户的Google账号绑定状态
+ * GET /api/auth/google-binding-status/:userId
+ * 
+ * 响应:
+ * {
+ *   success: true,
+ *   data: {
+ *     isBound: true/false,
+ *     google_account: "email@gmail.com" or null,
+ *     bound_at: "绑定时间" or null
+ *   }
+ * }
+ */
+exports.getGoogleBindingStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required'
+      });
+    }
+
+    // 查找用户
+    const user = await UserInformation.findOne({
+      where: { user_id: userId.trim() },
+      attributes: ['user_id', 'google_account', 'user_creation_time']
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    // 返回绑定状态
+    const isBound = !!(user.google_account && user.google_account.trim() !== '');
+    
+    res.json({
+      success: true,
+      data: {
+        user_id: user.user_id,
+        isBound: isBound,
+        google_account: isBound ? user.google_account : null,
+        bound_at: user.user_creation_time
+      }
+    });
+
+  } catch (err) {
+    console.error('查询Google绑定状态失败:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get binding status',
+      details: err.message
+    });
+  }
+};
+
+/**
  * 查询用户的邀请关系
  * 
  * 请求参数:
@@ -827,39 +894,27 @@ exports.addReferrer = async (req, res) => {
       });
     }
 
-    // 3. Check if already has a referrer
-    const existingRelation = await InvitationRelationship.findOne({
-      where: { user_id: user_id.trim() }
-    });
+    // 3-6. ✅ 使用验证服务统一验证邀请关系合法性
+    const validation = await InvitationValidationService.validateInvitationRelationship(
+      user_id.trim(),
+      referrer_invitation_code.trim()
+    );
 
-    if (existingRelation) {
-      return res.status(400).json({
+    if (!validation.valid) {
+      let statusCode = 400;
+      if (validation.errorCode === 'INVALID_INVITATION_CODE') statusCode = 404;
+      if (validation.errorCode === 'USER_NOT_FOUND') statusCode = 404;
+      
+      return res.status(statusCode).json({
         success: false,
-        message: 'You have already bound a referrer and cannot bind again'
+        message: validation.error,
+        errorCode: validation.errorCode
       });
     }
 
-    // 4. Find referrer
-    const referrer = await UserInformation.findOne({
-      where: { invitation_code: referrer_invitation_code.trim() }
-    });
-
-    if (!referrer) {
-      return res.status(404).json({
-        success: false,
-        message: 'Referrer invitation code does not exist'
-      });
-    }
-
-    // 5. Cannot invite yourself
-    if (referrer.user_id === user_id.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot use your own invitation code'
-      });
-    }
-
-    // 6. 创建邀请关系
+    // 验证通过，创建邀请关系
+    const referrer = validation.referrer;
+    
     await InvitationRelationship.create({
       user_id: user.user_id,
       invitation_code: user.invitation_code,
@@ -1220,15 +1275,27 @@ exports.emailRegister = async (req, res) => {
     let referrerInfo = null;
     if (referrer_invitation_code) {
       try {
-        const referrer = await UserInformation.findOne({
-          where: { invitation_code: referrer_invitation_code }
-        });
+        // ✅ 验证邀请关系合法性
+        const validation = await InvitationValidationService.validateInvitationRelationship(
+          user_id,
+          referrer_invitation_code
+        );
 
-        if (referrer) {
-          // 创建邀请关系
+        if (!validation.valid) {
+          console.warn(`❌ [Email Register] 邀请关系验证失败: ${validation.error}`);
+          referrerInfo = {
+            error: validation.error,
+            errorCode: validation.errorCode
+          };
+        } else {
+          const referrer = validation.referrer;
+
+          // 创建邀请关系（使用正确的字段名）
           await InvitationRelationship.create({
-            inviter_user_id: referrer.user_id,
-            invitee_user_id: user_id
+            user_id: user_id,
+            invitation_code: newUser.invitation_code,
+            referrer_user_id: referrer.user_id,
+            referrer_invitation_code: referrer.invitation_code
           });
 
           console.log(`✅ 邀请关系创建成功: ${referrer.user_id} -> ${user_id}`);
@@ -1240,9 +1307,9 @@ exports.emailRegister = async (req, res) => {
               referrer.user_id,
               user_id
             );
-            console.log('邀请奖励发放成功:', rewardResult);
+            console.log('✅ 邀请奖励发放成功:', rewardResult);
           } catch (rewardErr) {
-            console.error('发放邀请奖励失败:', rewardErr);
+            console.error('❌ 发放邀请奖励失败:', rewardErr);
           }
 
           // 创建邀请挖矿合约
@@ -1252,8 +1319,9 @@ exports.emailRegister = async (req, res) => {
               referrer.user_id,
               user_id
             );
+            console.log('✅ 邀请挖矿合约创建成功');
           } catch (miningErr) {
-            console.error('创建邀请挖矿合约失败:', miningErr);
+            console.error('❌ 创建邀请挖矿合约失败:', miningErr);
           }
 
           // 创建被邀请人挖矿合约
@@ -1263,8 +1331,9 @@ exports.emailRegister = async (req, res) => {
               user_id,
               referrer.user_id
             );
+            console.log('✅ 被邀请人挖矿合约创建成功');
           } catch (bindErr) {
-            console.error('创建被邀请人挖矿合约失败:', bindErr);
+            console.error('❌ 创建被邀请人挖矿合约失败:', bindErr);
           }
 
           referrerInfo = {
@@ -1273,7 +1342,7 @@ exports.emailRegister = async (req, res) => {
           };
         }
       } catch (inviteErr) {
-        console.error('处理邀请关系失败:', inviteErr);
+        console.error('❌ 处理邀请关系失败:', inviteErr);
       }
     }
 

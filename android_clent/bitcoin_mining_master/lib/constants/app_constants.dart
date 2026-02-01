@@ -26,8 +26,8 @@ class ApiConstants {
   // - 建议使用HTTPS确保安全
   // ========================
   
-  // 生产环境URL - 需要替换为你的正式服务器地址
-  static const String _productionUrl = 'https://api.bitcoinmining.com/api';
+  // 生产环境URL - 云服务器地址（通过Nginx代理，无需端口号）
+  static const String _productionUrl = 'http://47.79.232.189/api';
   
   // 开发环境URL - 使用adb reverse端口转发
   static const String _developmentUrl = 'http://localhost:8888/api';
@@ -40,17 +40,8 @@ class ApiConstants {
   
   // 自动选择环境
   static String get baseUrl {
-    // kReleaseMode 为 true 时是生产环境，false 时是开发环境
-    if (kReleaseMode) {
-      // 开发测试：使用adb reverse端口转发（更稳定）
-      return _developmentUrl;  // localhost通过adb reverse转发
-      // return _cloudflareUrl;  // Cloudflare隧道（网络不稳定时会失效）
-      // return _productionUrl;  // 真正上线时使用
-    } else {
-      // 开发环境：使用adb reverse方案（USB连接更稳定）
-      return _developmentUrl;  // localhost通过adb reverse转发
-      // return _developmentWifiUrl;  // WiFi局域网方案
-    }
+    // 直接使用云服务器地址
+    return _productionUrl;
   }
   
   // 认证相关端点
@@ -59,6 +50,7 @@ class ApiConstants {
   static const String googleLoginCreate = '/auth/google-login-create';
   static const String switchGoogle = '/auth/switch-google';
   static const String unbindGoogle = '/auth/unbind-google';
+  static const String googleBindingStatus = '/auth/google-binding-status'; // 获取Google绑定状态
   static const String invitationInfo = '/auth/invitation-info';
   static const String userStatus = '/auth/user-status';
   static const String addReferrer = '/auth/add-referrer';

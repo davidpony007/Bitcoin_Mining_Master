@@ -25,8 +25,16 @@ class _ContractsScreenState extends State<ContractsScreen>
   bool _isLoadingContracts = true;
   bool _isDailyCheckInActive = false;
   bool _isAdRewardActive = false;
+  bool _inviteFriendExists = false;
+  bool _isInviteFriendActive = false;
+  bool _bindReferrerExists = false;
+  bool _isBindReferrerActive = false;
   int _dailyCheckInRemainingSeconds = 0;
   int _adRewardRemainingSeconds = 0;
+  int _inviteFriendRemainingSeconds = 0;
+  double _inviteFriendHashrate = 0;
+  int _bindReferrerRemainingSeconds = 0;
+  double _bindReferrerHashrate = 0;
   int _userLevel = 1; // 用户矿工等级
   Timer? _contractTimer;
   Timer? _refreshTimer;
@@ -52,6 +60,20 @@ class _ContractsScreenState extends State<ContractsScreen>
           _adRewardRemainingSeconds--;
         } else {
           _isAdRewardActive = false;
+        }
+
+        if (_inviteFriendRemainingSeconds > 0) {
+          _inviteFriendRemainingSeconds--;
+          if (_inviteFriendRemainingSeconds == 0) {
+            _isInviteFriendActive = false;
+          }
+        }
+
+        if (_bindReferrerRemainingSeconds > 0) {
+          _bindReferrerRemainingSeconds--;
+          if (_bindReferrerRemainingSeconds == 0) {
+            _isBindReferrerActive = false;
+          }
         }
       });
     });
@@ -142,11 +164,29 @@ class _ContractsScreenState extends State<ContractsScreen>
           _isAdRewardActive = data['adReward']['isActive'] == true;
           _adRewardRemainingSeconds = data['adReward']['remainingSeconds'] ?? 0;
 
+          // Invite Friend Reward状态
+          _inviteFriendExists = data['inviteFriendReward']['exists'] == true;
+          _isInviteFriendActive = data['inviteFriendReward']['isActive'] == true;
+          _inviteFriendRemainingSeconds = data['inviteFriendReward']['remainingSeconds'] ?? 0;
+          // hashrate现在是字符串（如"5.5Gh/s"），不需要解析
+
+          // Bind Referrer Reward状态
+          _bindReferrerExists = data['bindReferrerReward']['exists'] == true;
+          _isBindReferrerActive = data['bindReferrerReward']['isActive'] == true;
+          _bindReferrerRemainingSeconds = data['bindReferrerReward']['remainingSeconds'] ?? 0;
+          // hashrate现在是字符串（如"5.5Gh/s"），不需要解析
+
           _isLoadingContracts = false;
         });
 
         print(
-          '🔄 状态更新: Daily=$_isDailyCheckInActive, Ad=$_isAdRewardActive',
+          '🔄 状态更新: Daily=$_isDailyCheckInActive, Ad=$_isAdRewardActive, InviteFriend=$_isInviteFriendActive, BindReferrer=$_isBindReferrerActive',
+        );
+        print(
+          '📊 合约存在性: InviteFriendExists=$_inviteFriendExists, BindReferrerExists=$_bindReferrerExists',
+        );
+        print(
+          '⏱️ 剩余时间: InviteFriend=$_inviteFriendRemainingSeconds秒, BindReferrer=$_bindReferrerRemainingSeconds秒',
         );
       } else {
         print('❌ API响应失败或数据为空');
@@ -226,28 +266,58 @@ class _ContractsScreenState extends State<ContractsScreen>
   }
 
   Widget _buildExpiredTab() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 64,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'No expired contracts',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
+    // 收集所有已过期的合约
+    List<Widget> expiredContracts = [];
+
+    // Bind Referrer Reward - 存在但不活跃（仅一次性任务，过期后只在这里显示）
+    if (_bindReferrerExists && !_isBindReferrerActive) {
+      expiredContracts.add(_buildBindReferrerCard());
+      expiredContracts.add(const SizedBox(height: 12));
+    }
+
+    if (expiredContracts.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.inventory_2_outlined,
+                size: 64,
+                color: AppColors.textSecondary,
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              Text(
+                'No expired contracts',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Expired Contracts',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          ...expiredContracts,
+        ],
       ),
     );
   }
@@ -300,9 +370,11 @@ class _ContractsScreenState extends State<ContractsScreen>
                 const SizedBox(height: 4),
                 Text(
                   'Daily Check-in Reward',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 14,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -399,9 +471,11 @@ class _ContractsScreenState extends State<ContractsScreen>
                 const SizedBox(height: 4),
                 Text(
                   'Free Ad Reward',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textSecondary,
-                    fontSize: 14,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -474,7 +548,7 @@ class _ContractsScreenState extends State<ContractsScreen>
           // 3D矿机动画 - 居中显示，在任务队列上方
           Center(
             child: MiningMachineAnimation(
-              isActive: _isDailyCheckInActive || _isAdRewardActive,
+              isActive: _isDailyCheckInActive || _isAdRewardActive || _isInviteFriendActive || _isBindReferrerActive,
               size: 200, // 增大尺寸至200
               userLevel: _userLevel, // 传递用户矿工等级
             ),
@@ -488,6 +562,221 @@ class _ContractsScreenState extends State<ContractsScreen>
 
           // Ad Mining Contract Card (5.5Gh/s)
           _buildAdMiningCard(),
+
+          const SizedBox(height: 12),
+
+          // Invite Friend Reward合约（始终显示）
+          _buildInviteFriendCard(),
+
+          // Bind Referrer Reward合约（只在有合约且活跃时显示）
+          if (_bindReferrerExists && _isBindReferrerActive) ...[
+            const SizedBox(height: 12),
+            _buildBindReferrerCard(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInviteFriendCard() {
+    final isActive = _isInviteFriendActive && _inviteFriendRemainingSeconds > 0;
+    // 固定显示5.5Gh/s
+    final hashrate = '5.5Gh/s';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Bitcoin Icon
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.currency_bitcoin,
+              color: AppColors.primary,
+              size: 28,
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          // Contract Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hashrate,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Invite Friend Reward',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Status Indicator and Countdown
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFF44336),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isActive
+                        ? _formatDuration(_inviteFriendRemainingSeconds)
+                        : 'Not Active',
+                    style: TextStyle(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: isActive
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBindReferrerCard() {
+    final isActive = _isBindReferrerActive && _bindReferrerRemainingSeconds > 0;
+    // 固定显示5.5Gh/s
+    final hashrate = '5.5Gh/s';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Bitcoin Icon
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.currency_bitcoin,
+              color: AppColors.primary,
+              size: 28,
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          // Contract Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hashrate,
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Bind Referrer Reward',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Status Indicator and Countdown
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFF44336),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isActive
+                        ? _formatDuration(_bindReferrerRemainingSeconds)
+                        : 'Not Active',
+                    style: TextStyle(
+                      color: isActive
+                          ? const Color(0xFF4CAF50)
+                          : AppColors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: isActive
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     );

@@ -1,0 +1,88 @@
+# Docker Compose - 本地开发环境
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    platform: linux/amd64  # M芯片兼容模式
+    container_name: bitcoin_mysql_dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dev_password_123
+      MYSQL_DATABASE: bitcoin_mining_master
+      MYSQL_USER: bitcoin
+      MYSQL_PASSWORD: bitcoin_dev_123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/sql:/docker-entrypoint-initdb.d  # 初始化SQL脚本
+    networks:
+      - bitcoin_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:6-alpine
+    container_name: bitcoin_redis_dev
+    restart: unless-stopped
+    command: redis-server --requirepass dev_redis_123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bitcoin_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: bitcoin_backend_dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 8888
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: bitcoin_mining_master
+      DB_USER: bitcoin
+      DB_PASSWORD: bitcoin_dev_123
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: dev_redis_123
+      JWT_SECRET: dev_jwt_secret_key_for_testing
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules  # 防止覆盖容器内的node_modules
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bitcoin_network
+    command: npm run dev  # 使用nodemon热重载
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  bitcoin_network:
+    driver: bridge

@@ -25,6 +25,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   final String _todayEarnings = '0.000000000000000';
   bool _isLoading = true;
   bool _hasReferrer = false; // 是否已有推荐人
+  String? _referrerInvitationCode; // 推荐人的邀请码
 
   @override
   void initState() {
@@ -153,11 +154,16 @@ class _ReferralScreenState extends State<ReferralScreen> {
     try {
       final response = await _apiService.getInvitationInfo(userId);
       if (response['success'] == true && response['data'] != null) {
-        final invitees = response['data']['invitees'] ?? [];
+        final invitedUsers = response['data']['invitedUsers'] ?? [];
         final referrer = response['data']['referrer'];
         setState(() {
-          _invitedCount = invitees.length;
+          _invitedCount = invitedUsers.length;
           _hasReferrer = referrer != null; // 检查是否有推荐人
+          // 保存推荐人的邀请码
+          if (referrer != null && referrer['invitation_code'] != null) {
+            _referrerInvitationCode = referrer['invitation_code'];
+            print('✅ Loaded referrer invitation code: $_referrerInvitationCode');
+          }
         });
       }
     } catch (e) {
@@ -588,99 +594,6 @@ Download now and start mining!
     );
   }
 
-  /// 领取绑定推荐人奖励
-  Future<void> _receiveBindReferrerReward() async {
-    try {
-      final userId = _storageService.getUserId();
-      if (userId == null || userId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User ID not found')),
-        );
-        return;
-      }
-
-      // 显示加载
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
-      // 获取邀请信息，查看是否有未领取的绑定奖励
-      final response = await _apiService.getInvitationInfo(userId);
-      Navigator.pop(context); // 关闭加载
-
-      if (response['success'] == true && response['data'] != null) {
-        final referrer = response['data']['referrer'];
-        
-        if (referrer == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No referrer found'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          return;
-        }
-
-        // 显示领取奖励对话框
-        _showReceiveRewardDialog();
-      } else {
-        throw Exception('Failed to get invitation info');
-      }
-    } catch (e) {
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  void _showReceiveRewardDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardDark,
-        title: const Row(
-          children: [
-            Icon(Icons.card_giftcard, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text('Bind Referrer Reward!'),
-          ],
-        ),
-        content: const Text(
-          'You have received a free 2-hour mining contract for binding a referrer! Watch an ad to activate it now.',
-          style: TextStyle(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              // 创建广告合约
-              final userId = _storageService.getUserId();
-              if (userId != null) {
-                await _createAdContract(userId);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-            ),
-            child: const Text('Get Reward'),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -736,27 +649,94 @@ Download now and start mining!
       return const SizedBox.shrink();
     }
     
-    // 如果已有推荐人，显示领取奖励按钮
+    // 如果已有推荐人，显示推荐人信息
     if (_hasReferrer) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: ElevatedButton(
-          onPressed: _receiveBindReferrerReward,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.primary.withOpacity(0.15),
+              AppColors.secondary.withOpacity(0.15),
+            ],
           ),
-          child: const Text(
-            'Receive Bind Referrer Reward',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Referrer Bound',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
             ),
-          ),
+            const SizedBox(height: 12),
+            const Text(
+              'You have already bound a referrer.\nYour referrer\'s invitation code is:',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      _referrerInvitationCode ?? 'Loading...',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                  if (_referrerInvitationCode != null)
+                    IconButton(
+                      icon: const Icon(Icons.copy, size: 20),
+                      color: AppColors.primary,
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: _referrerInvitationCode!));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Referrer\'s invitation code copied!'),
+                            backgroundColor: Colors.green,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -1009,10 +989,12 @@ Download now and start mining!
                       _invitationCode,
                       style: TextStyle(
                         color: AppColors.primary,
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
+                        letterSpacing: 0.5,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
             ),
           ),

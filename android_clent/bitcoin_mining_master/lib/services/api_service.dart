@@ -195,6 +195,19 @@ class ApiService {
     }
   }
 
+  /// 获取Google账号绑定状态 - 对应后端 /api/auth/google-binding-status/:userId
+  Future<Map<String, dynamic>> getGoogleBindingStatus(String userId) async {
+    try {
+      final response = await _dio.get(
+        '${ApiConstants.googleBindingStatus}/$userId',
+      );
+      return response.data;
+    } on DioException catch (e) {
+      print('❌ getGoogleBindingStatus API错误: ${e.message}');
+      throw _handleError(e);
+    }
+  }
+
   /// 获取用户状态 - 对应后端 /api/auth/user-status
   Future<Map<String, dynamic>> getUserStatus(String userId) async {
     try {
@@ -569,13 +582,27 @@ class ApiService {
     required String nickname,
   }) async {
     try {
+      print('🔧 [updateNickname] 开始请求');
+      print('🔧 userId: $userId');
+      print('🔧 nickname: $nickname');
+      print('🔧 baseUrl: ${_dio.options.baseUrl}');
+      print('🔧 完整URL: ${_dio.options.baseUrl}/userInformation/$userId/nickname');
+      
       final response = await _dio.put(
         '/userInformation/$userId/nickname',
         data: {'nickname': nickname},
       );
+      
+      print('🔧 [updateNickname] 响应成功: ${response.data}');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
+      print('🔧 [updateNickname] 请求失败: ${e.type}');
+      print('🔧 错误信息: ${e.message}');
+      print('🔧 响应: ${e.response?.data}');
       throw _handleError(e);
+    } catch (e) {
+      print('🔧 [updateNickname] 未知错误: $e');
+      rethrow;
     }
   }
 }

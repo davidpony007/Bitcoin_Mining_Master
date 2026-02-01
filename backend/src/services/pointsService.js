@@ -323,15 +323,12 @@ class PointsService {
       );
 
       return {
-        success: true,
-        data: {
-          transactions,
-          pagination: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit)
-          }
+        transactions,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
         }
       };
 

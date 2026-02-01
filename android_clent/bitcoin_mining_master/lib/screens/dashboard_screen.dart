@@ -725,6 +725,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
+          // 监听余额变化，自动触发动画更新
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final newBalance = userProvider.bitcoinBalance;
+            if (newBalance != _previousBalance && mounted) {
+              _triggerBalanceBounce();
+            }
+          });
+          
           return RefreshIndicator(
             onRefresh: () async {
               await _loadPointsData();
@@ -1014,9 +1022,31 @@ class _DashboardScreenState extends State<DashboardScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(
-                '$activeBatteries / 48',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              Row(
+                children: [
+                  Icon(
+                    Icons.battery_charging_full,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '= mine 1 hour',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 40),
+                  Text(
+                    '$activeBatteries / 48',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1241,31 +1271,31 @@ class _DashboardScreenState extends State<DashboardScreen>
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Row(
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.play_arrow,
-                        size: 20,
-                        color: isMiningPoolFull
-                            ? Colors.white.withOpacity(0.5)
-                            : Colors.white,
+                      Text(
+                        'Free Ad Mining',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isMiningPoolFull
+                              ? Colors.white.withOpacity(0.5)
+                              : Colors.white,
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            'Free Ad Mining',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: isMiningPoolFull
-                                  ? Colors.white.withOpacity(0.5)
-                                  : Colors.white,
-                            ),
+                          Icon(
+                            Icons.play_arrow,
+                            size: 18,
+                            color: isMiningPoolFull
+                                ? Colors.white.withOpacity(0.5)
+                                : Colors.white,
                           ),
+                          const SizedBox(width: 4),
                           Text(
                             '5.5Gh/s',
                             style: TextStyle(
@@ -1333,22 +1363,24 @@ class _DashboardScreenState extends State<DashboardScreen>
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: Row(
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.card_giftcard, size: 20),
-                      const SizedBox(width: 8),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      const Text(
+                        'Daily Check-in Reward',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.visible,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text(
-                            'Daily Check-in Reward',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          const Icon(Icons.card_giftcard, size: 18),
+                          const SizedBox(width: 4),
                           Text(
                             '7.5Gh/s',
                             style: TextStyle(

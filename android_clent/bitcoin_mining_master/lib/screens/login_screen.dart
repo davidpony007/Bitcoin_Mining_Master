@@ -612,7 +612,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Enter your referrer\'s invitation code to get extra reward!',
+                  'Enter your referrer\'s invitation code to get extra reward! If you have already bound it, please ignore this.',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,

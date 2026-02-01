@@ -33,6 +33,10 @@ router.post('/switch-google', authController.switchByGoogleAccount);
 // 解绑Google账号
 router.post('/unbind-google', authController.unbindGoogleAccount);
 
+// GET /api/auth/google-binding-status/:userId
+// 查询用户的Google绑定状态
+router.get('/google-binding-status/:userId', authController.getGoogleBindingStatus);
+
 // GET /api/auth/invitation-info
 // 查询用户的邀请关系信息
 router.get('/invitation-info', authController.getInvitationInfo);

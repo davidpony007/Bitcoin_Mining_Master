@@ -94,6 +94,42 @@ class StorageService {
     return _prefs?.getString('user_email');
   }
 
+  /// 保存用户昵称（根据userId保存，每个账户独立）
+  Future<bool> saveUserNickname(String nickname) async {
+    final userId = getUserId();
+    if (userId == null || userId.isEmpty) {
+      print('⚠️ 无法保存昵称：userId为空');
+      return false;
+    }
+    final key = 'user_nickname_$userId';
+    print('💾 保存昵称: $nickname (key: $key)');
+    return await _prefs?.setString(key, nickname) ?? false;
+  }
+
+  /// 获取用户昵称（根据当前userId获取）
+  String? getUserNickname() {
+    final userId = getUserId();
+    if (userId == null || userId.isEmpty) {
+      return null;
+    }
+    final key = 'user_nickname_$userId';
+    final nickname = _prefs?.getString(key);
+    if (nickname != null) {
+      print('📚 加载昵称: $nickname (key: $key)');
+    }
+    return nickname;
+  }
+
+  /// 清除用户昵称（根据当前userId）
+  Future<bool> clearUserNickname() async {
+    final userId = getUserId();
+    if (userId == null || userId.isEmpty) {
+      return false;
+    }
+    final key = 'user_nickname_$userId';
+    return await _prefs?.remove(key) ?? false;
+  }
+
   /// 设置离线用户标记
   Future<bool> setOfflineUser(bool isOffline) async {
     return await _prefs?.setBool('is_offline_user', isOffline) ?? false;

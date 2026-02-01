@@ -18,19 +18,24 @@ async function checkUserHashrate() {
     
     console.log('✅ 数据库连接成功\n');
     
-    const userId = 'U2026012816242691017';
+    const userIds = ['U2026020112215706221', 'U2026020112193721811'];
     
-    // 查询付费合约
-    console.log('📊 查询付费合约（Mining Contracts）...\n');
-    const [paidContracts] = await connection.query(
-      `SELECT hashrate, mining_status, contract_end_time,
-              TIMESTAMPDIFF(HOUR, NOW(), contract_end_time) as remaining_hours
-       FROM mining_contracts 
-       WHERE user_id = ? 
-       AND mining_status = 'mining'
-       AND contract_end_time > NOW()`,
-      [userId]
-    );
+    for (const userId of userIds) {
+      console.log('\n' + '═'.repeat(70));
+      console.log(`👤 用户: ${userId}`);
+      console.log('═'.repeat(70) + '\n');
+      
+      // 查询付费合约
+      console.log('📊 查询付费合约（Mining Contracts）...\n');
+      const [paidContracts] = await connection.query(
+        `SELECT hashrate, mining_status, contract_end_time,
+                TIMESTAMPDIFF(HOUR, NOW(), contract_end_time) as remaining_hours
+         FROM mining_contracts 
+         WHERE user_id = ? 
+         AND mining_status = 'mining'
+         AND contract_end_time > NOW()`,
+        [userId]
+      );
     
     if (paidContracts.length > 0) {
       console.log(`找到 ${paidContracts.length} 个活跃的付费合约:\n`);
@@ -85,14 +90,18 @@ async function checkUserHashrate() {
     const totalFreeHashrate = freeContracts.reduce((sum, c) => sum + parseFloat(c.hashrate), 0);
     const totalHashrate = totalPaidHashrate + totalFreeHashrate;
     
-    console.log('═'.repeat(60));
+    console.log('─'.repeat(70));
     console.log('💰 总挖矿速率汇总:');
-    console.log('═'.repeat(60));
+    console.log('─'.repeat(70));
     console.log(`  付费合约: ${totalPaidHashrate.toFixed(18)} BTC/秒`);
     console.log(`  免费合约: ${totalFreeHashrate.toFixed(18)} BTC/秒`);
     console.log(`  ────────────────────────────────────`);
     console.log(`  总计: ${totalHashrate.toFixed(18)} BTC/秒`);
-    console.log('═'.repeat(60));
+    
+    // 转换为Gh/s显示
+    const totalGhs = totalHashrate * 1000000000000000;
+    console.log(`  总计: ${totalGhs.toFixed(2)} Gh/s`);
+    console.log('─'.repeat(70));
     
     // 计算每小时、每天、每月收益
     const perHour = totalHashrate * 3600;
@@ -104,6 +113,8 @@ async function checkUserHashrate() {
     console.log(`  每天: ${perDay.toFixed(18)} BTC`);
     console.log(`  每月: ${perMonth.toFixed(18)} BTC`);
     console.log();
+    
+    } // 结束for循环
     
   } catch (error) {
     console.error('❌ 错误:', error.message);

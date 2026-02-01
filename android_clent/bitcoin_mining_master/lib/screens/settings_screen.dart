@@ -19,6 +19,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _pushNotifications = true;
   bool _isGoogleSignedIn = false; // Google登录状态
   GoogleSignInAccount? _googleAccount; // 保存Google账号信息
+  String? _boundGoogleEmail; // 保存已绑定的Google邮箱（即使未登录也要显示）
   String _userId = 'Loading...'; // 用户ID
   String _userName = 'Guest User'; // 用户昵称，可编辑
   final _storageService = StorageService();
@@ -38,7 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserId();
+    _loadUserData(); // 先加载userId，再加载昵称
     _loadUserLevel();
     _startUtcTimeUpdater();
   }
@@ -65,6 +66,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     });
+  }
+
+  /// 加载用户数据（先加载userId，再加载对应的昵称）
+  Future<void> _loadUserData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // 1. 加载userId
+      final savedUserId = _storageService.getUserId();
+      if (savedUserId != null && savedUserId.isNotEmpty) {
+        setState(() {
+          _userId = savedUserId;
+          _isLoading = false;
+        });
+        
+        // 2. 加载该userId对应的昵称
+        _loadUserNickname();
+        
+        // 3. 加载Google登录状态
+        _loadGoogleSignInStatus();
+        return;
+      }
+
+      // 如果本地没有，等待UserProvider初始化
+      print('⚠️ Settings: 本地未找到userId，等待UserProvider初始化...');
+
+      for (int i = 0; i < 50; i++) {
+        await Future.delayed(Duration(milliseconds: 100));
+        final retryUserId = _storageService.getUserId();
+        if (retryUserId != null && retryUserId.isNotEmpty) {
+          setState(() {
+            _userId = retryUserId;
+            _isLoading = false;
+          });
+          print('✅ Settings: 从缓存获取userId: $retryUserId (等待${i * 100}ms)');
+          
+          // 加载昵称和Google状态
+          _loadUserNickname();
+          _loadGoogleSignInStatus();
+          return;
+        }
+      }
+
+      // 超时
+      print('❌ Settings: UserProvider初始化超时（5秒）');
+      setState(() {
+        _userId = 'Tap to Retry';
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _userId = 'Error: ${e.toString()}';
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// 从本地加载用户昵称
+  Future<void> _loadUserNickname() async {
+    final savedNickname = _storageService.getUserNickname();
+    if (savedNickname != null && savedNickname.isNotEmpty) {
+      setState(() {
+        _userName = savedNickname;
+      });
+      print('✅ 加载账户昵称: $savedNickname');
+    } else {
+      print('ℹ️ 该账户没有保存的昵称，显示默认值: $_userName');
+    }
   }
 
   /// 从本地加载UserID（登录已在UserProvider中完成）
@@ -125,12 +197,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 加载Google登录状态
   Future<void> _loadGoogleSignInStatus() async {
     try {
-      // 从本地存储检查Google登录状态
+      // 首先从后端API获取最准确的绑定状态
+      final userId = _storageService.getUserId();
+      if (userId != null && userId.isNotEmpty && userId != 'Loading...' && userId != 'Tap to Retry') {
+        print('🔍 从后端API获取Google绑定状态...');
+        final response = await _apiService.getGoogleBindingStatus(userId);
+        
+        if (response['success'] == true && response['data'] != null) {
+          final data = response['data'];
+          final isBound = data['isBound'] == true;
+          final boundEmail = data['google_account'];
+          
+          print('✅ 后端返回绑定状态: isBound=$isBound, email=$boundEmail');
+          
+          if (isBound && boundEmail != null && boundEmail.isNotEmpty) {
+            // 已绑定：尝试静默登录获取完整账号信息
+            final account = await _googleSignIn.signInSilently();
+            
+            // 验证登录的账号是否与绑定的账号一致
+            if (account != null && account.email == boundEmail) {
+              setState(() {
+                _isGoogleSignedIn = true;
+                _googleAccount = account;
+                _boundGoogleEmail = boundEmail;
+              });
+              print('✅ Google账号已绑定并成功登录: ${account.email}');
+            } else {
+              // 登录的账号与绑定的不一致或无法静默登录，但仍显示已绑定状态
+              setState(() {
+                _isGoogleSignedIn = true;
+                _googleAccount = null; // 未登录，所以account为null
+                _boundGoogleEmail = boundEmail; // 但保存绑定的邮箱用于显示
+              });
+              print('⚠️ 已绑定账号: $boundEmail（当前未登录或登录不同账号）');
+            }
+            
+            // 保存到本地缓存
+            await _storageService.saveGoogleSignInStatus(true);
+            await _storageService.saveGoogleEmail(boundEmail);
+            return;
+          }
+        }
+      }
+      
+      // 如果后端API获取失败，回退到本地缓存
+      print('ℹ️ 使用本地缓存的Google登录状态');
       final isGoogleSignedIn = _storageService.isGoogleSignedIn();
       final googleEmail = _storageService.getGoogleEmail();
       
       if (isGoogleSignedIn == true && googleEmail != null && googleEmail.isNotEmpty) {
-        // 尝试静默登录获取账号信息
+        // 尝试静默登录
         final account = await _googleSignIn.signInSilently();
         
         setState(() {
@@ -138,17 +254,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _googleAccount = account;
         });
         
-        print('✅ Settings: Google账号已绑定 - ${account?.email ?? googleEmail}');
+        print('✅ 从本地缓存恢复Google登录状态: ${account?.email ?? googleEmail}');
       } else {
         setState(() {
           _isGoogleSignedIn = false;
           _googleAccount = null;
         });
-        print('ℹ️ Settings: Google账号未绑定');
+        print('ℹ️ Google账号未绑定');
       }
     } catch (e) {
-      print('⚠️ Settings: 加载Google登录状态失败: $e');
-      // 即使失败也不影响页面显示，但要确保未绑定状态
+      print('⚠️ 加载Google登录状态失败: $e');
+      // 失败时确保显示未绑定状态
       setState(() {
         _isGoogleSignedIn = false;
         _googleAccount = null;
@@ -246,14 +362,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? 'Google Account'
                     : 'Sign In with Google',
                 subtitle: _isGoogleSignedIn
-                    ? (_googleAccount?.email ?? 'Bound')
+                    ? (_googleAccount?.email ?? _boundGoogleEmail ?? 'Bound')
                     : 'Not Connected',
+                trailing: _isGoogleSignedIn
+                    ? Icon(Icons.lock, color: AppColors.textSecondary, size: 20)
+                    : null,
                 onTap: () {
                   if (_isGoogleSignedIn) {
-                    // Show sign out dialog
-                    _showSignOutDialog();
+                    // 已绑定：显示信息提示，不允许解绑或登出
+                    _showAlreadyBoundDialog();
                   } else {
-                    // Show binding confirmation dialog first
+                    // 未绑定：显示绑定确认对话框
                     _showBindingConfirmationDialog();
                   }
                 },
@@ -325,26 +444,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Row(
           children: [
             Container(
-              width: 60,
-              height: 60,
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
                 color: AppColors.surface,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.person, size: 32, color: AppColors.primary),
+              child: Icon(Icons.person, size: 24, color: AppColors.primary),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _userName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _userName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.edit, color: AppColors.textSecondary, size: 20),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -356,12 +482,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           fontSize: 13,
                         ),
                       ),
-                      Text(
-                        _isLoading ? 'Loading...' : _userId,
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+                      Flexible(
+                        child: Text(
+                          _isLoading ? 'Loading...' : _userId,
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -388,7 +517,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            Icon(Icons.edit, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -407,13 +535,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: AppColors.primary.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(Icons.schedule, size: 28, color: AppColors.primary),
+            child: Icon(Icons.schedule, size: 24, color: AppColors.primary),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -433,10 +561,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _utcTime,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 17,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
+                    letterSpacing: 0.3,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -487,6 +617,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required Color iconColor,
     required String title,
     String? subtitle,
+    Widget? trailing,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -526,7 +657,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: AppColors.textSecondary),
+            trailing ?? Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -820,6 +951,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _showAlreadyBoundDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: Row(
+            children: [
+              Icon(Icons.info_outline, color: AppColors.primary, size: 28),
+              SizedBox(width: 8),
+              Text(
+                'Google Account',
+                style: TextStyle(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This account is permanently linked to:',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              SizedBox(height: 12),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.email, color: AppColors.primary, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _googleAccount?.email ?? _boundGoogleEmail ?? 'Unknown',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'For security reasons, Google account binding is permanent and cannot be changed or removed.',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'OK',
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showSignOutDialog() {
     showDialog(
       context: context,
@@ -956,69 +1159,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             TextButton(
-              onPressed: () async {
+              onPressed: () {
                 final newName = nameController.text.trim();
-                if (newName.isNotEmpty) {
-                  Navigator.of(context).pop();
-                  
-                  // 显示加载指示器
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  );
-
-                  try {
-                    // 调用API更新昵称
-                    final result = await _apiService.updateNickname(
-                      userId: _userId,
-                      nickname: newName,
-                    );
-
-                    // 关闭加载指示器
-                    if (mounted) Navigator.of(context).pop();
-
-                    if (result['success'] == true) {
-                      setState(() {
-                        _userName = newName;
-                      });
-                      
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Username updated successfully'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
-                    } else {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(result['message'] ?? 'Failed to update username'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  } catch (e) {
-                    // 关闭加载指示器
-                    if (mounted) Navigator.of(context).pop();
-                    
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: ${e.toString()}'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  }
+                print('🔧 [EditUsername] 点击Save按钮');
+                print('🔧 [EditUsername] newName: $newName');
+                print('🔧 [EditUsername] _userId: $_userId');
+                
+                if (newName.isEmpty) {
+                  print('🔧 [EditUsername] 昵称为空，不执行操作');
+                  return;
                 }
+                
+                print('🔧 [EditUsername] 昵称验证通过，关闭对话框');
+                // 先关闭输入对话框
+                Navigator.of(context).pop();
+                
+                print('🔧 [EditUsername] 对话框已关闭，准备执行异步操作');
+                // 在对话框外部执行异步操作
+                _updateNicknameAsync(newName);
               },
               child: Text('Save', style: TextStyle(color: AppColors.primary)),
             ),
@@ -1026,6 +1184,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
+  }
+
+  // 异步更新昵称方法（在dialog外部执行）
+  Future<void> _updateNicknameAsync(String newName) async {
+    print('🔧 [_updateNicknameAsync] 开始执行，newName: $newName');
+    
+    // 等待对话框关闭动画
+    await Future.delayed(const Duration(milliseconds: 200));
+    
+    // 检查widget是否还挂载
+    if (!mounted) {
+      print('🔧 [_updateNicknameAsync] Widget未挂载，终止操作');
+      return;
+    }
+    
+    print('🔧 [_updateNicknameAsync] Widget已挂载，显示加载对话框');
+    
+    // 显示加载指示器
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => WillPopScope(
+        onWillPop: () async => false,
+        child: const Center(
+          child: CircularProgressIndicator(
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+    );
+    
+    // 记录显示了对话框
+    bool dialogShown = true;
+
+    try {
+      print('🔧 [_updateNicknameAsync] 开始调用API...');
+      // 调用API更新昵称
+      final result = await _apiService.updateNickname(
+        userId: _userId,
+        nickname: newName,
+      );
+      print('🔧 [_updateNicknameAsync] API调用成功: $result');
+
+      // 安全关闭加载对话框
+      if (mounted && dialogShown) {
+        Navigator.of(context, rootNavigator: true).pop();
+        dialogShown = false;
+      }
+      
+      // 等待关闭动画
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      if (result['success'] == true) {
+        print('🔧 [_updateNicknameAsync] 更新成功，刷新UI');
+        if (mounted) {
+          // 保存到本地存储
+          await _storageService.saveUserNickname(newName);
+          print('✅ 昵称已保存到本地: $newName');
+          
+          setState(() {
+            _userName = newName;
+          });
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Username updated successfully'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        print('🔧 [_updateNicknameAsync] 更新失败: ${result['message']}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Failed to update username'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('🔧 [_updateNicknameAsync] 捕获异常: $e');
+      // 安全关闭加载对话框
+      if (mounted && dialogShown) {
+        try {
+          Navigator.of(context, rootNavigator: true).pop();
+          dialogShown = false;
+        } catch (navError) {
+          print('🔧 [_updateNicknameAsync] 导航错误（已忽略）: $navError');
+        }
+      }
+      
+      // 等待关闭动画
+      await Future.delayed(const Duration(milliseconds: 100));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Update failed: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   void _showLogOutDialog() {
@@ -1144,8 +1410,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       // 2. 清除登录状态（但保留 user_id 和 invitation_code 用于账号恢复）
       // 注意：不删除 user_id 和 invitation_code，这样用户下次登录时可以恢复账号
+      // 也不删除昵称，每个账户的昵称独立保存
       // await _storageService.clearUserId();  // ❌ 不删除
       // await _storageService.clearInvitationCode();  // ❌ 不删除
+      // await _storageService.clearUserNickname();  // ❌ 不删除
       await _storageService.saveGoogleSignInStatus(false);
       await _storageService.saveGoogleEmail('');
       await _storageService.saveIsLoggedOut(true);  // ✅ 标记为已登出状态

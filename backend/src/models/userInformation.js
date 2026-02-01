@@ -37,6 +37,12 @@ const UserInformation = sequelize.define('user_information', {
     defaultValue: null,
     comment: '绑定的Google账号邮箱'
   },
+  nickname: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: null,
+    comment: '用户昵称'
+  },
   android_id: { 
     type: DataTypes.STRING(255),  // 扩展长度支持长指纹
     allowNull: true,  // 允许为空：支持多平台、隐私限制、获取失败等情况

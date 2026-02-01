@@ -7,7 +7,7 @@
 const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
-const db = require('../config/database');
+const pool = require('../config/database_native');
 
 class InvitationMiningContractService {
   /**
@@ -51,6 +51,12 @@ class InvitationMiningContractService {
 
       // 3. 计算挖矿速度（基础奖励 × 国家系数 × 矿工等级速率系数，不含签到加成）
       const speedInfo = await LevelService.calculateMiningSpeed(referrerId);
+      
+      // 计算实际BTC/s算力：基础0.000000000000139 BTC/s × 等级系数 × 国家系数
+      const actualHashrate = speedInfo.finalSpeedWithoutBonus;
+      
+      // 计算Gh/s显示值（仅用于日志显示）
+      const displayHashrateGhs = speedInfo.baseHashrateGhs * speedInfo.levelMultiplier * speedInfo.countryMultiplier;
 
       const now = new Date();
       let contract;
@@ -63,7 +69,7 @@ class InvitationMiningContractService {
 
         await existingContract.update({
           free_contract_end_time: newEndTime,
-          hashrate: speedInfo.finalSpeedWithoutBonus // 使用不含签到加成的标准速度
+          hashrate: actualHashrate // 使用实际BTC/s算力
         });
 
         contract = existingContract;
@@ -79,7 +85,7 @@ class InvitationMiningContractService {
           free_contract_revenue: 0,
           free_contract_creation_time: now,
           free_contract_end_time: endTime,
-          hashrate: speedInfo.finalSpeedWithoutBonus, // 使用不含签到加成的标准速度
+          hashrate: actualHashrate, // 使用实际BTC/s算力
           mining_status: 'mining'
         });
 
@@ -89,38 +95,44 @@ class InvitationMiningContractService {
       }
 
       // 4. 获取推荐人的总邀请人数
-      const [invitationStats] = await db.query(
-        'SELECT COUNT(*) as total FROM invitation_relationship WHERE referrer_user_id = ?',
-        [referrerId]
-      );
-
-      const totalInvitations = invitationStats[0]?.total || 0;
-
-      return {
-        success: true,
-        message: isNewContract ? '邀请成功，开始挖矿2小时' : '邀请成功，挖矿时间延长2小时',
-        contract: {
-          id: contract.id,
-          type: 'invitation free contract',
-          startTime: contract.free_contract_creation_time,
-          endTime: contract.free_contract_end_time,
-          hashrate: contract.hashrate,
-          miningStatus: contract.mining_status
-        },
-        speedInfo: {
-          baseSpeed: speedInfo.baseSpeed,
-          baseHashrate: speedInfo.baseHashrateGhs + ' Gh/s',
-          levelMultiplier: speedInfo.levelMultiplier,
-          dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
-          countryMultiplier: speedInfo.countryMultiplier,
-          finalSpeed: speedInfo.finalSpeedWithoutBonus // 不包含签到加成
-        },
-        invitationStats: {
-          totalInvitations,
-          newInvitee: refereeId
-        },
-        isNewContract
-      };
+      const connection = await pool.getConnection();
+      try {
+        const [invitationStats] = await connection.query(
+          'SELECT COUNT(*) as total FROM invitation_relationship WHERE referrer_user_id = ?',
+          [referrerId]
+        );
+        
+        const totalInvitations = invitationStats[0]?.total || 0;
+        
+        return {
+          success: true,
+          message: isNewContract ? '邀请成功，开始挖矿2小时' : '邀请成功，挖矿时间延长2小时',
+          contract: {
+            id: contract.id,
+            type: 'invitation free contract',
+            startTime: contract.free_contract_creation_time,
+            endTime: contract.free_contract_end_time,
+            hashrate: contract.hashrate,
+            miningStatus: contract.mining_status
+          },
+          speedInfo: {
+            baseSpeed: speedInfo.baseSpeed,
+            baseHashrateDisplay: speedInfo.baseHashrateGhs + ' Gh/s',
+            actualHashrate: actualHashrate, // 实际BTC/s算力
+            displayHashrate: displayHashrateGhs + ' Gh/s', // 前端显示值
+            levelMultiplier: speedInfo.levelMultiplier,
+            dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
+            countryMultiplier: speedInfo.countryMultiplier
+          },
+          invitationStats: {
+            totalInvitations,
+            newInvitee: refereeId
+          },
+          isNewContract
+        };
+      } finally {
+        connection.release();
+      }
 
     } catch (err) {
       console.error('❌ 处理邀请挖矿合约失败:', err);

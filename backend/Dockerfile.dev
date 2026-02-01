@@ -1,0 +1,21 @@
+# Dockerfile for Development
+FROM node:20-alpine
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装依赖
+COPY package*.json ./
+RUN npm install
+
+# 安装开发工具
+RUN npm install -g nodemon
+
+# 复制源码
+COPY . .
+
+# 暴露端口
+EXPOSE 8888
+
+# 开发模式启动（支持热重载）
+CMD ["npm", "run", "dev"]

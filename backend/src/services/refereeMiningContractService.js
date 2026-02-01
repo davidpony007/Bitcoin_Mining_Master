@@ -73,6 +73,12 @@ class RefereeMiningContractService {
 
       // 4. 计算挖矿速度（基础奖励 × 国家系数 × 矿工等级速率系数，不含签到加成）
       const speedInfo = await LevelService.calculateMiningSpeed(refereeId);
+      
+      // 计算实际BTC/s算力：基础0.000000000000139 BTC/s × 等级系数 × 国家系数
+      const actualHashrate = speedInfo.finalSpeedWithoutBonus;
+      
+      // 计算Gh/s显示值（仅用于日志显示）
+      const displayHashrateGhs = speedInfo.baseHashrateGhs * speedInfo.levelMultiplier * speedInfo.countryMultiplier;
 
       // 5. 创建绑定推荐人挖矿合约
       const now = new Date();
@@ -84,7 +90,7 @@ class RefereeMiningContractService {
         free_contract_revenue: 0,
         free_contract_creation_time: now,
         free_contract_end_time: endTime,
-        hashrate: speedInfo.finalSpeedWithoutBonus, // 使用不含签到加成的标准速度
+        hashrate: actualHashrate, // 使用实际BTC/s算力
         mining_status: 'mining'
       });
 
@@ -103,7 +109,9 @@ class RefereeMiningContractService {
         },
         speedInfo: {
           baseSpeed: speedInfo.baseSpeed,
-          baseHashrate: speedInfo.baseHashrateGhs + ' Gh/s',
+          baseHashrateDisplay: speedInfo.baseHashrateGhs + ' Gh/s',
+          actualHashrate: actualHashrate, // 实际BTC/s算力
+          displayHashrate: displayHashrateGhs + ' Gh/s', // 前端显示值
           levelMultiplier: speedInfo.levelMultiplier,
           dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
           countryMultiplier: speedInfo.countryMultiplier,

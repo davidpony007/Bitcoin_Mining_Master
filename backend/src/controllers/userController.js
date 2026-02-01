@@ -4,6 +4,7 @@
 // 引入用户信息的 Sequelize 模型，用于操作 user_information 表
 const UserInformation = require('../models/userInformation');
 const InvitationRelationship = require('../models/invitationRelationship');
+const InvitationValidationService = require('../services/invitationValidationService');
 
 
 // 获取所有用户信息的接口
@@ -94,13 +95,28 @@ exports.createUser = async (req, res) => {
     let referrerInfo = null;
     if (referrer_invitation_code && referrer_invitation_code.trim() !== '') {
       try {
-        // 查找推荐人信息
-        const referrer = await UserInformation.findOne({
-          where: { invitation_code: referrer_invitation_code.trim() }
-        });
+        // ✅ 验证邀请关系合法性
+        const validation = await InvitationValidationService.validateInvitationRelationship(
+          newUser.user_id,
+          referrer_invitation_code.trim()
+        );
 
-        if (referrer) {
-          // 创建邀请关系记录
+        if (!validation.valid) {
+          console.warn(`❌ 邀请关系验证失败: ${validation.error}`, {
+            userId: newUser.user_id,
+            referrerCode: referrer_invitation_code.trim(),
+            errorCode: validation.errorCode
+          });
+          
+          referrerInfo = {
+            error: validation.error,
+            errorCode: validation.errorCode,
+            rejected: true
+          };
+        } else {
+          // 验证通过，创建邀请关系
+          const referrer = validation.referrer;
+          
           await InvitationRelationship.create({
             user_id: newUser.user_id,
             invitation_code: newUser.invitation_code,
@@ -112,11 +128,9 @@ exports.createUser = async (req, res) => {
             referrer_user_id: referrer.user_id,
             referrer_invitation_code: referrer.invitation_code
           };
-        } else {
-          console.warn(`推荐人邀请码不存在: ${referrer_invitation_code}`);
         }
       } catch (inviteErr) {
-        console.error('创建邀请关系失败:', inviteErr);
+        console.error('❌ 创建邀请关系失败:', inviteErr);
         // 邀请关系创建失败不影响用户注册
       }
     }

@@ -13,10 +13,10 @@ const { requireAdmin } = require('../middleware/role');
 /**
  * @route   GET /api/points/balance
  * @desc    获取用户积分余额
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/balance', authenticate, async (req, res) => {
+router.get('/balance', async (req, res) => {
   try {
     const { user_id } = req.query;
 
@@ -47,13 +47,13 @@ router.get('/balance', authenticate, async (req, res) => {
 /**
  * @route   GET /api/points/transactions
  * @desc    获取用户积分交易记录
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  * @query   page - 页码 (默认1)
  * @query   limit - 每页数量 (默认20)
  * @query   type - 积分类型筛选 (可选)
  */
-router.get('/transactions', authenticate, async (req, res) => {
+router.get('/transactions', async (req, res) => {
   try {
     const { user_id, page, limit, type } = req.query;
 
@@ -92,12 +92,12 @@ router.get('/transactions', authenticate, async (req, res) => {
 /**
  * @route   GET /api/points/history (兼容旧接口)
  * @desc    获取用户积分历史 (重定向到transactions)
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  * @query   page - 页码 (默认1)
  * @query   limit - 每页数量 (默认20)
  */
-router.get('/history', authenticate, async (req, res) => {
+router.get('/history', async (req, res) => {
   try {
     const { user_id, page, limit } = req.query;
 
@@ -137,10 +137,10 @@ router.get('/history', authenticate, async (req, res) => {
 /**
  * @route   GET /api/points/statistics
  * @desc    获取用户积分统计（按类型汇总）
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/statistics', authenticate, async (req, res) => {
+router.get('/statistics', async (req, res) => {
   try {
     const { user_id } = req.query;
 
@@ -171,10 +171,10 @@ router.get('/statistics', authenticate, async (req, res) => {
 /**
  * @route   GET /api/points/leaderboard
  * @desc    获取积分排行榜
- * @access  Private
+ * @access  Public
  * @query   limit - 返回数量 (默认100)
  */
-router.get('/leaderboard', authenticate, async (req, res) => {
+router.get('/leaderboard', async (req, res) => {
   try {
     const { limit } = req.query;
     const limitNumber = parseInt(limit) || 100;
