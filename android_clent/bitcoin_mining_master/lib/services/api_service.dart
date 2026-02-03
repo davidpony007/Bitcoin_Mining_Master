@@ -156,17 +156,29 @@ class ApiService {
     required String googleEmail,
     required String googleName,
     String? androidId,
+    String? gaid,
+    String? country,
   }) async {
     try {
+      final requestData = {
+        'google_id': googleId,
+        'google_account': googleEmail,
+        'google_name': googleName,
+        'android_id': androidId,
+        'gaid': gaid,
+        'country': country,
+      };
+      
+      print('📤 [API] 发送Google登录请求到后端:');
+      print('   URL: ${ApiConstants.googleLoginCreate}');
+      print('   Data: $requestData');
+      
       final response = await _dio.post(
         ApiConstants.googleLoginCreate,
-        data: {
-          'google_id': googleId,
-          'google_account': googleEmail,
-          'google_name': googleName,
-          'android_id': androidId,
-        },
+        data: requestData,
       );
+      
+      print('📥 [API] 后端响应: ${response.data}');
       return response.data;
     } on DioException catch (e) {
       // 如果是400错误，返回后端的错误信息，而不是抛出异常

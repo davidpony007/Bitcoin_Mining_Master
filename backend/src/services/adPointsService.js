@@ -4,7 +4,8 @@
  */
 
 const { QueryTypes } = require('sequelize');
-const db = require('../config/database');
+const sequelize = require('../config/database');
+const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const redisClient = require('../config/redis');
 const PointsService = require('./pointsService');
 
@@ -21,7 +22,7 @@ class AdPointsService {
    * 记录广告观看并奖励积分
    */
   static async recordAdViewAndReward(userId) {
-    const connection = await db.getConnection();
+    const connection = await pool.getConnection();
 
     try {
       await connection.beginTransaction();
@@ -86,6 +87,7 @@ class AdPointsService {
       // 4. 检查是否触发单个好友邀请奖励（被邀请人完成5次广告观看）
       let referralReward = null;
       const totalViews = await this.getTotalViewCount(userId, connection);
+      
       if (totalViews === this.REFERRAL_REQUIRED_ADS) {
         // 刚好达到5次，触发邀请奖励
         referralReward = await this.handleReferralReward(userId, connection);
@@ -150,7 +152,8 @@ class AdPointsService {
         [subordinateUserId]
       );
 
-      const totalViews = adCountRows[0].total_views || 0;
+      // 转换为数字类型，防止字符串导致计算错误
+      const totalViews = parseInt(adCountRows[0].total_views || 0);
 
       // 3. 计算应该奖励的次数（每10次1积分）
       const rewardedMilestones = Math.floor(totalViews / this.SUBORDINATE_MILESTONE);
@@ -226,7 +229,7 @@ class AdPointsService {
       }
 
       // 从数据库获取
-      const rows = await db.query(
+      const rows = await sequelize.query(
         'SELECT view_count, points_earned FROM ad_view_record WHERE user_id = :userId AND view_date = :today',
         {
           replacements: { userId, today },
@@ -276,7 +279,7 @@ class AdPointsService {
    */
   static async getAdViewHistory(userId, days = 30) {
     try {
-      const rows = await db.query(
+      const rows = await sequelize.query(
         `SELECT 
           view_date,
           view_count,
@@ -320,7 +323,7 @@ class AdPointsService {
    */
   static async hasCompletedReferralRequirement(userId) {
     try {
-      const [rows] = await db.query(
+      const [rows] = await sequelize.query(
         'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',
         [userId]
       );
@@ -343,7 +346,9 @@ class AdPointsService {
         'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',
         [userId]
       );
-      return rows[0].total_views || 0;
+      // 转换为数字类型,防止字符串比较问题
+      const totalViews = parseInt(rows[0].total_views || 0);
+      return totalViews;
     } catch (error) {
       console.error('获取总观看次数失败:', error);
       return 0;
@@ -419,7 +424,7 @@ class AdPointsService {
    */
   static async hasCompletedReferralRequirement(userId) {
     try {
-      const [rows] = await db.query(
+      const [rows] = await sequelize.query(
         'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',
         [userId]
       );
@@ -438,7 +443,7 @@ class AdPointsService {
    */
   static async getSubordinateAdStatistics(referrerId) {
     try {
-      const rows = await db.query(
+      const rows = await sequelize.query(
         `SELECT 
           ir.user_id as subordinate_id,
           ui.invitation_code,

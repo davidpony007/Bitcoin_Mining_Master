@@ -51,7 +51,7 @@ class CheckInMiningContractService {
 
       const contract = await FreeContractRecord.create({
         user_id: userId,
-        free_contract_type: 'daily sign-in free contract',
+        free_contract_type: 'Daily Check-in Reward',
         free_contract_revenue: 0,
         free_contract_creation_time: now,
         free_contract_end_time: endTime,
@@ -71,7 +71,7 @@ class CheckInMiningContractService {
         },
         contract: {
           id: contract.id,
-          type: 'daily sign-in free contract',
+          type: 'Daily Check-in Reward',
           startTime: contract.free_contract_creation_time,
           endTime: contract.free_contract_end_time,
           hashrate: contract.hashrate,
@@ -101,7 +101,7 @@ class CheckInMiningContractService {
       const contract = await FreeContractRecord.findOne({
         where: {
           user_id: userId,
-          free_contract_type: 'daily sign-in free contract',
+          free_contract_type: 'Daily Check-in Reward',
           mining_status: 'mining'
         },
         order: [['free_contract_creation_time', 'DESC']]
@@ -122,7 +122,7 @@ class CheckInMiningContractService {
         hasActiveContract: true,
         contract: {
           id: contract.id,
-          type: 'daily sign-in free contract',
+          type: 'Daily Check-in Reward',
           startTime: contract.free_contract_creation_time,
           endTime: contract.free_contract_end_time,
           hashrate: contract.hashrate,

@@ -12,11 +12,11 @@ const authenticate = require('../middleware/auth');
 /**
  * @route   POST /api/ad/watch
  * @desc    记录广告观看并奖励积分（使用新的积分系统）
- * @access  Private
+ * @access  Public
  * @body    user_id - 用户ID
  * @body    ad_type - 广告类型 (可选，默认REWARD_AD)
  */
-router.post('/watch', authenticate, async (req, res) => {
+router.post('/watch', async (req, res) => {
   try {
     const { user_id, ad_type = 'REWARD_AD' } = req.body;
 
@@ -45,10 +45,10 @@ router.post('/watch', authenticate, async (req, res) => {
 /**
  * @route   GET /api/ad/today
  * @desc    获取今日广告观看记录（使用新的积分系统）
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/today', authenticate, async (req, res) => {
+router.get('/today', async (req, res) => {
   try {
     const { user_id } = req.query;
 
@@ -77,10 +77,10 @@ router.get('/today', authenticate, async (req, res) => {
 /**
  * @route   GET /api/ad/count (兼容旧接口)
  * @desc    获取广告观看次数
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/count', authenticate, async (req, res) => {
+router.get('/count', async (req, res) => {
   try {
     const { user_id } = req.query;
 

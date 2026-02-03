@@ -1,6 +1,6 @@
 /**
  * 签到系统服务
- * 负责用户每日签到、连续签到奖励、每日签到加成等功能
+ * 负责用户每日签到、累计签到奖励、每日签到加成等功能
  */
 
 const db = require('../config/database');
@@ -14,9 +14,9 @@ class CheckInService {
   static REWARD_CONFIG = null;
   static DAILY_CHECK_IN_POINTS = 4; // 每日签到固定奖励4积分
   static MILESTONE_REWARDS = {
-    7: { points: 15, description: '连续签到7天额外奖励' },
-    15: { points: 30, description: '连续签到15天额外奖励' },  
-    30: { points: 60, description: '连续签到30天额外奖励' }
+    7: { points: 15, description: '累计签到7天额外奖励' },
+    15: { points: 30, description: '累计签到15天额外奖励' },  
+    30: { points: 60, description: '累计签到30天额外奖励' }
   };
 
   /**
@@ -34,11 +34,11 @@ class CheckInService {
       console.error('❌ 加载签到奖励配置失败:', error);
       // 使用默认配置
       this.REWARD_CONFIG = [
-        { consecutive_days: 1, points_reward: 4, description: '连续签到1天' },
-        { consecutive_days: 3, points_reward: 15, description: '连续签到3天' },
-        { consecutive_days: 7, points_reward: 30, description: '连续签到7天' },
-        { consecutive_days: 15, points_reward: 30, description: '连续签到15天' },
-        { consecutive_days: 30, points_reward: 60, description: '连续签到30天' }
+        { consecutive_days: 1, points_reward: 4, description: '累计签到1天' },
+        { consecutive_days: 3, points_reward: 15, description: '累计签到3天' },
+        { consecutive_days: 7, points_reward: 30, description: '累计签到7天' },
+        { consecutive_days: 15, points_reward: 30, description: '累计签到15天' },
+        { consecutive_days: 30, points_reward: 60, description: '累计签到30天' }
       ];
       return this.REWARD_CONFIG;
     }
@@ -172,7 +172,7 @@ class CheckInService {
         const diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24));
 
         if (diffDays === 1) {
-          // 连续签到
+          // 累计签到（注意：虽然代码逻辑检查连续性，但实际奖励基于累计天数）
           consecutiveDays = lastCheckIn[0].consecutive_days + 1;
         } else if (diffDays > 1) {
           // 中断签到，重新开始

@@ -26,6 +26,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   bool _isLoading = true;
   bool _hasReferrer = false; // 是否已有推荐人
   String? _referrerInvitationCode; // 推荐人的邀请码
+  List<Map<String, dynamic>> _invitedUsersList = []; // 邀请的用户列表
 
   @override
   void initState() {
@@ -158,6 +159,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         final referrer = response['data']['referrer'];
         setState(() {
           _invitedCount = invitedUsers.length;
+          _invitedUsersList = List<Map<String, dynamic>>.from(invitedUsers);
           _hasReferrer = referrer != null; // 检查是否有推荐人
           // 保存推荐人的邀请码
           if (referrer != null && referrer['invitation_code'] != null) {
@@ -1051,41 +1053,125 @@ Download now and start mining!
                 ),
               ),
               Text(
-                'Total: 0',
+                'Total: $_invitedCount',
                 style: TextStyle(
-                  color: AppColors.textSecondary,
+                  color: AppColors.primary, // 改成橙黄色
                   fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: AppColors.cardDark,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.person_add_outlined,
-                    size: 48,
-                    color: AppColors.textSecondary,
+          _invitedUsersList.isEmpty
+              ? Container(
+                  height: 140,
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardDark,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'No invited friends yet',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 14,
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.person_add_outlined,
+                          size: 48,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No invited friends yet',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
+                )
+              : Container(
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: AppColors.cardDark,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _invitedUsersList.length,
+                    itemBuilder: (context, index) {
+                      final user = _invitedUsersList[index];
+                      final invitationCode = user['invitation_code'] ?? 'N/A';
+                      final creationTime = user['invitation_creation_time'] ?? '';
+                      
+                      // 格式化时间（精确到秒）
+                      String formattedTime = '';
+                      if (creationTime.isNotEmpty) {
+                        try {
+                          final dateTime = DateTime.parse(creationTime);
+                          formattedTime = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
+                        } catch (e) {
+                          formattedTime = creationTime;
+                        }
+                      }
+                      
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          children: [
+                            // 用户图标
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                Icons.person,
+                                size: 18,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // 用户信息
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    invitationCode,
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (formattedTime.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      formattedTime,
+                                      style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
         ],
       ),
     );
@@ -1119,6 +1205,7 @@ Download now and start mining!
           ),
           const SizedBox(height: 12),
           Container(
+            height: 140,
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
               color: AppColors.cardDark,

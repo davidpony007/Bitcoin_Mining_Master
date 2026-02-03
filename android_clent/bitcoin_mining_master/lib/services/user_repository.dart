@@ -1,6 +1,8 @@
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/device_info_service.dart';
+import '../services/native_device_id_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:math';
 
@@ -30,15 +32,21 @@ class UserRepository {
       final androidInfo = await deviceInfo.androidInfo;
       
       // 获取稳定的设备标识符
-      // 注意：androidInfo.id和fingerprint在某些设备上可能为空或不稳定
-      // 优先使用fingerprint，然后id，最后使用型号+品牌组合
+      // 优先使用原生方法获取真实的Android ID
       String androidId;
       
-      // 尝试多种方式获取设备标识符
-      if (androidInfo.fingerprint.isNotEmpty) {
-        androidId = androidInfo.fingerprint; // 使用fingerprint（更稳定）
-      } else if (androidInfo.id.isNotEmpty) {
+      print('🔍 [Guest Login] 开始获取Android ID...');
+      String? nativeAndroidId = await NativeDeviceIdService.getAndroidId();
+      
+      if (nativeAndroidId != null && nativeAndroidId.isNotEmpty) {
+        androidId = nativeAndroidId;
+        print('✅ [Guest Login] 使用原生Android ID: $androidId');
+      } else if (androidInfo.id.isNotEmpty && androidInfo.id != 'unknown') {
         androidId = androidInfo.id;
+        print('⚠️ [Guest Login] 原生方法失败，使用device_info_plus ID: $androidId');
+      } else if (androidInfo.fingerprint.isNotEmpty) {
+        androidId = androidInfo.fingerprint;
+        print('⚠️ [Guest Login] 使用fingerprint: $androidId');
       } else {
         // 备用方案1：使用型号+品牌+设备名组合
         final brandModel = '${androidInfo.brand}_${androidInfo.model}_${androidInfo.device}';
@@ -54,7 +62,7 @@ class UserRepository {
         }
       }
       
-      print('🔍 设备信息:');
+      print('🔍 [Guest Login] 设备信息:');
       print('   androidInfo.id: ${androidInfo.id}');
       print('   androidInfo.fingerprint: ${androidInfo.fingerprint}');
       print('   androidInfo.brand: ${androidInfo.brand}');
@@ -62,12 +70,29 @@ class UserRepository {
       print('   androidInfo.device: ${androidInfo.device}');
       print('   最终使用的androidId: $androidId');
 
+      // 3. 获取GAID和设备地区信息（独立try-catch，失败不影响整体）
+      String? gaid;
+      String? country;
+      
       try {
-        // 3. 尝试通过后端API创建用户（有网络）
+        print('📱 [Guest Login] 正在获取GAID和地区信息...');
+        final deviceInfo = await DeviceInfoService.getDeviceInfo();
+        gaid = deviceInfo['gaid'];
+        country = deviceInfo['country'];
+        
+        print('📱 [Guest Login] GAID: ${gaid != null ? "${gaid.substring(0, 8)}..." : "未获取"}');
+        print('📍 [Guest Login] Country: ${country ?? "未获取"}');
+        print('📍 国家代码: ${country ?? "未获取"}');
+        
+        // 4. 尝试通过后端API创建用户（有网络）
         print('正在通过后端API创建新用户...');
         print('   设备ID: $androidId');
         
-        final response = await _apiService.deviceLogin(androidId: androidId);
+        final response = await _apiService.deviceLogin(
+          androidId: androidId,
+          gaid: gaid,
+          country: country,
+        );
         
         print('🔍 API响应状态:');
         print('   success: ${response.success}');

@@ -67,7 +67,7 @@ class ContractRewardService {
       // 2. 计算免费广告合约收益
       const adRevenue = await this.calculateFreeContractRevenue(
         userId, 
-        'ad free contract', 
+        'Free Ad Reward', 
         startTime, 
         endTime,
         speedPerSecond
@@ -78,7 +78,7 @@ class ContractRewardService {
       // 3. 计算签到合约收益
       const signInRevenue = await this.calculateFreeContractRevenue(
         userId, 
-        'daily sign-in free contract', 
+        'Daily Check-in Reward', 
         startTime, 
         endTime,
         speedPerSecond
@@ -89,7 +89,7 @@ class ContractRewardService {
       // 4. 计算邀请好友合约收益
       const invitationRevenue = await this.calculateFreeContractRevenue(
         userId, 
-        'invitation free contract', 
+        'Invite Friend Reward', 
         startTime, 
         endTime,
         speedPerSecond
@@ -100,7 +100,7 @@ class ContractRewardService {
       // 5. 计算绑定推荐人合约收益
       const bindReferrerRevenue = await this.calculateFreeContractRevenue(
         userId, 
-        'bind referrer free contract', 
+        'Bind Referrer Reward', 
         startTime, 
         endTime,
         speedPerSecond

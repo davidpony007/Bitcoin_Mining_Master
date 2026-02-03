@@ -12,10 +12,10 @@ const { requireAdmin } = require('../middleware/role');
 /**
  * @route   GET /api/multiplier/user
  * @desc    获取用户的完整倍率信息
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/user', authenticate, async (req, res) => {
+router.get('/user', async (req, res) => {
   try {
     const { user_id } = req.query;
 

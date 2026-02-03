@@ -316,7 +316,7 @@ class InvitationRewardService {
         referrals: referrals.map(r => ({
           userId: r.user_id,
           googleAccount: r.google_account,
-          country: r.country,
+          country: r.country_code,
           level: r.user_level,
           points: r.user_points,
           adWatchCount: r.ad_watch_count,

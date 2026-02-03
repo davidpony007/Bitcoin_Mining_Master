@@ -104,7 +104,7 @@ router.get('/my-contracts/:userId', async (req, res) => {
         TIMESTAMPDIFF(SECOND, NOW(), free_contract_end_time) as remaining_seconds
        FROM free_contract_records 
        WHERE user_id = ? 
-       AND free_contract_type = 'daily sign-in free contract'
+       AND free_contract_type = 'Daily Check-in Reward'
        AND mining_status = 'mining' 
        AND free_contract_end_time > NOW()
        ORDER BY free_contract_creation_time DESC
@@ -127,7 +127,7 @@ router.get('/my-contracts/:userId', async (req, res) => {
         TIMESTAMPDIFF(SECOND, NOW(), free_contract_end_time) as remaining_seconds
        FROM free_contract_records 
        WHERE user_id = ? 
-       AND free_contract_type = 'ad free contract'
+       AND free_contract_type = 'Free Ad Reward'
        AND mining_status = 'mining' 
        AND free_contract_end_time > NOW()
        ORDER BY free_contract_creation_time DESC
@@ -154,7 +154,7 @@ router.get('/my-contracts/:userId', async (req, res) => {
         END as is_active
        FROM free_contract_records 
        WHERE user_id = ? 
-       AND free_contract_type = 'invitation free contract'
+       AND free_contract_type = 'Invite Friend Reward'
        ORDER BY free_contract_creation_time DESC
        LIMIT 1`,
       {
@@ -179,7 +179,7 @@ router.get('/my-contracts/:userId', async (req, res) => {
         END as is_active
        FROM free_contract_records 
        WHERE user_id = ? 
-       AND free_contract_type = 'bind referrer free contract'
+       AND free_contract_type = 'Bind Referrer Reward'
        ORDER BY free_contract_creation_time DESC
        LIMIT 1`,
       {

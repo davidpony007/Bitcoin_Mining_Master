@@ -31,16 +31,8 @@ class PointsApiService {
       error: true,
     ));
 
-    // 添加认证拦截器
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        _token ??= _storageService.getAuthToken();
-        if (_token != null && _token!.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $_token';
-        }
-        return handler.next(options);
-      },
-    ));
+    // 积分系统不需要JWT认证，只使用user_id参数
+    // 已移除认证拦截器
   }
 
   /// 设置认证token

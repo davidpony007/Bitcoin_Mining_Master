@@ -41,7 +41,7 @@ class MultiplierService {
 
       return {
         userId: userId,
-        country: user.country || 'Unknown',
+        country: user.country_code || 'Unknown',
         countryMultiplier: countryMultiplier,
         level: levelInfo.level,
         levelMultiplier: levelMultiplier,
@@ -105,7 +105,7 @@ class MultiplierService {
 
       const [affectedCount] = await UserInformation.update(
         { country_multiplier: validMultiplier },
-        { where: { country: country } }
+        { where: { country_code: country } }
       );
 
       console.log(`已更新 ${country} 的 ${affectedCount} 个用户倍率为 ${validMultiplier}x`);

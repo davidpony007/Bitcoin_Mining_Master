@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/user_repository.dart';
 import '../services/network_service.dart';
+import '../services/device_info_service.dart';
+import '../services/native_device_id_service.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -65,14 +68,83 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('Google account email is empty. Please make sure you grant email permission.');
       }
 
+      // 收集设备信息（android_id、gaid、country）
+      print('🔍 ========================================');
+      print('🔍 开始收集设备信息...');
+      print('🔍 ========================================');
+      String? androidId;
+      String? gaid;
+      String? country;
+      
+      // 步骤1: 获取Android ID（独立try-catch，失败不影响其他）
+      try {
+        print('📱 步骤1: 获取Android ID（原生方法）...');
+        androidId = await NativeDeviceIdService.getAndroidId();
+        
+        if (androidId == null || androidId.isEmpty) {
+          print('⚠️ 原生方法返回空，尝试device_info_plus...');
+          final deviceInfo = DeviceInfoPlugin();
+          final androidInfo = await deviceInfo.androidInfo;
+          
+          if (androidInfo.id.isNotEmpty && androidInfo.id != 'unknown') {
+            androidId = androidInfo.id;
+            print('✅ 使用 device_info_plus Android ID: "$androidId"');
+          } else if (androidInfo.fingerprint.isNotEmpty) {
+            androidId = androidInfo.fingerprint;
+            print('⚠️ 使用 fingerprint 作为备用: "$androidId"');
+          }
+        } else {
+          print('✅ 原生方法获取成功 Android ID: "$androidId" (长度: ${androidId.length})');
+        }
+      } catch (e) {
+        print('❌ Android ID 获取失败: $e');
+      }
+        
+      // 步骤2: 获取GAID和Country（一次性获取所有设备信息）
+      try {
+        print('📱 步骤2: 获取GAID和Country...');
+        final deviceInfoMap = await DeviceInfoService.getDeviceInfo();
+        
+        gaid = deviceInfoMap['gaid'];
+        if (gaid != null && gaid.isNotEmpty) {
+          print('✅ GAID 获取成功: ${gaid.substring(0, 8)}...');
+        } else {
+          print('⚠️ GAID 为空');
+        }
+        
+        country = deviceInfoMap['country'];
+        if (country != null && country.isNotEmpty) {
+          print('✅ Country 获取成功: $country');
+        } else {
+          print('⚠️ Country 为空');
+        }
+      } catch (e) {
+        print('❌ GAID和Country 获取失败: $e');
+      }
+      
+      print('🔍 ========================================');
+      print('📱 设备信息收集汇总:');
+      print('   ✓ Android ID: ${androidId ?? "未获取"}');
+      print('   ✓ GAID: ${gaid ?? "未获取"}');
+      print('   ✓ Country: ${country ?? "未获取"}');
+      print('🔍 ========================================');
+
       // 2. 调用后端API：Google登录或创建新用户
       print('🔍 Google登录或创建新用户: $email');
+      print('📤 准备发送参数:');
+      print('   - googleId: $googleId');
+      print('   - googleEmail: $email');
+      print('   - androidId: $androidId');
+      print('   - gaid: $gaid');
+      print('   - country: $country');
       
       final response = await _apiService.googleLoginOrCreate(
         googleId: googleId,
         googleEmail: email,
         googleName: displayName ?? '',
-        androidId: null, // 可以传递设备ID，但这里暂不需要
+        androidId: androidId,
+        gaid: gaid,
+        country: country,
       );
       print('🔍 Google登录/创建响应: $response');
 

@@ -54,7 +54,7 @@ class AdMiningContractService {
       const existingContract = await FreeContractRecord.findOne({
         where: {
           user_id: userId,
-          free_contract_type: 'ad free contract',
+          free_contract_type: 'Free Ad Reward',
           mining_status: 'mining' // 正在挖矿中
         },
         order: [['free_contract_creation_time', 'DESC']]
@@ -86,7 +86,7 @@ class AdMiningContractService {
 
         contract = await FreeContractRecord.create({
           user_id: userId,
-          free_contract_type: 'ad free contract',
+          free_contract_type: 'Free Ad Reward',
           free_contract_revenue: 0,
           free_contract_creation_time: now,
           free_contract_end_time: endTime,
@@ -146,7 +146,7 @@ class AdMiningContractService {
       const contract = await FreeContractRecord.findOne({
         where: {
           user_id: userId,
-          free_contract_type: 'ad free contract',
+          free_contract_type: 'Free Ad Reward',
           mining_status: 'mining'
         },
         order: [['free_contract_creation_time', 'DESC']]

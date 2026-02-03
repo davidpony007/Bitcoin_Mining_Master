@@ -26,6 +26,7 @@ dependencies:
   google_sign_in: ^6.2.1
   google_mobile_ads: ^5.1.0
   connectivity_plus: ^6.1.2
+  advertising_id: ^2.7.1
 
 dev_dependencies:
   flutter_test:

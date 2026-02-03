@@ -43,7 +43,7 @@ class InvitationMiningContractService {
       const existingContract = await FreeContractRecord.findOne({
         where: {
           user_id: referrerId,
-          free_contract_type: 'invitation free contract',
+          free_contract_type: 'Invite Friend Reward',
           mining_status: 'mining' // 正在挖矿中
         },
         order: [['free_contract_creation_time', 'DESC']]
@@ -81,7 +81,7 @@ class InvitationMiningContractService {
 
         contract = await FreeContractRecord.create({
           user_id: referrerId,
-          free_contract_type: 'invitation free contract',
+          free_contract_type: 'Invite Friend Reward',
           free_contract_revenue: 0,
           free_contract_creation_time: now,
           free_contract_end_time: endTime,
@@ -109,7 +109,7 @@ class InvitationMiningContractService {
           message: isNewContract ? '邀请成功，开始挖矿2小时' : '邀请成功，挖矿时间延长2小时',
           contract: {
             id: contract.id,
-            type: 'invitation free contract',
+            type: 'Invite Friend Reward',
             startTime: contract.free_contract_creation_time,
             endTime: contract.free_contract_end_time,
             hashrate: contract.hashrate,
@@ -148,7 +148,7 @@ class InvitationMiningContractService {
       const contract = await FreeContractRecord.findOne({
         where: {
           user_id: userId,
-          free_contract_type: 'invitation free contract',
+          free_contract_type: 'Invite Friend Reward',
           mining_status: 'mining'
         },
         order: [['free_contract_creation_time', 'DESC']]
@@ -177,7 +177,7 @@ class InvitationMiningContractService {
         hasActiveContract: true,
         contract: {
           id: contract.id,
-          type: 'invitation free contract',
+          type: 'Invite Friend Reward',
           startTime: contract.free_contract_creation_time,
           endTime: contract.free_contract_end_time,
           hashrate: contract.hashrate,

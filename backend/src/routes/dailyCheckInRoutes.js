@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const authenticateToken = require('../middleware/auth');
 const CheckInMiningContractService = require('../services/checkInMiningContractService');
 const CheckInPointsService = require('../services/checkInPointsService');
 
@@ -8,9 +7,9 @@ const CheckInPointsService = require('../services/checkInPointsService');
  * GET /api/check-in/status
  * 检查用户今日是否已经签到
  */
-router.get('/status', authenticateToken, async (req, res) => {
+router.get('/status', async (req, res) => {
   try {
-    const userId = req.user.user_id;
+    const userId = req.query.user_id || req.body.user_id;
     
     if (!userId) {
       return res.status(400).json({
@@ -42,10 +41,10 @@ router.get('/status', authenticateToken, async (req, res) => {
  * POST /api/check-in/daily
  * 用户每日签到并创建2小时挖矿合约 + 增加积分
  */
-router.post('/daily', authenticateToken, async (req, res) => {
+router.post('/daily', async (req, res) => {
   try {
-    // JWT token中存储的是user_id字段
-    const userId = req.user.user_id;
+    // 从请求体中获取user_id
+    const userId = req.body.user_id;
     
     if (!userId) {
       return res.status(400).json({

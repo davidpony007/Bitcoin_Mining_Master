@@ -15,9 +15,16 @@ router.get('/status', (req, res) => {
 
 // GET /api/mining/hashrate
 // 获取用户算力信息（基础算力 5.5 Gh/s + 倍数加成）
-router.get('/hashrate', authenticate, async (req, res) => {
+router.get('/hashrate', async (req, res) => {
   try {
-    const { user_id } = req.user;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: '缺少参数: user_id'
+      });
+    }
 
     // 获取挖矿速度信息（包含倍数）
     const speedInfo = await LevelService.calculateMiningSpeed(user_id);

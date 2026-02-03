@@ -12,10 +12,10 @@ const authenticate = require('../middleware/auth');
 /**
  * @route   POST /api/checkin
  * @desc    用户签到（使用新的积分系统）
- * @access  Private
+ * @access  Public
  * @body    user_id - 用户ID
  */
-router.post('/', authenticate, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { user_id } = req.body;
 
@@ -44,10 +44,10 @@ router.post('/', authenticate, async (req, res) => {
 /**
  * @route   GET /api/checkin/status
  * @desc    获取签到状态（使用新的积分系统）
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/status', authenticate, async (req, res) => {
+router.get('/status', async (req, res) => {
   try {
     const { user_id } = req.query;
 
@@ -79,14 +79,12 @@ router.get('/status', authenticate, async (req, res) => {
 
 /**
  * @route   GET /api/checkin/history
- * @desc    获取签到历史
- * @access  Private
- * @query   user_i（使用新的积分系统）
- * @access  Private
+ * @desc    获取签到历史（使用新的积分系统）
+ * @access  Public
  * @query   user_id - 用户ID
  * @query   days - 查询天数 (默认30天)
  */
-router.get('/history', authenticate, async (req, res) => {
+router.get('/history', async (req, res) => {
   try {
     const { user_id, days } = req.query;
 
@@ -117,10 +115,10 @@ router.get('/history', authenticate, async (req, res) => {
 /**
  * @route   GET /api/checkin/milestones
  * @desc    获取可领取的签到里程碑奖励
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  */
-router.get('/milestones', authenticate, async (req, res) => {
+router.get('/milestones', async (req, res) => {
   try {
     const { user_id } = req.query;
 
@@ -148,11 +146,11 @@ router.get('/milestones', authenticate, async (req, res) => {
 /**
  * @route   POST /api/checkin/claim-milestone
  * @desc    领取累计签到里程碑奖励（可以不连续）
- * @access  Private
+ * @access  Public
  * @body    user_id - 用户ID
  * @body    cumulative_days - 累计天数 (3/7/15/30)
  */
-router.post('/claim-milestone', authenticate, async (req, res) => {
+router.post('/claim-milestone', async (req, res) => {
   try {
     const { user_id, cumulative_days, consecutive_days } = req.body;
     

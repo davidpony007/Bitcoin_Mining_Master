@@ -102,11 +102,11 @@ router.get('/leaderboard', async (req, res) => {
 /**
  * @route   GET /api/level/mining-speed
  * @desc    计算用户挖矿速率
- * @access  Private
+ * @access  Public
  * @query   user_id - 用户ID
  * @query   base_speed - 基础速率 (可选)
  */
-router.get('/mining-speed', authenticate, async (req, res) => {
+router.get('/mining-speed', async (req, res) => {
   try {
     const { user_id, base_speed } = req.query;
 

@@ -104,7 +104,7 @@ async function cleanupCircularInvitations() {
 
         // 删除相关的Bind Referrer Reward合约
         const [deleteContractResult] = await sequelize.query(
-          `DELETE FROM free_contract_records WHERE user_id = ? AND free_contract_type = 'bind referrer free contract'`,
+          `DELETE FROM free_contract_records WHERE user_id = ? AND free_contract_type = 'Bind Referrer Reward'`,
           { replacements: [userToClean] }
         );
 

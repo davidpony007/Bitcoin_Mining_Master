@@ -26,11 +26,6 @@ const UserInformation = sequelize.define('user_information', {
     allowNull: true,
     comment: '用户邮箱地址'
   },
-  password: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-    comment: '用户密码(bcrypt加密)'
-  },
   google_account: {
     type: DataTypes.STRING(100),
     allowNull: true,
@@ -60,16 +55,27 @@ const UserInformation = sequelize.define('user_information', {
     allowNull: true,
     comment: '注册时的IP地址（支持IPv6）'
   },
-  country: { 
+  country_code: { 
     type: DataTypes.STRING(32), 
     allowNull: true,
-    comment: '用户所在国家'
+    comment: '用户所在国家代码（如：CN, US等）'
+  },
+  country_name_cn: { 
+    type: DataTypes.STRING(50), 
+    allowNull: true,
+    comment: '国家中文名称（对应 country_mining_config.country_name_cn）'
   },
   country_multiplier: {
     type: DataTypes.DECIMAL(4, 2),
     allowNull: true,
     defaultValue: 1.00,
-    comment: '国家挖矿速度倍率,默认1.00'
+    comment: '国家挖矿速度倍率（对应 country_mining_config.mining_multiplier）,默认1.00'
+  },
+  miner_level_multiplier: {
+    type: DataTypes.DECIMAL(4, 2),
+    allowNull: true,
+    defaultValue: 1.00,
+    comment: '矿工等级挖矿倍率,默认1.00'
   },
   user_level: {
     type: DataTypes.INTEGER,
@@ -129,8 +135,8 @@ const UserInformation = sequelize.define('user_information', {
       name: 'idx_register_ip'
     },
     {
-      fields: ['country'],
-      name: 'idx_country'
+      fields: ['country_code'],
+      name: 'idx_country_code'
     },
     {
       fields: ['user_creation_time'],

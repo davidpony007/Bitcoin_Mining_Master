@@ -47,7 +47,7 @@ router.post('/use-battery', async (req, res) => {
         `SELECT id, free_contract_end_time 
          FROM free_contract_records 
          WHERE user_id = ? 
-         AND free_contract_type = 'ad free contract'
+         AND free_contract_type = 'Free Ad Reward'
          AND mining_status = 'mining' 
          AND free_contract_end_time > NOW()
          ORDER BY free_contract_creation_time DESC
@@ -203,7 +203,7 @@ router.post('/extend-contract', async (req, res) => {
         `SELECT id, free_contract_end_time 
          FROM free_contract_records 
          WHERE user_id = ? 
-         AND free_contract_type = 'ad free contract'
+         AND free_contract_type = 'Free Ad Reward'
          AND mining_status = 'mining' 
          AND free_contract_end_time > NOW()
          ORDER BY free_contract_creation_time DESC
@@ -227,7 +227,7 @@ router.post('/extend-contract', async (req, res) => {
           `INSERT INTO free_contract_records 
            (user_id, free_contract_type, hashrate, free_contract_creation_time, 
             free_contract_end_time, mining_status, free_contract_revenue)
-           VALUES (?, 'ad free contract', 0.000000000000139, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), 'mining', 0.000000000000000000)`,
+           VALUES (?, 'Free Ad Reward', 0.000000000000139, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), 'mining', 0.000000000000000000)`,
           [user_id, totalHours]
         );
         

@@ -193,7 +193,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             Uri.parse('${ApiConstants.baseUrl}/auth/google-binding-status/$userId'),
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer ${_storageService.getAuthToken()}',
             },
           ).timeout(const Duration(seconds: 10));
           
@@ -225,22 +224,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         }
       }
       
-      // 获取JWT token
-      final token = _storageService.getAuthToken();
-      if (token == null || token.isEmpty) {
-        print('❌ 认证失败');
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Authentication failed, please login again'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-      
       // 调用后端API检查签到状态
       final apiUrl = '${ApiConstants.baseUrl}/check-in/status';
       print('📍 检查签到状态 API URL: $apiUrl');
@@ -249,7 +232,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         Uri.parse(apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
         },
       ).timeout(
         const Duration(seconds: 30), // 增加超时时间到30秒
@@ -305,13 +287,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       }
       final userId = userIdResult.data!;
       
-      // 获取JWT token
-      final token = _storageService.getAuthToken();
-      if (token == null || token.isEmpty) {
-        _lastErrorMessage = 'Authentication failed, please login again';
-        return false;
-      }
-      
       print('📝 调用签到API - userId: $userId');
 
       final baseUrls = <String>[];
@@ -329,7 +304,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             Uri.parse(apiUrl),
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
             },
             body: json.encode({'user_id': userId}),
           ).timeout(
@@ -559,13 +533,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       }
       final userId = userIdResult.data!;
       
-      // 获取JWT token
-      final token = _storageService.getAuthToken();
-      if (token == null || token.isEmpty) {
-        print('❌ 认证失败，无法增加积分');
-        return false;
-      }
-      
       print('💰 调用增加积分API - userId: $userId, points: $points');
 
       final baseUrls = <String>[];
@@ -583,7 +550,6 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             Uri.parse(apiUrl),
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
             },
             body: json.encode({
               'user_id': userId,

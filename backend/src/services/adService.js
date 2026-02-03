@@ -335,7 +335,7 @@ class AdService {
         referrals: records.map(r => ({
           referralId: r.referral_id,
           googleAccount: r.google_account,
-          country: r.country,
+          country: r.country_code,
           totalAdCount: r.total_ad_count,
           rewardedCount: r.rewarded_count,
           pendingMilestone: r.total_ad_count % this.REFERRAL_AD_MILESTONE,

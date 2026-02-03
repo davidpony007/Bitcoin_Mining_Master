@@ -59,7 +59,7 @@ class RefereeMiningContractService {
       const existingBindContract = await FreeContractRecord.findOne({
         where: {
           user_id: refereeId,
-          free_contract_type: 'bind referrer free contract'
+          free_contract_type: 'Bind Referrer Reward'
         }
       });
 
@@ -86,7 +86,7 @@ class RefereeMiningContractService {
 
       const contract = await FreeContractRecord.create({
         user_id: refereeId,
-        free_contract_type: 'bind referrer free contract',
+        free_contract_type: 'Bind Referrer Reward',
         free_contract_revenue: 0,
         free_contract_creation_time: now,
         free_contract_end_time: endTime,
@@ -101,7 +101,7 @@ class RefereeMiningContractService {
         message: '成功绑定推荐人，获得2小时挖矿合约',
         contract: {
           id: contract.id,
-          type: 'bind referrer free contract',
+          type: 'Bind Referrer Reward',
           startTime: contract.free_contract_creation_time,
           endTime: contract.free_contract_end_time,
           hashrate: contract.hashrate,
@@ -135,7 +135,7 @@ class RefereeMiningContractService {
       const contract = await FreeContractRecord.findOne({
         where: {
           user_id: userId,
-          free_contract_type: 'bind referrer free contract'
+          free_contract_type: 'Bind Referrer Reward'
         }
       });
 
@@ -155,7 +155,7 @@ class RefereeMiningContractService {
         hasContract: true,
         contract: {
           id: contract.id,
-          type: 'bind referrer free contract',
+          type: 'Bind Referrer Reward',
           startTime: contract.free_contract_creation_time,
           endTime: contract.free_contract_end_time,
           hashrate: contract.hashrate,

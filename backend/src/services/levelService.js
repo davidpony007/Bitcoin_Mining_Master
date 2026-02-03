@@ -262,13 +262,13 @@ class LevelService {
         
         // 从数据库获取用户国家
         const [userInfo] = await db.query(
-          'SELECT country FROM user_information WHERE user_id = ?',
+          'SELECT country_code FROM user_information WHERE user_id = ?',
           [userId]
         );
         
-        if (userInfo.length > 0 && userInfo[0].country) {
-          countryMultiplier = await CountryMiningService.getMiningMultiplier(userInfo[0].country);
-          console.log(`✅ 用户 ${userId} 国家倍数 (${userInfo[0].country}): ${countryMultiplier}`);
+        if (userInfo.length > 0 && userInfo[0].country_code) {
+          countryMultiplier = await CountryMiningService.getMiningMultiplier(userInfo[0].country_code);
+          console.log(`✅ 用户 ${userId} 国家倍数 (${userInfo[0].country_code}): ${countryMultiplier}`);
         }
       } catch (error) {
         console.warn('获取国家倍数失败，使用默认值 1.0:', error.message);

@@ -67,14 +67,14 @@ class PointsTransaction {
         return 'Referral Milestone';
       case 'SUBORDINATE_AD_VIEW':
         return 'Subordinate Ads';
-      case 'CONSECUTIVE_CHECKIN_3':
-        return '3-Day Streak';
-      case 'CONSECUTIVE_CHECKIN_7':
-        return '7-Day Streak';
-      case 'CONSECUTIVE_CHECKIN_15':
-        return '15-Day Streak';
-      case 'CONSECUTIVE_CHECKIN_30':
-        return '30-Day Streak';
+      case 'CUMULATIVE_CHECKIN_3':
+        return '3-Day Cumulative';
+      case 'CUMULATIVE_CHECKIN_7':
+        return '7-Day Cumulative';
+      case 'CUMULATIVE_CHECKIN_15':
+        return '15-Day Cumulative';
+      case 'CUMULATIVE_CHECKIN_30':
+        return '30-Day Cumulative';
       case 'MANUAL_ADD':
         return 'Manual Add';
       case 'MANUAL_DEDUCT':

@@ -8,6 +8,7 @@ const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
 const InvitationValidationService = require('../services/invitationValidationService');
 const jwt = require('jsonwebtoken');
+const geoip = require('geoip-lite');
 
 /**
  * 设备自动登录/注册
@@ -32,6 +33,8 @@ const jwt = require('jsonwebtoken');
  */
 exports.deviceLogin = async (req, res) => {
   try {
+    console.log('📥 [Device Login] 完整请求体:', JSON.stringify(req.body, null, 2));
+    
     const {
       android_id,
       referrer_invitation_code,
@@ -42,17 +45,20 @@ exports.deviceLogin = async (req, res) => {
 
     // 验证必填字段
     if (!android_id || android_id.trim() === '') {
+      console.error('❌ android_id缺失或为空');
       return res.status(400).json({
         success: false,
         error: 'android_id is required'
       });
     }
 
-    console.log('🔍 [Device Login] 收到请求:');
+    console.log('🔍 [Device Login] 提取的字段:');
     console.log('   android_id:', android_id);
     console.log('   android_id长度:', android_id.length);
     console.log('   gaid:', gaid);
-    console.log('   country:', country);
+    console.log('   country_code:', country);
+    console.log('   email:', email);
+    console.log('   referrer_invitation_code:', referrer_invitation_code);
 
     // 生成 user_id 和 invitation_code
     const generateUserIds = () => {
@@ -80,6 +86,21 @@ exports.deviceLogin = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
+    // 🌍 从IP检测国家（如果前端未提供）
+    let detectedCountry = country; // 优先使用前端提供的国家代码
+    
+    if (!detectedCountry && register_ip !== '未知') {
+      const geo = geoip.lookup(register_ip);
+      if (geo && geo.country) {
+        detectedCountry = geo.country;
+        console.log(`📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
+      } else {
+        console.log(`⚠️ 无法从IP ${register_ip} 检测国家`);
+      }
+    } else if (detectedCountry) {
+      console.log(`📱 使用前端提供的国家代码: ${detectedCountry}`);
+    }
+
     // 🔧 使用 findOrCreate 原子操作（防止并发重复创建）
     const { user_id, invitation_code } = generateUserIds();
     
@@ -95,7 +116,7 @@ exports.deviceLogin = async (req, res) => {
         android_id: android_id.trim(),
         gaid: gaid || null,
         register_ip,
-        country: country || null
+        country_code: detectedCountry || null
       }
     });
 
@@ -401,12 +422,18 @@ exports.bindGoogleAccount = async (req, res) => {
  */
 exports.googleLoginOrCreate = async (req, res) => {
   try {
-    const { google_id, google_account, google_name, android_id } = req.body;
+    // 添加原始请求体日志
+    console.log('🔍 [RAW] req.body:', JSON.stringify(req.body, null, 2));
+    
+    const { google_id, google_account, google_name, android_id, gaid, country } = req.body;
 
     console.log('🔍 [Google Login/Create] Received request:');
     console.log('   - google_id:', google_id);
     console.log('   - google_account:', google_account);
     console.log('   - google_name:', google_name);
+    console.log('   - android_id:', android_id);
+    console.log('   - gaid:', gaid);
+    console.log('   - country_code:', country);
 
     // Validate required fields
     if (!google_account) {
@@ -442,6 +469,17 @@ exports.googleLoginOrCreate = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
+    // 如果前端没有提供country，尝试从IP地址获取
+    let detectedCountry = country;
+    if (!detectedCountry && register_ip !== '未知') {
+      const geoip = require('geoip-lite');
+      const geo = geoip.lookup(register_ip);
+      if (geo && geo.country) {
+        detectedCountry = geo.country;
+        console.log(`   📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
+      }
+    }
+
     // 查找是否已有该Google账号绑定的用户
     let user = await UserInformation.findOne({
       where: { google_account: google_account.trim() }
@@ -450,14 +488,40 @@ exports.googleLoginOrCreate = async (req, res) => {
     let isNewUser = false;
 
     if (user) {
-      // 用户已存在，更新设备绑定（如果提供了android_id）
+      // 用户已存在，更新设备绑定（如果提供了新信息）
       console.log(`   ♻️ 找到现有用户: ${user.user_id}`);
       
+      const updateData = {};
       if (android_id && android_id.trim() !== '') {
-        await user.update({
-          android_id: android_id.trim()
-        });
-        console.log(`   📱 更新设备绑定: ${android_id}`);
+        updateData.android_id = android_id.trim();
+        console.log(`   📱 更新Android ID: ${android_id}`);
+      }
+      if (gaid && gaid.trim() !== '') {
+        updateData.gaid = gaid.trim();
+        console.log(`   📱 更新GAID: ${gaid}`);
+      }
+      if (detectedCountry && detectedCountry.trim() !== '') {
+        updateData.country_code = detectedCountry.trim();
+        console.log(`   🌍 更新国家代码: ${detectedCountry}`);
+        
+        // 同时更新国家中文名称和倍率
+        try {
+          const CountryMiningConfig = require('../models/countryMiningConfig');
+          const countryConfig = await CountryMiningConfig.findOne({
+            where: { country_code: detectedCountry.trim() }
+          });
+          if (countryConfig) {
+            updateData.country_name_cn = countryConfig.country_name_cn;
+            updateData.country_multiplier = countryConfig.mining_multiplier || 1.00;
+            console.log(`   🌍 更新国家名称: ${countryConfig.country_name_cn}, 倍率: ${countryConfig.mining_multiplier}`);
+          }
+        } catch (err) {
+          console.log('获取国家配置失败:', err.message);
+        }
+      }
+      
+      if (Object.keys(updateData).length > 0) {
+        await user.update(updateData);
       }
 
     } else {
@@ -466,15 +530,48 @@ exports.googleLoginOrCreate = async (req, res) => {
       
       const { user_id, invitation_code } = generateUserIds();
       
+      // 检查android_id是否已被其他用户使用
+      let finalAndroidId = android_id ? android_id.trim() : null;
+      if (finalAndroidId) {
+        const existingUser = await UserInformation.findOne({
+          where: { android_id: finalAndroidId }
+        });
+        if (existingUser) {
+          console.log(`   ⚠️ Android ID ${finalAndroidId} 已被用户 ${existingUser.user_id} 使用，本次不绑定设备ID`);
+          finalAndroidId = null; // 不绑定重复的android_id
+        }
+      }
+      
+      // 获取国家信息（中文名称和挖矿倍率）
+      let countryNameCn = null;
+      let countryMultiplier = 1.00;
+      if (detectedCountry) {
+        try {
+          const CountryMiningConfig = require('../models/countryMiningConfig');
+          const countryConfig = await CountryMiningConfig.findOne({
+            where: { country_code: detectedCountry.trim() }
+          });
+          if (countryConfig) {
+            countryNameCn = countryConfig.country_name_cn;
+            countryMultiplier = countryConfig.mining_multiplier || 1.00;
+          }
+        } catch (err) {
+          console.log('获取国家配置失败:', err.message);
+        }
+      }
+
       user = await UserInformation.create({
         user_id,
         invitation_code,
         email: google_account.trim(),
         google_account: google_account.trim(),
-        android_id: android_id ? android_id.trim() : null,
-        gaid: null,
+        android_id: finalAndroidId,
+        gaid: gaid ? gaid.trim() : null,
         register_ip,
-        country: null
+        country_code: detectedCountry ? detectedCountry.trim() : null,
+        country_name_cn: countryNameCn,
+        country_multiplier: countryMultiplier,
+        miner_level_multiplier: 1.00
       });
 
       isNewUser = true;
@@ -763,10 +860,14 @@ exports.getInvitationInfo = async (req, res) => {
     for (const relation of invitedRelations) {
       const invitedUser = await UserInformation.findOne({
         where: { user_id: relation.user_id },
-        attributes: ['user_id', 'invitation_code', 'email', 'country', 'user_creation_time']
+        attributes: ['user_id', 'invitation_code', 'email', 'country']
       });
       if (invitedUser) {
-        invitedUsers.push(invitedUser);
+        // 合并用户信息和邀请关系信息（包含邀请时间）
+        invitedUsers.push({
+          ...invitedUser.toJSON(),
+          invitation_creation_time: relation.invitation_creation_time // 邀请关系建立时间
+        });
       }
     }
 

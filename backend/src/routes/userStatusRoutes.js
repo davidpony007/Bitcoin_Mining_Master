@@ -5,23 +5,23 @@ const router = express.Router();
 const userStatusController = require('../controllers/userStatusController');
 const authenticateToken = require('../middleware/auth');
 
-// 获取用户状态信息
-router.get('/:user_id', authenticateToken, userStatusController.getUserStatus);
+// 获取用户状态信息（公开访问）
+router.get('/:user_id', userStatusController.getUserStatus);
 
 // 创建用户状态记录（通常在注册时自动调用）
-router.post('/', authenticateToken, userStatusController.createUserStatus);
+router.post('/', userStatusController.createUserStatus);
 
-// 更新用户比特币余额
-router.put('/:user_id/balance', authenticateToken, userStatusController.updateBitcoinBalance);
+// 更新用户比特币余额（公开访问）
+router.put('/:user_id/balance', userStatusController.updateBitcoinBalance);
 
 // 更新最后登录时间
-router.put('/:user_id/login', authenticateToken, userStatusController.updateLastLoginTime);
+router.put('/:user_id/login', userStatusController.updateLastLoginTime);
 
 // 更新用户活跃状态（定时任务）
-router.post('/update-active-status', authenticateToken, userStatusController.updateUserActiveStatus);
+router.post('/update-active-status', userStatusController.updateUserActiveStatus);
 
 // 获取用户统计信息
-router.get('/:user_id/statistics', authenticateToken, userStatusController.getUserStatistics);
+router.get('/:user_id/statistics', userStatusController.getUserStatistics);
 
 // 管理员功能：禁用/启用/删除用户
 router.put('/:user_id/disable', authenticateToken, userStatusController.disableUser);
