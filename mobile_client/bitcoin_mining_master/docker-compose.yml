@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bitcoin_mysql_prod
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOT        MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_Root_      MYSQL_ROOnd:      MYSQL_ROOT_PASSWORD: Bitcond      MYSQL_ROOT_PASSWORD: Bitcoin_MySQL_R    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DB_HOST: bitcoin_mysql_prod
+      DB_PORT: 3306
+      DB_NAME: bitcoin_mining_master
+      DB_USER: root
+      DB_PASSWORD: Bitcoin_MySQL_Root_2026!Secure
+      REDIS_HOST: bitcoin_redis_prod
+      REDIS_PORT: 6379
+    ports:
+      - '8888:8888'
+    networks:
+      - bitcoin_network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:8888/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ./logs:/root/bitcoin-backend/logs
+
+  nginx:
+    image: nginx:alpine
+    container_name: bitcoin_nginx_prod
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - bitcoin_network
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mysql_data:
+
+networks:
+  bitcoin_network:
+    driver: bridge

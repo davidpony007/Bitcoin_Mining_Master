@@ -1,0 +1,5 @@
+# Disable native assets to work around Flutter 3.38.7 bug
+# https://github.com/flutter/flutter/issues
+native_assets:
+  version: 1.0.0
+  assets: []

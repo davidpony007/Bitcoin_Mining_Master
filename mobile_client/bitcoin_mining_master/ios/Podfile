@@ -1,0 +1,297 @@
+# Uncomment this line to define a global platform for your project
+platform :ios, '15.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  # ============================================================
+  # Step 1: Set basic build settings for all targets
+  # ============================================================
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
+    end
+  end
+
+  pods_dir = File.join(File.dirname(__FILE__), 'Pods')
+  pods_support_dir = File.join(pods_dir, 'Target Support Files')
+  cache_base = File.expand_path('~/Library/Caches/CocoaPods/Pods/Release')
+
+  # ============================================================
+  # Step 2: Copy GoogleSignIn sources from CocoaPods cache
+  # (Must happen BEFORE we try to add files to target)
+  # ============================================================
+  google_pods_dir = File.join(pods_dir, 'GoogleSignIn')
+  if !Dir.exist?(File.join(google_pods_dir, 'Sources'))
+    google_cache = File.join(cache_base, 'GoogleSignIn')
+    if Dir.exist?(google_cache)
+      cached_version = Dir.glob(File.join(google_cache, '8.0.0*')).first ||
+                       Dir.glob(File.join(google_cache, '8.*')).first
+      if cached_version
+        FileUtils.mkdir_p(google_pods_dir)
+        Dir.glob(File.join(cached_version, 'GoogleSignIn', '*')).each do |item|
+          dst = File.join(google_pods_dir, File.basename(item))
+          FileUtils.cp_r(item, dst) unless File.exist?(dst)
+        end
+        puts "✓ Copied GoogleSignIn sources to Pods/GoogleSignIn"
+      end
+    end
+  end
+
+  # Copy other source pods from cache
+  source_pods = {
+    'GTMSessionFetcher' => '3.5.0*',
+    'GTMAppAuth'        => '4.1.1*',
+    'AppAuth'           => '1.7.6*',
+    'AppCheckCore'      => '11.2.0*',
+    'GoogleUtilities'   => '8.1.0*',
+    'PromisesObjC'      => '2.4.0*',
+  }
+  source_pods.each do |pod_name, ver_pattern|
+    pod_dst = File.join(pods_dir, pod_name)
+    next unless Dir.exist?(pod_dst) && (Dir.entries(pod_dst) - ['.', '..']).empty?
+    cache_pod = File.join(cache_base, pod_name)
+    next unless Dir.exist?(cache_pod)
+    ver_dir = Dir.glob(File.join(cache_pod, ver_pattern)).first
+    next unless ver_dir
+    src_files = Dir.glob(File.join(ver_dir, '*'))
+    src_files.each do |item|
+      dst = File.join(pod_dst, File.basename(item))
+      FileUtils.cp_r(item, dst) unless File.exist?(dst)
+    end
+    puts "✓ Copied #{pod_name} to Pods/#{pod_name}"
+  end
+
+  # ============================================================
+  # Step 3: Copy XCFramework pods and create framework symlinks
+  # ============================================================
+  xcframework_pods = {
+    'Google-Mobile-Ads-SDK' => {
+      'version_pattern' => '11.13.0*',
+      'src_subdir'      => 'Frameworks/GoogleMobileAdsFramework',
+      'dst_subdir'      => 'Frameworks/GoogleMobileAdsFramework',
+    },
+    'GoogleUserMessagingPlatform' => {
+      'version_pattern' => '3.1.0*',
+      'src_subdir'      => 'Frameworks/Release',
+      'dst_subdir'      => 'Frameworks/Release',
+    },
+  }
+  xcframework_pods.each do |pod_name, opts|
+    pod_dst_base = File.join(pods_dir, pod_name)
+    next unless Dir.exist?(pod_dst_base)
+    dst_dir = File.join(pod_dst_base, opts['dst_subdir'])
+    next if Dir.exist?(dst_dir) && Dir.glob(File.join(dst_dir, '*.xcframework')).any?
+    cache_pod = File.join(cache_base, pod_name)
+    next unless Dir.exist?(cache_pod)
+    ver_dir = Dir.glob(File.join(cache_pod, opts['version_pattern'])).first
+    next unless ver_dir
+    src_dir = File.join(ver_dir, opts['src_subdir'])
+    next unless Dir.exist?(src_dir)
+    FileUtils.mkdir_p(dst_dir)
+    Dir.glob(File.join(src_dir, '*.xcframework')).each do |xcf|
+      dst_xcf = File.join(dst_dir, File.basename(xcf))
+      FileUtils.cp_r(xcf, dst_xcf) unless Dir.exist?(dst_xcf)
+      puts "✓ Copied #{File.basename(xcf)} to Pods/#{pod_name}/#{opts['dst_subdir']}"
+      arm64_dir = File.join(dst_xcf, 'ios-arm64')
+      if Dir.exist?(arm64_dir)
+        Dir.glob(File.join(arm64_dir, '*.framework')).each do |fw|
+          fw_link = File.join(pod_dst_base, File.basename(fw))
+          File.delete(fw_link) if File.symlink?(fw_link)
+          File.symlink(fw, fw_link) unless File.exist?(fw_link)
+          puts "✓ Created #{File.basename(fw)} symlink in Pods/#{pod_name}/"
+        end
+      end
+    end
+  end
+
+  # ============================================================
+  # Step 4: Fix xcconfig files (MUST override, not use pbxproj settings)
+  # ============================================================
+
+  # Fix google_mobile_ads: add GMA/UMP to FRAMEWORK_SEARCH_PATHS
+  %w[debug release profile].each do |cfg|
+    xcconfig_path = File.join(pods_support_dir, 'google_mobile_ads', "google_mobile_ads.#{cfg}.xcconfig")
+    next unless File.exist?(xcconfig_path)
+    content = File.read(xcconfig_path)
+    unless content.include?('Google-Mobile-Ads-SDK')
+      content.gsub!(/^(FRAMEWORK_SEARCH_PATHS\s*=\s*.*)$/) do |line|
+        "#{line} \"${PODS_ROOT}/Google-Mobile-Ads-SDK\" \"${PODS_ROOT}/GoogleUserMessagingPlatform\""
+      end
+      # If no FRAMEWORK_SEARCH_PATHS line exists, add one
+      unless content.match?(/^FRAMEWORK_SEARCH_PATHS/)
+        content += "\nFRAMEWORK_SEARCH_PATHS = $(inherited) \"${PODS_ROOT}/Google-Mobile-Ads-SDK\" \"${PODS_ROOT}/GoogleUserMessagingPlatform\"\n"
+      end
+      File.write(xcconfig_path, content)
+      puts "✓ Fixed google_mobile_ads.#{cfg}.xcconfig FRAMEWORK_SEARCH_PATHS"
+    end
+  end
+
+  # Fix google_sign_in_ios: add GoogleSignIn to HEADER_SEARCH_PATHS and GID_SDK_VERSION
+  %w[debug release profile].each do |cfg|
+    xcconfig_path = File.join(pods_support_dir, 'google_sign_in_ios', "google_sign_in_ios.#{cfg}.xcconfig")
+    next unless File.exist?(xcconfig_path)
+    content = File.read(xcconfig_path)
+
+    # Add PODS_ROOT to HEADER_SEARCH_PATHS so #import "GoogleSignIn/Sources/xxx.h" works
+    # Also add GTMSessionFetcher public headers path
+    unless content.include?('"${PODS_ROOT}/GoogleSignIn"')
+      if content.match?(/^HEADER_SEARCH_PATHS/)
+        content.gsub!(/^(HEADER_SEARCH_PATHS\s*=\s*.*)$/) do |line|
+          "#{line} \"${PODS_ROOT}\" \"${PODS_ROOT}/GoogleSignIn\" \"${PODS_ROOT}/GoogleSignIn/Sources/Public\" \"${PODS_ROOT}/GTMSessionFetcher/Sources/Core/Public\" \"${PODS_ROOT}/GTMSessionFetcher/Sources/Full/Public\""
+        end
+      else
+        content += "\nHEADER_SEARCH_PATHS = $(inherited) \"${PODS_ROOT}\" \"${PODS_ROOT}/GoogleSignIn\" \"${PODS_ROOT}/GoogleSignIn/Sources/Public\" \"${PODS_ROOT}/GTMSessionFetcher/Sources/Core/Public\" \"${PODS_ROOT}/GTMSessionFetcher/Sources/Full/Public\"\n"
+      end
+    end
+
+    # Add GID_SDK_VERSION=8.0.0 to GCC_PREPROCESSOR_DEFINITIONS
+    unless content.include?('GID_SDK_VERSION')
+      content.gsub!(/^(GCC_PREPROCESSOR_DEFINITIONS\s*=\s*.*)$/) do |line|
+        "#{line} GID_SDK_VERSION=8.0.0"
+      end
+      # If no GCC_PREPROCESSOR_DEFINITIONS line exists, add one
+      unless content.match?(/^GCC_PREPROCESSOR_DEFINITIONS/)
+        content += "\nGCC_PREPROCESSOR_DEFINITIONS = $(inherited) COCOAPODS=1 GID_SDK_VERSION=8.0.0\n"
+      end
+    end
+
+    File.write(xcconfig_path, content)
+    puts "✓ Fixed google_sign_in_ios.#{cfg}.xcconfig"
+  end
+
+  # ============================================================
+  # Step 5: Inline GoogleSignIn sources into google_sign_in_ios target
+  # Fix for CocoaPods 1.16.2 bug (GoogleSignIn generates AggregateTarget)
+  # ============================================================
+  puts "Inlining GoogleSignIn sources into google_sign_in_ios..."
+  gs_sources_dir = File.join(pods_dir, 'GoogleSignIn', 'Sources')
+
+  if Dir.exist?(gs_sources_dir)
+    project = installer.pods_project
+    gsin_ios_target = project.targets.find { |t| t.name == 'google_sign_in_ios' }
+
+    if gsin_ios_target
+      sources_phase = gsin_ios_target.source_build_phase
+      gs_m_files = Dir.glob(File.join(gs_sources_dir, '**', '*.m')).sort
+      puts "Found #{gs_m_files.count} GoogleSignIn .m files"
+
+      # Check if already added
+      already_added = sources_phase.files_references.any? { |f|
+        f.real_path.to_s.include?('GoogleSignIn/Sources') rescue false
+      }
+
+      unless already_added
+        gs_m_files.each do |m_file|
+          relative_path = m_file.sub(pods_dir + '/', '')
+          file_ref = project.main_group.new_file(relative_path)
+          file_ref.source_tree = 'PODS_ROOT'
+          file_ref.last_known_file_type = 'sourcecode.c.objc'
+          sources_phase.add_file_reference(file_ref)
+        end
+        puts "✓ Added #{gs_m_files.count} GoogleSignIn .m files to google_sign_in_ios"
+
+        # Remove -framework "GoogleSignIn" from Pods-Runner xcconfigs
+        Dir.glob(File.join(pods_support_dir, 'Pods-Runner', 'Pods-Runner.*.xcconfig')).each do |cfg_path|
+          cfg_content = File.read(cfg_path)
+          if cfg_content.include?('-framework "GoogleSignIn"')
+            cfg_content.gsub!(' -framework "GoogleSignIn"', '')
+            File.write(cfg_path, cfg_content)
+            puts "✓ Removed -framework GoogleSignIn from #{File.basename(cfg_path)}"
+          end
+        end
+
+        project.save
+        puts "✓ Saved Pods.xcodeproj with GoogleSignIn sources inlined"
+      else
+        puts "GoogleSignIn sources already inlined (skipping)"
+      end
+    else
+      puts "ERROR: google_sign_in_ios target not found"
+    end
+  else
+    puts "ERROR: GoogleSignIn/Sources still not found at #{gs_sources_dir}"
+  end
+
+  # ============================================================
+  # Step 5.5: Patch ALL xcconfigs that reference GoogleSignIn to include
+  # GTMSessionFetcher public headers (framework-style #import support)
+  # ============================================================
+  gtm_header_paths = [
+    '"${PODS_ROOT}/GTMSessionFetcher/Sources/Core/Public"',
+    '"${PODS_ROOT}/GTMSessionFetcher/Sources/Full/Public"',
+  ].join(' ')
+
+  Dir.glob(File.join(pods_support_dir, '**', '*.xcconfig')).each do |xcconfig_path|
+    content = File.read(xcconfig_path)
+    next unless content.include?('GTMSessionFetcher') || xcconfig_path.include?('google_sign_in') || xcconfig_path.include?('Runner')
+    next if content.include?('GTMSessionFetcher/Sources/Core/Public')
+    if content.match?(/^HEADER_SEARCH_PATHS/)
+      content.gsub!(/^(HEADER_SEARCH_PATHS\s*=\s*.*)$/) { "#{Regexp.last_match(1)} #{gtm_header_paths}" }
+    else
+      content += "\nHEADER_SEARCH_PATHS = $(inherited) #{gtm_header_paths}\n"
+    end
+    File.write(xcconfig_path, content)
+  end
+  puts "✓ Patched all xcconfigs with GTMSessionFetcher header paths"
+
+  # ============================================================
+  # Step 6: GoogleService-Info.plist copy script
+  # ============================================================
+  google_plist = File.join(File.dirname(__FILE__), 'Runner', 'GoogleService-Info.plist')
+  if File.exist?(google_plist)
+    runner_project_path = File.join(File.dirname(__FILE__), 'Runner.xcodeproj')
+    runner_project = Xcodeproj::Project.open(runner_project_path)
+    main_target = runner_project.targets.first
+    existing_script = main_target.shell_script_build_phases.find { |phase|
+      phase.name == 'Copy GoogleService-Info.plist'
+    }
+    unless existing_script
+      phase = main_target.new_shell_script_build_phase('Copy GoogleService-Info.plist')
+      phase.shell_script = <<-SCRIPT
+if [ -f "${PROJECT_DIR}/Runner/GoogleService-Info.plist" ]; then
+  cp "${PROJECT_DIR}/Runner/GoogleService-Info.plist" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist"
+  echo "Copied GoogleService-Info.plist"
+fi
+      SCRIPT
+      runner_project.save
+      puts "✓ Added GoogleService-Info.plist copy script to Runner"
+    end
+  end
+end

@@ -1,0 +1,204 @@
+// miningBalance.js
+// 职责：
+// - 依据用户分组（在线+有效合约 / 离线+有效合约 / 离线+无有效合约）定频率调度挖矿余额计算
+// - 使用 Redis 作为实时余额的“计算态与缓存态”存储，保证查询与累积高性能
+// - 每 60 秒将 Redis 中// MySQL持久化，每60秒
+// - 角色：权威// MySQL持久化，每60秒
+// - 角色：权威账务存储，用于对账、报表与历史
+// - 模型：简单地将 Redis 中的余额写回到 UserInformation.bitcoinBalance
+// - 一致性：周期内的新增产出暂存于 Redis；如需严格一致性可将交易流水分解为"可重放"的事件日志
+setInterval(async () => {
+  try {
+    // 伪代码：遍历所有用户，将Redis余额写入MySQL
+    const users = await UserInformation.findAll();
+    for (const user of users) {
+      const balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;
+      await user.update({ bitcoinBalance: balance });
+    }
+  } catch (error) {
+    console.error('MySQL持久化失败:', error.message);
+  }
+}, 60000);与历史
+// - 模型：简单地将 Redis 中的余额写回到 UserInformation.bitcoinBalance
+// - 一致性：周期内的新增产出暂存于 Redis；如需严格一致性可将交易流水分解为"可重放"的事件日志
+// TODO: 暂时注释掉,等待MySQL连接稳定后启用
+/*
+setInterval(async () => {
+  try {
+    // 伪代码：遍历所有用户，将Redis余额写入MySQL
+    const users = await UserInformation.findAll();
+    for (const user of users) {
+      const balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;
+      await user.update({ bitcoinBalance: balance });
+    }
+  } catch (error) {
+    console.error('MySQL持久化错误:', error);
+  }
+}, 60000); // 作为账务持久层（最终一致性）
+*/
+//
+// 设计取舍：
+// - 实时性：在线+有效合约用户每 5s 计算一次；离线+有效合约每 60s；离线+无有效合约每 24h
+// - 一致性：Redis 为近实时视图，MySQL 为权威账务；可能出现短期偏差（<= 持久化周期），可按需对账修正
+// - 并发与原子性：当前示例为单进程、简单模型；多实例部署时应考虑分布式锁/乐观锁以及 Lua 脚本原子加法
+// - 可靠性：LAST_CALC 使用 Redis 记录，避免重复计算；若进程中断，下一次会按时间差继续累积
+//
+// 注意：本文件包含示例/伪代码（如 contracts 的 rate、startTime 等），需要依据真实业务模型完善
+const redis = require('./redisClient');
+const { UserInformation, MiningContract } = require('../models');
+const { Op } = require('sequelize');
+// Node.js 全局 setInterval
+const setInterval = global.setInterval;
+
+// Redis key 设计
+const BALANCE_KEY = userId => `user:balance:${userId}`;
+const LAST_CALC_KEY = userId => `user:last_calc:${userId}`;
+
+/**
+ * 计算单个用户的比特币余额（示例：基于“时间差 * 产出速率”的线性累积）
+ * 合约字段假设：
+ * - contract.rate: number 按秒产出率
+ * - contract.startTime: number(ms) 合约起始时间
+ * - contract.endTime: number(ms) 合约结束时间（可选，本函数以调用方筛选后的生效合约为准）
+ *
+ * 数据来源：
+ * - 读取 Redis 中的余额与上次计算时间（BALANCE_KEY, LAST_CALC_KEY）
+ * - 若不存在上次计算时间，退化到使用合约 startTime（示例策略）
+ *
+ * 原子性：
+ * - 单进程示例未使用 Redis 事务；多进程/多实例下应考虑使用 Lua 脚本或 WATCH/MULTI 实现读改写原子操作
+ *
+ * @param {object} user - 用户对象，应至少包含 id
+ * @param {object[]} contracts - 用户当前“生效”的合约集合
+ * @returns {Promise<number>} 返回新余额
+ */
+async function calculateUserBalance(user, contracts) {
+  try {
+    // 这里假设每个合约每秒产出 rate 个比特币
+    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;
+    const now = Date.now();
+    for (const contract of contracts) {
+      // 合约生效时间、产出速率、上次计算时间
+      const lastCalc = Number(await redis.get(LAST_CALC_KEY(user.id))) || contract.startTime;
+      const seconds = Math.floor((now - lastCalc) / 1000);
+      if (seconds > 0) {
+        balance += contract.rate * seconds;
+      }
+    }
+    // 更新Redis余额和最后计算时间
+    await redis.set(BALANCE_KEY(user.id), balance);
+    await redis.set(LAST_CALC_KEY(user.id), now);
+    return balance;
+  } catch (error) {
+    console.error(`计算用户 ${user.id} 余额失败:`, error.message);
+    return 0;
+  }
+}
+
+/**
+ * 获取三类分组用户
+ * - onlineActive：在线且存在生效合约的用户
+ * - offlineActive：离线且存在生效合约的用户
+ * - offlineInactive：离线且不存在生效合约的用户
+ *
+ * 备注：此处为示例实现，依赖 UserInformation.isOnline 字段与 MiningContract 的起止时间。
+ * 实际项目需：
+ * - 明确“在线状态”的来源（WebSocket 心跳/最近活跃时间等）
+ * - 根据合约业务准确定义“生效”的筛选条件（时区/延迟/暂停等情况）
+ *
+ * @returns {Promise<{onlineActive: any[], offlineActive: any[], offlineInactive: any[]}>}
+ */
+async function getUserGroups() {
+  // 伪代码：实际应结合在线状态与合约状态
+  const now = Date.now();
+  // 在线且有生效合约
+  const onlineActive = await UserInformation.findAll({
+    where: { isOnline: true },
+    include: [{
+      model: MiningContract,
+      where: { startTime: { [Op.lt]: now }, endTime: { [Op.gt]: now } },
+      required: true
+    }]
+  });
+  // 离线且有生效合约
+  const offlineActive = await UserInformation.findAll({
+    where: { isOnline: false },
+    include: [{
+      model: MiningContract,
+      where: { startTime: { [Op.lt]: now }, endTime: { [Op.gt]: now } },
+      required: true
+    }]
+  });
+  // 离线且无生效合约
+  const offlineInactive = await UserInformation.findAll({
+    where: { isOnline: false },
+    include: [{
+      model: MiningContract,
+      where: { endTime: { [Op.lt]: now } },
+      required: false
+    }]
+  });
+  return { onlineActive, offlineActive, offlineInactive };
+}
+
+/**
+ * 定时任务调度器（不持有外部引用，交由 Node 进程生命周期管理）
+ * - 使用 setInterval 周期性拉取分组用户并计算余额
+ * - 如果一次执行耗时超过 intervalMs，下一轮可能堆叠（示例未做并发保护）；
+ *   生产中建议：
+ *   - 使用分布式任务队列（Bull/Redis）或基于锁的并发控制
+ *   - 使用 cron 调度并在 handler 中做“错过窗口的补偿计算（依据时间差）”
+ *
+ * @param {string} group - 分组名，仅用于日志/调试
+ * @param {number} intervalMs - 执行间隔（毫秒）
+ * @param {() => Promise<any[]>} getUsers - 拉取该分组用户的方法
+ */
+function scheduleBalanceCalculation(group, intervalMs, getUsers) {
+  setInterval(async () => {
+    try {
+      const users = await getUsers();
+      for (const user of users) {
+        const contracts = user.MiningContracts || [];
+        await calculateUserBalance(user, contracts);
+      }
+      // 可记录日志或统计
+    } catch (error) {
+      console.error(`分组 ${group} 余额计算失败:`, error.message);
+    }
+  }, intervalMs);
+}
+
+// 启动分组调度
+/**
+ * 启动所有分组的定时调度器
+ * - onlineActive: 5s
+ * - offlineActive: 60s
+ * - offlineInactive: 24h
+ */
+async function startMiningBalanceScheduler() {
+  // 在线且有生效合约：每5秒
+  scheduleBalanceCalculation('onlineActive', 5000, async () => (await getUserGroups()).onlineActive);
+  // 离线且有生效合约：每60秒
+  scheduleBalanceCalculation('offlineActive', 60000, async () => (await getUserGroups()).offlineActive);
+  // 离线且无生效合约：每24小时
+  scheduleBalanceCalculation('offlineInactive', 24 * 60 * 60 * 1000, async () => (await getUserGroups()).offlineInactive);
+}
+
+// MySQL持久化，每60秒
+// - 角色：权威账务存储，用于对账、报表与历史
+// - 模型：简单地将 Redis 中的余额写回到 UserInformation.bitcoinBalance
+// - 一致性：周期内的新增产出暂存于 Redis；如需严格一致性可将交易流水分解为“可重放”的事件日志
+setInterval(async () => {
+  // 伪代码：遍历所有用户，将Redis余额写入MySQL
+  const users = await UserInformation.findAll();
+  for (const user of users) {
+    const balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;
+    await user.update({ bitcoinBalance: balance });
+  }
+}, 60000);
+
+module.exports = {
+  startMiningBalanceScheduler,
+  calculateUserBalance,
+  getUserGroups
+};

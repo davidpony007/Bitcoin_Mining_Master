@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  bitcoin_mysql_dev:
+    image: mysql:8.0
+    platform: linux/amd64
+    container_name: bitcoin_mysql_dev
+    environment:
+      MYSQL_ROOT_PASSWORD: dev_password_123
+      MYSQL_DATABASE: bitcoin_mining_master
+    ports:
+      - "3306:3306"
+    volumes:
+      - bitcoin_mysql_dev_data:/var/lib/mysql
+    networks:
+      - bitcoin_dev_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pdev_password_123"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bitcoin_redis_dev:
+    image: redis:6-alpine
+    platform: linux/amd64
+    container_name: bitcoin_redis_dev
+    command: redis-server --requirepass dev_redis_123
+    ports:
+      - "6379:6379"
+    volumes:
+      - bitcoin_redis_dev_data:/data
+    networks:
+      - bitcoin_dev_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "dev_redis_123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bitcoin_backend_dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: bitcoin_backend_dev
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      PORT: 8888
+      NODE_ENV: development
+      LOG_LEVEL: info
+      JWT_SECRET: f8e3a9c1b2d4e5f67890abcdef123456789012345678901234567890abcd
+      DB_HOST: bitcoin_mysql_dev
+      DB_PORT: 3306
+      DB_NAME: bitcoin_mining_master
+      DB_USER: root
+      DB_PASSWORD: dev_password_123
+      REDIS_HOST: bitcoin_redis_dev
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: dev_redis_123
+      CORS_ORIGINS: "http://localhost:3000,https://yourdomain.com"
+    depends_on:
+      bitcoin_mysql_dev:
+        condition: service_healthy
+      bitcoin_redis_dev:
+        condition: service_healthy
+    networks:
+      - bitcoin_dev_net
+    restart: unless-stopped
+
+volumes:
+  bitcoin_mysql_dev_data:
+  bitcoin_redis_dev_data:
+
+networks:
+  bitcoin_dev_net:
+    driver: bridge

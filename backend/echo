@@ -1,0 +1,10 @@
+========== 1. 保护Redis（禁止外网访问）==========
+✓ Redis已绑定到127.0.0.1
+
+========== 2. 配置防火墙 ==========
+success
+success
+success
+success
+success
+Please use start or stop as first argument

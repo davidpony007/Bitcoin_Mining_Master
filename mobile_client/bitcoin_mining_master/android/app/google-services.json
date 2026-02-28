@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1026466488683",
+    "project_id": "bitcoin-mining-master-24993",
+    "storage_bucket": "bitcoin-mining-master-24993.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1026466488683:android:7c1322ea17755a95fe2c2e",
+        "android_client_info": {
+          "package_name": "com.cloudminingtool.bitcoin_mining_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1026466488683-oj0o8tkjdotapj219bd4d6n42eu2d93u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cloudminingtool.bitcoin_mining_app",
+            "certificate_hash": "a22010cd82f95b265cf2b4b42c92b99e3aeb954b"
+          }
+        },
+        {
+          "client_id": "1026466488683-1ps9vc7puchr9don7fmja0vrnngj78kk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCsWI4rXPp1CD381uhND546IvKVKOLQ20M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1026466488683-1ps9vc7puchr9don7fmja0vrnngj78kk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1026466488683-f77ipeggp36cd2cjhd2min348n2ahio7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.cloudminingtool.bitcoinMiningMaster"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

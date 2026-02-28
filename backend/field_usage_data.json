@@ -1,0 +1,3664 @@
+{
+  "analyzedAt": "2026-01-22T16:23:00.072Z",
+  "database": "bitcoin_mining_master",
+  "tableCount": 21,
+  "totalFields": 162,
+  "usedFields": 161,
+  "unusedFields": 1,
+  "tables": {
+    "ad_view_record": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户ID",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "ad_type",
+          "type": "varchar(50)",
+          "null": "YES",
+          "key": "",
+          "default": "free_contract",
+          "extra": "",
+          "comment": "广告类型",
+          "dataType": "varchar",
+          "columnType": "varchar(50)"
+        },
+        {
+          "name": "view_date",
+          "type": "date",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "观看日期（UTC时区）",
+          "dataType": "date",
+          "columnType": "date"
+        },
+        {
+          "name": "view_count",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": "当日观看次数",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "points_earned",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": "获得积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "on update CURRENT_TIMESTAMP",
+          "comment": "更新时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "bitcoin_transaction_records": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "交易记录主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(15)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符",
+          "dataType": "varchar",
+          "columnType": "varchar(15)"
+        },
+        {
+          "name": "transaction_type",
+          "type": "enum('ad free contract','daily sign-in free contract','invitation free contract','paid contract','withdrawal','subordinate rebate','refund for withdrawal failure')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "交易类型：广告免费合约/每日签到免费合约/邀请免费合约/付费合约/提现/下级返利/提现失败退款",
+          "dataType": "enum",
+          "columnType": "enum('ad free contract','daily sign-in free contract','invitation free contract','paid contract','withdrawal','subordinate rebate','refund for withdrawal failure')"
+        },
+        {
+          "name": "transaction_amount",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "交易金额（比特币数量，精确到18位小数）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "transaction_creation_time",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "交易创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "transaction_status",
+          "type": "enum('success','error')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "交易状态：成功/失败",
+          "dataType": "enum",
+          "columnType": "enum('success','error')"
+        }
+      ]
+    },
+    "check_in_record": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户ID",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "check_in_date",
+          "type": "date",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "签到日期",
+          "dataType": "date",
+          "columnType": "date"
+        },
+        {
+          "name": "points_earned",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "4",
+          "extra": "",
+          "comment": "每日签到获得的积分（固定4积分）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "check_in_reward_config": {
+      "recordCount": 4,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "自增主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "cumulative_days",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "累计签到天数里程碑（3/7/15/30）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "points_reward",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "里程碑奖励积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "bonus_multiplier",
+          "type": "decimal(10,4)",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "挖矿速度加成倍数（可选）",
+          "dataType": "decimal",
+          "columnType": "decimal(10,4)"
+        },
+        {
+          "name": "bonus_duration_hours",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "加成持续时间（小时）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "description",
+          "type": "varchar(255)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "里程碑描述（累计签到）",
+          "dataType": "varchar",
+          "columnType": "varchar(255)"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "null": "NO",
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": "是否启用该奖励规则",
+          "dataType": "tinyint",
+          "columnType": "tinyint(1)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "配置创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "on update CURRENT_TIMESTAMP",
+          "comment": "配置更新时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "country_mining_config": {
+      "recordCount": 10,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "自增主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "country_code",
+          "type": "varchar(2)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "国家代码（ISO 3166-1 alpha-2标准）",
+          "dataType": "varchar",
+          "columnType": "varchar(2)"
+        },
+        {
+          "name": "country_name",
+          "type": "varchar(100)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "国家英文名称",
+          "dataType": "varchar",
+          "columnType": "varchar(100)"
+        },
+        {
+          "name": "country_name_cn",
+          "type": "varchar(100)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "国家中文名称",
+          "dataType": "varchar",
+          "columnType": "varchar(100)"
+        },
+        {
+          "name": "mining_multiplier",
+          "type": "decimal(5,2)",
+          "null": "NO",
+          "key": "MUL",
+          "default": "1.00",
+          "extra": "",
+          "comment": "挖矿速率倍率",
+          "dataType": "decimal",
+          "columnType": "decimal(5,2)"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "null": "YES",
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": "是否启用",
+          "dataType": "tinyint",
+          "columnType": "tinyint(1)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "on update CURRENT_TIMESTAMP",
+          "comment": "更新时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "cumulative_check_in_reward": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11) unsigned",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "主键ID",
+          "dataType": "int",
+          "columnType": "int(11) unsigned"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户ID",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "cumulative_days",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "累计签到天数（3/7/15/30）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "points_earned",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "获得的里程碑奖励积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "claimed_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "领取时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "free_contract_records": {
+      "recordCount": 3,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "免费合约记录主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(50)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "varchar",
+          "columnType": "varchar(50)"
+        },
+        {
+          "name": "free_contract_type",
+          "type": "enum('ad free contract','daily sign-in free contract','invitation free contract','bind referrer free contract')",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "enum",
+          "columnType": "enum('ad free contract','daily sign-in free contract','invitation free contract','bind referrer free contract')"
+        },
+        {
+          "name": "free_contract_revenue",
+          "type": "decimal(18,18)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "免费合约预期收益（BTC）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "free_contract_creation_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "免费合约创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "free_contract_end_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "免费合约结束时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "hashrate",
+          "type": "decimal(18,18)",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "算力（挖矿速度）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "mining_status",
+          "type": "enum('completed','mining','error')",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "挖矿状态：已完成/挖矿中/错误",
+          "dataType": "enum",
+          "columnType": "enum('completed','mining','error')"
+        }
+      ]
+    },
+    "invitation_rebate": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "返利记录主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(15)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "推荐人用户ID（获得返利的用户）",
+          "dataType": "varchar",
+          "columnType": "varchar(15)"
+        },
+        {
+          "name": "invitation_code",
+          "type": "varchar(11)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "推荐人的邀请码",
+          "dataType": "varchar",
+          "columnType": "varchar(11)"
+        },
+        {
+          "name": "subordinate_user_id",
+          "type": "varchar(15)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "被推荐人用户ID（下级用户）",
+          "dataType": "varchar",
+          "columnType": "varchar(15)"
+        },
+        {
+          "name": "subordinate_user_invitation_code",
+          "type": "varchar(11)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "被推荐人的邀请码",
+          "dataType": "varchar",
+          "columnType": "varchar(11)"
+        },
+        {
+          "name": "subordinate_rebate_amount",
+          "type": "decimal(18,18)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "返利金额（BTC）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "rebate_creation_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "返利发放时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "invitation_relationship": {
+      "recordCount": 1,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "关系记录主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "被邀请用户ID",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "invitation_code",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "被邀请用户自己的邀请码",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "referrer_user_id",
+          "type": "varchar(30)",
+          "null": "YES",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "推荐人用户ID（邀请者ID，可为空表示无推荐人）",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "referrer_invitation_code",
+          "type": "varchar(30)",
+          "null": "YES",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "推荐人的邀请码（使用的邀请码，可为空）",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "invitation_creation_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "邀请关系建立时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "level_config": {
+      "recordCount": 9,
+      "fields": [
+        {
+          "name": "level",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "",
+          "comment": "等级数值",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "min_points",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": "该等级所需最小积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "max_points",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": "999999",
+          "extra": "",
+          "comment": "该等级所需最大积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "speed_multiplier",
+          "type": "decimal(10,4)",
+          "null": "NO",
+          "key": "",
+          "default": "1.0000",
+          "extra": "",
+          "comment": "挖矿速度倍数加成",
+          "dataType": "decimal",
+          "columnType": "decimal(10,4)"
+        },
+        {
+          "name": "level_name",
+          "type": "varchar(50)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "等级名称",
+          "dataType": "varchar",
+          "columnType": "varchar(50)"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "等级描述说明",
+          "dataType": "text",
+          "columnType": "text"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "配置创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "on update CURRENT_TIMESTAMP",
+          "comment": "配置更新时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "mining_contracts": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(30)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "合约记录主键ID",
+          "dataType": "int",
+          "columnType": "int(30)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(15)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符",
+          "dataType": "varchar",
+          "columnType": "varchar(15)"
+        },
+        {
+          "name": "contract_type",
+          "type": "enum('ad free contract','daily sign-in free contract','invitation free contract','paid contract')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "合约类型：广告免费合约/每日签到免费合约/邀请免费合约/付费合约",
+          "dataType": "enum",
+          "columnType": "enum('ad free contract','daily sign-in free contract','invitation free contract','paid contract')"
+        },
+        {
+          "name": "contract_creation_time",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "合约创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "contract_end_time",
+          "type": "datetime",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "合约结束时间",
+          "dataType": "datetime",
+          "columnType": "datetime"
+        },
+        {
+          "name": "contract_duration",
+          "type": "time",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "合约持续时长",
+          "dataType": "time",
+          "columnType": "time"
+        },
+        {
+          "name": "hashrate",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "算力（挖矿速度，BTC/小时）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "mining_status",
+          "type": "enum('completed','mining','error')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "挖矿状态：已完成/挖矿中/错误",
+          "dataType": "enum",
+          "columnType": "enum('completed','mining','error')"
+        }
+      ]
+    },
+    "paid_products_list": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "产品主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "product_id",
+          "type": "enum('p0499','p0699','p0999','p1999','p4999','p9999')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "产品唯一标识（p0499/p0699/p0999/p1999/p4999/p9999）",
+          "dataType": "enum",
+          "columnType": "enum('p0499','p0699','p0999','p1999','p4999','p9999')"
+        },
+        {
+          "name": "product_name",
+          "type": "enum('contract_4.99','contract_6.99','contract_9.99','contract_19.99','contract_49.99','contract_99.99')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "产品名称（contract_4.99等）",
+          "dataType": "enum",
+          "columnType": "enum('contract_4.99','contract_6.99','contract_9.99','contract_19.99','contract_49.99','contract_99.99')"
+        },
+        {
+          "name": "product_price",
+          "type": "enum('4.99','6.99','9.99','19.99','49.99','99.99')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "产品价格（美元）",
+          "dataType": "enum",
+          "columnType": "enum('4.99','6.99','9.99','19.99','49.99','99.99')"
+        },
+        {
+          "name": "hashrate",
+          "type": "enum('176.3 Gh/s','305.6 Gh/s','611.2 Gh/s','1326.4 Gh/s','2915.6 Gh/s','6122.7 Gh/s')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "算力（挖矿速度）",
+          "dataType": "enum",
+          "columnType": "enum('176.3 Gh/s','305.6 Gh/s','611.2 Gh/s','1326.4 Gh/s','2915.6 Gh/s','6122.7 Gh/s')"
+        },
+        {
+          "name": "product_contract_duration",
+          "type": "enum('720 hours')",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "合约持续时长（720小时）",
+          "dataType": "enum",
+          "columnType": "enum('720 hours')"
+        }
+      ]
+    },
+    "points_transaction": {
+      "recordCount": 4,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户ID",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "points_change",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "积分变动（正数增加，负数减少）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "points_type",
+          "type": "enum('AD_VIEW','REFERRAL_1','REFERRAL_10','DAILY_CHECKIN','CONSECUTIVE_CHECKIN_3','CONSECUTIVE_CHECKIN_7','CONSECUTIVE_CHECKIN_15','CONSECUTIVE_CHECKIN_30','SUBORDINATE_AD_VIEW','MANUAL_ADD','MANUAL_DEDUCT')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "积分类型",
+          "dataType": "enum",
+          "columnType": "enum('AD_VIEW','REFERRAL_1','REFERRAL_10','DAILY_CHECKIN','CONSECUTIVE_CHECKIN_3','CONSECUTIVE_CHECKIN_7','CONSECUTIVE_CHECKIN_15','CONSECUTIVE_CHECKIN_30','SUBORDINATE_AD_VIEW','MANUAL_ADD','MANUAL_DEDUCT')"
+        },
+        {
+          "name": "balance_after",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "变动后余额",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "description",
+          "type": "varchar(255)",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "说明",
+          "dataType": "varchar",
+          "columnType": "varchar(255)"
+        },
+        {
+          "name": "related_user_id",
+          "type": "varchar(30)",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "关联用户ID（如邀请人/被邀请人）",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "referral_milestone": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "推荐人用户ID",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "milestone_type",
+          "type": "enum('1_FRIEND','10_FRIENDS')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "里程碑类型（1人/10人）",
+          "dataType": "enum",
+          "columnType": "enum('1_FRIEND','10_FRIENDS')"
+        },
+        {
+          "name": "milestone_count",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "达成次数（10人里程碑可多次）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "total_referrals_at_claim",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "领取时的总推荐人数",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "points_earned",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "获得积分（1人=6积分，10人=30积分）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "claimed_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "领取时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "user_check_in": {
+      "recordCount": 1,
+      "fields": [
+        {
+          "name": "id",
+          "type": "bigint(20) unsigned",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "",
+          "dataType": "bigint",
+          "columnType": "bigint(20) unsigned"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(50)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "varchar",
+          "columnType": "varchar(50)"
+        },
+        {
+          "name": "check_in_date",
+          "type": "date",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "date",
+          "columnType": "date"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "consecutive_days",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": "",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "points_earned",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "daily_bonus_active",
+          "type": "tinyint(1)",
+          "null": "YES",
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "",
+          "dataType": "tinyint",
+          "columnType": "tinyint(1)"
+        },
+        {
+          "name": "bonus_expire_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "user_information": {
+      "recordCount": 1,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(10)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "用户信息主键ID",
+          "dataType": "int",
+          "columnType": "int(10)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符（格式：U+年月日时分秒+5位随机数）",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "invitation_code",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户的邀请码（格式：INV+年月日时分秒+4位随机数）",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "email",
+          "type": "varchar(30)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户邮箱地址",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "google_account",
+          "type": "varchar(100)",
+          "null": "YES",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "绑定的Google账号邮箱",
+          "dataType": "varchar",
+          "columnType": "varchar(100)"
+        },
+        {
+          "name": "android_id",
+          "type": "varchar(32)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "Android设备ID（可选）",
+          "dataType": "varchar",
+          "columnType": "varchar(32)"
+        },
+        {
+          "name": "gaid",
+          "type": "varchar(36)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "Google Advertising ID（可选）",
+          "dataType": "varchar",
+          "columnType": "varchar(36)"
+        },
+        {
+          "name": "register_ip",
+          "type": "varchar(45)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "注册时的IP地址（支持IPv4和IPv6）",
+          "dataType": "varchar",
+          "columnType": "varchar(45)"
+        },
+        {
+          "name": "country",
+          "type": "varchar(32)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户所在国家",
+          "dataType": "varchar",
+          "columnType": "varchar(32)"
+        },
+        {
+          "name": "user_creation_time",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "用户账户创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "country_multiplier",
+          "type": "decimal(4,2)",
+          "null": "YES",
+          "key": "",
+          "default": "1.00",
+          "extra": "",
+          "comment": "国家挖矿速度倍率，默认1.00",
+          "dataType": "decimal",
+          "columnType": "decimal(4,2)"
+        },
+        {
+          "name": "user_level",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": "用户等级",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_points",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "用户积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "mining_speed_multiplier",
+          "type": "decimal(8,6)",
+          "null": "YES",
+          "key": "",
+          "default": "1.000000",
+          "extra": "",
+          "comment": "挖矿速度倍率",
+          "dataType": "decimal",
+          "columnType": "decimal(8,6)"
+        }
+      ]
+    },
+    "user_log": {
+      "recordCount": 2,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "日志主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(50)",
+          "null": "YES",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符",
+          "dataType": "varchar",
+          "columnType": "varchar(50)"
+        },
+        {
+          "name": "action",
+          "type": "varchar(50)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户操作类型",
+          "dataType": "varchar",
+          "columnType": "varchar(50)"
+        },
+        {
+          "name": "log_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "日志记录时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "user_orders": {
+      "recordCount": 0,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "订单主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(15)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符",
+          "dataType": "varchar",
+          "columnType": "varchar(15)"
+        },
+        {
+          "name": "email",
+          "type": "varchar(80)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户邮箱",
+          "dataType": "varchar",
+          "columnType": "varchar(80)"
+        },
+        {
+          "name": "product_id",
+          "type": "enum('p0499','p0699','p0999','p1999','p4999','p9999')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "产品ID（p0499/p0699/p0999/p1999/p4999/p9999）",
+          "dataType": "enum",
+          "columnType": "enum('p0499','p0699','p0999','p1999','p4999','p9999')"
+        },
+        {
+          "name": "product_name",
+          "type": "enum('contract_4.99','contract_6.99','contract_9.99','contract_19.99','contract_49.99','contract_99.99')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "产品名称（contract_4.99等）",
+          "dataType": "enum",
+          "columnType": "enum('contract_4.99','contract_6.99','contract_9.99','contract_19.99','contract_49.99','contract_99.99')"
+        },
+        {
+          "name": "product_price",
+          "type": "enum('4.99','6.99','9.99','19.99','49.99','99.99')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "产品价格（美元）",
+          "dataType": "enum",
+          "columnType": "enum('4.99','6.99','9.99','19.99','49.99','99.99')"
+        },
+        {
+          "name": "hashrate",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "算力（挖矿速度）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "order_creation_time",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "订单创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "payment_time",
+          "type": "datetime",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "支付完成时间",
+          "dataType": "datetime",
+          "columnType": "datetime"
+        },
+        {
+          "name": "currency_type",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "支付货币类型",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "country",
+          "type": "varchar(30)",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户所在国家",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "payment_gateway_id",
+          "type": "varchar(80)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "支付网关订单ID",
+          "dataType": "varchar",
+          "columnType": "varchar(80)"
+        },
+        {
+          "name": "payment_network_id",
+          "type": "varchar(80)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "支付网络交易ID",
+          "dataType": "varchar",
+          "columnType": "varchar(80)"
+        },
+        {
+          "name": "order_status",
+          "type": "enum('active','renewing','complete','error','refund request in progress','refund successful','refund rejected')",
+          "null": "YES",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "订单状态：激活中/续费中/完成/错误/退款申请中/退款成功/退款被拒",
+          "dataType": "enum",
+          "columnType": "enum('active','renewing','complete','error','refund request in progress','refund successful','refund rejected')"
+        }
+      ]
+    },
+    "user_points": {
+      "recordCount": 1,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户ID（关联user_information.user_id）",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "total_points",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": "总积分",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "available_points",
+          "type": "int(11)",
+          "null": "YES",
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": "可用积分（扣除已消耗的）",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "创建时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "on update CURRENT_TIMESTAMP",
+          "comment": "更新时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "user_status": {
+      "recordCount": 14,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "用户状态主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "bitcoin_accumulated_amount",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "累计挖矿产出总量（BTC）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "current_bitcoin_balance",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "当前比特币余额（BTC）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "total_invitation_rebate",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "累计邀请返利总额（BTC）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "total_withdrawal_amount",
+          "type": "decimal(18,18)",
+          "null": "NO",
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "累计提现金额（BTC）",
+          "dataType": "decimal",
+          "columnType": "decimal(18,18)"
+        },
+        {
+          "name": "last_login_time",
+          "type": "timestamp",
+          "null": "NO",
+          "key": "MUL",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "最后登录时间",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        },
+        {
+          "name": "user_status",
+          "type": "enum('active within 3 days','no login within 7 days','disabled','deleted','normal')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户状态：3天内活跃/7天未登录/已禁用/已删除/正常",
+          "dataType": "enum",
+          "columnType": "enum('active within 3 days','no login within 7 days','disabled','deleted','normal')"
+        },
+        {
+          "name": "last_balance_update_time",
+          "type": "timestamp",
+          "null": "YES",
+          "key": "",
+          "default": "CURRENT_TIMESTAMP",
+          "extra": "",
+          "comment": "上次余额更新时间（用于增量计算）",
+          "dataType": "timestamp",
+          "columnType": "timestamp"
+        }
+      ]
+    },
+    "withdrawal_records": {
+      "recordCount": 3,
+      "fields": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "null": "NO",
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": "提现记录主键ID",
+          "dataType": "int",
+          "columnType": "int(11)"
+        },
+        {
+          "name": "user_id",
+          "type": "varchar(30)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户唯一标识符",
+          "dataType": "varchar",
+          "columnType": "varchar(30)"
+        },
+        {
+          "name": "email",
+          "type": "varchar(60)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "用户邮箱地址",
+          "dataType": "varchar",
+          "columnType": "varchar(60)"
+        },
+        {
+          "name": "wallet_address",
+          "type": "varchar(80)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "比特币钱包地址",
+          "dataType": "varchar",
+          "columnType": "varchar(80)"
+        },
+        {
+          "name": "withdrawal_request_amount",
+          "type": "decimal(20,8)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "decimal",
+          "columnType": "decimal(20,8)"
+        },
+        {
+          "name": "network_fee",
+          "type": "decimal(20,8)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "decimal",
+          "columnType": "decimal(20,8)"
+        },
+        {
+          "name": "received_amount",
+          "type": "decimal(20,8)",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "",
+          "dataType": "decimal",
+          "columnType": "decimal(20,8)"
+        },
+        {
+          "name": "withdrawal_status",
+          "type": "enum('success','pending','rejected')",
+          "null": "NO",
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "提现状态：成功/处理中/已拒绝",
+          "dataType": "enum",
+          "columnType": "enum('success','pending','rejected')"
+        }
+      ]
+    }
+  },
+  "fieldUsage": {
+    "ad_view_record": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "ad_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/adRoutes.js: * @body    ad_type - 广告类型 (可选，默认REWARD_AD)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/adRoutes.js:    const { user_id, ad_type = 'REWARD_AD' } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          ad_type,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          ad_type,"
+        ],
+        "sqlStatements": []
+      },
+      "view_date": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:        'SELECT id, view_count, points_earned FROM ad_view_record WHERE user_id = ? AND view_date = ? FOR UPDATE',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:          `INSERT INTO ad_view_record (user_id, view_date, view_count, points_earned) ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:        'SELECT view_count, points_earned FROM ad_view_record WHERE user_id = :userId AND view_date = :today',"
+        ],
+        "sqlStatements": []
+      },
+      "view_count": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          COALESCE(SUM(avr.view_count), 0) as total_ad_views,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          CASE WHEN SUM(avr.view_count) >= 5 THEN 1 ELSE 0 END as is_valid",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:        'SELECT id, view_count, points_earned FROM ad_view_record WHERE user_id = ? AND view_date = ? FOR UPDATE',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:          `INSERT INTO ad_view_record (user_id, view_date, view_count, points_earned) "
+        ],
+        "sqlStatements": []
+      },
+      "points_earned": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          SUM(points_earned) as total_points_from_ads,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      },
+      "updated_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - updated_at: 更新时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updated_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updatedAt: 'updated_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "bitcoin_transaction_records": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "transaction_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_type: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['transaction_type'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_transaction_type'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          transaction_type,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          transaction_type,"
+        ],
+        "sqlStatements": []
+      },
+      "transaction_amount": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_amount: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:    //   transaction_amount: withdrawAmount,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:        transaction_amount: withdrawal.withdrawal_request_amount,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:      transaction_amount: parseFloat(withdrawal.withdrawal_request_amount),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:        transaction_amount: withdrawal.withdrawal_request_amount,"
+        ],
+        "sqlStatements": []
+      },
+      "transaction_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['transaction_creation_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_transaction_creation_time'"
+        ],
+        "sqlStatements": []
+      },
+      "transaction_status": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['transaction_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_transaction_status'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:    //   transaction_status: 'pending',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:      transaction_status: 'success'"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "check_in_record": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "check_in_date": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:              'SELECT user_id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          check_in_date, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT check_in_date, consecutive_days FROM user_check_in WHERE user_id = ? ORDER BY check_in_date DESC LIMIT 1',"
+        ],
+        "sqlStatements": []
+      },
+      "points_earned": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          SUM(points_earned) as total_points_from_ads,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "check_in_reward_config": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "cumulative_days": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js: * @body    cumulative_days - 累计天数 (3/7/15/30)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    const { user_id, cumulative_days, consecutive_days } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    const days = cumulative_days || consecutive_days;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:        message: '缺少参数: user_id, cumulative_days'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInPointsService.js:        'SELECT id FROM cumulative_check_in_reward WHERE user_id = ? AND cumulative_days = ?',"
+        ],
+        "sqlStatements": []
+      },
+      "points_reward": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT consecutive_days, points_reward, bonus_multiplier, description FROM check_in_reward_config WHERE is_active = TRUE ORDER BY consecutive_days ASC'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        { consecutive_days: 1, points_reward: 4, description: '连续签到1天' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        { consecutive_days: 3, points_reward: 15, description: '连续签到3天' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        { consecutive_days: 7, points_reward: 30, description: '连续签到7天' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        { consecutive_days: 15, points_reward: 30, description: '连续签到15天' },"
+        ],
+        "sqlStatements": []
+      },
+      "bonus_multiplier": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT consecutive_days, points_reward, bonus_multiplier, description FROM check_in_reward_config WHERE is_active = TRUE ORDER BY consecutive_days ASC'"
+        ],
+        "sqlStatements": []
+      },
+      "bonus_duration_hours": {
+        "usedInBackend": false,
+        "locations": [],
+        "sqlStatements": []
+      },
+      "description": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          description,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          description,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js: * @body    description - 原因说明",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js:    const { user_id, points, description } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js:    if (!user_id || !points || !description) {"
+        ],
+        "sqlStatements": []
+      },
+      "is_active": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - is_active: 是否启用",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  is_active: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:      fields: ['is_active']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT consecutive_days, points_reward, bonus_multiplier, description FROM check_in_reward_config WHERE is_active = TRUE ORDER BY consecutive_days ASC'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:          is_active: true"
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      },
+      "updated_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - updated_at: 更新时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updated_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updatedAt: 'updated_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "country_mining_config": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "country_code": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - country_code: 国家代码 (2位 ISO 3166-1 alpha-2)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  country_code: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:      fields: ['country_code']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:          country_code: code,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:          ['country_code', 'ASC']"
+        ],
+        "sqlStatements": []
+      },
+      "country_name": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - country_name: 英文名称",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - country_name_cn: 中文名称",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  country_name: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  country_name_cn: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/multiplierService-old.js:          countryName: countryInfo?.country_name || '中国',"
+        ],
+        "sqlStatements": []
+      },
+      "country_name_cn": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - country_name_cn: 中文名称",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  country_name_cn: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:        countryNameCn: config.country_name_cn,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:        country_name_cn: countryNameCn,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:        countryNameCn: config.country_name_cn,"
+        ],
+        "sqlStatements": []
+      },
+      "mining_multiplier": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - mining_multiplier: 挖矿速率倍率",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  mining_multiplier: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:      fields: ['mining_multiplier']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:        attributes: ['mining_multiplier']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:        multiplier = parseFloat(config.mining_multiplier);"
+        ],
+        "sqlStatements": []
+      },
+      "is_active": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - is_active: 是否启用",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  is_active: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:      fields: ['is_active']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT consecutive_days, points_reward, bonus_multiplier, description FROM check_in_reward_config WHERE is_active = TRUE ORDER BY consecutive_days ASC'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/countryMiningService.js:          is_active: true"
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      },
+      "updated_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - updated_at: 更新时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updated_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updatedAt: 'updated_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "cumulative_check_in_reward": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "cumulative_days": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js: * @body    cumulative_days - 累计天数 (3/7/15/30)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    const { user_id, cumulative_days, consecutive_days } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    const days = cumulative_days || consecutive_days;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:        message: '缺少参数: user_id, cumulative_days'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInPointsService.js:        'SELECT id FROM cumulative_check_in_reward WHERE user_id = ? AND cumulative_days = ?',"
+        ],
+        "sqlStatements": []
+      },
+      "points_earned": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          SUM(points_earned) as total_points_from_ads,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "claimed_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:         ORDER BY claimed_at DESC`,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        'SELECT milestone_type, milestone_count, points_earned, claimed_at FROM referral_milestone WHERE user_id = ? ORDER BY claimed_at DESC',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "free_contract_records": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "free_contract_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_type: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      fields: ['free_contract_type'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      name: 'idx_free_contract_type'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          AND free_contract_type = 'ad free contract'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js:        free_contract_type: 'ad free contract',"
+        ],
+        "sqlStatements": []
+      },
+      "free_contract_revenue": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_revenue: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js:      free_contract_revenue: 0,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/miningPoolRoutes.js:            free_contract_end_time, mining_status, free_contract_revenue)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInMiningContractService.js:        free_contract_revenue: 0,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adMiningContractService.js:          free_contract_revenue: 0,"
+        ],
+        "sqlStatements": []
+      },
+      "free_contract_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      fields: ['free_contract_creation_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      name: 'idx_free_contract_creation_time'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:            free_contract_creation_time, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          AND free_contract_creation_time < ?"
+        ],
+        "sqlStatements": []
+      },
+      "free_contract_end_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_end_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      fields: ['mining_status', 'free_contract_end_time', 'user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:            free_contract_end_time",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          AND free_contract_end_time > ?",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          const contractEnd = new Date(contract.free_contract_end_time);"
+        ],
+        "sqlStatements": []
+      },
+      "hashrate": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:  formatHashrate(hashrate) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    if (hashrate >= 1000) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:      return `${(hashrate / 1000).toFixed(2)} Th/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    return `${hashrate.toFixed(2)} Gh/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  hashrate: { "
+        ],
+        "sqlStatements": []
+      },
+      "mining_status": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  mining_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['mining_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      name: 'idx_mining_status'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['user_id', 'mining_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['mining_status', 'contract_end_time', 'user_id'],"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "invitation_rebate": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "invitation_code": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['invitation_code'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      name: 'idx_invitation_code'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['referrer_invitation_code'],"
+        ],
+        "sqlStatements": []
+      },
+      "subordinate_user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:  subordinate_user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:      fields: ['subordinate_user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:      name: 'idx_subordinate_user_id'"
+        ],
+        "sqlStatements": []
+      },
+      "subordinate_user_invitation_code": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:  subordinate_user_invitation_code: { "
+        ],
+        "sqlStatements": []
+      },
+      "subordinate_rebate_amount": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:  subordinate_rebate_amount: { "
+        ],
+        "sqlStatements": []
+      },
+      "rebate_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:  rebate_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:      fields: ['rebate_creation_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:      name: 'idx_rebate_creation_time'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRebate.js:      fields: ['user_id', 'rebate_creation_time'],"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "invitation_relationship": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "invitation_code": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['invitation_code'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      name: 'idx_invitation_code'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['referrer_invitation_code'],"
+        ],
+        "sqlStatements": []
+      },
+      "referrer_user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['referrer_user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      name: 'idx_referrer_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js:  foreignKey: 'referrer_user_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js:  foreignKey: 'referrer_user_id',"
+        ],
+        "sqlStatements": []
+      },
+      "referrer_invitation_code": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['referrer_invitation_code'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      name: 'idx_referrer_invitation_code'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      referrer_invitation_code  // 推荐人的邀请码(可选)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:    if (referrer_invitation_code && referrer_invitation_code.trim() !== '') {"
+        ],
+        "sqlStatements": []
+      },
+      "invitation_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  invitation_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['invitation_creation_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      name: 'idx_invitation_creation_time'"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "level_config": {
+      "level": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:  async cacheUserLevel(userId, level, points, speedMultiplier, dailyBonusActive, dailyBonusExpire) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:      const key = `user:level:${userId}`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        level: level.toString(),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:      const key = `user:level:${userId}`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        level: parseInt(data.level) || 1,"
+        ],
+        "sqlStatements": []
+      },
+      "min_points": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        'SELECT level, min_points, max_points, speed_multiplier, level_name, description FROM level_config ORDER BY level ASC'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 1, min_points: 0, max_points: 20, speed_multiplier: 1.0000, level_name: 'LV.1 Novice Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 2, min_points: 0, max_points: 30, speed_multiplier: 1.1000, level_name: 'LV.2 Junior Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 3, min_points: 0, max_points: 50, speed_multiplier: 1.2000, level_name: 'LV.3 Intermediate Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 4, min_points: 0, max_points: 100, speed_multiplier: 1.3500, level_name: 'LV.4 Senior Miner' },"
+        ],
+        "sqlStatements": []
+      },
+      "max_points": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        'SELECT level, min_points, max_points, speed_multiplier, level_name, description FROM level_config ORDER BY level ASC'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 1, min_points: 0, max_points: 20, speed_multiplier: 1.0000, level_name: 'LV.1 Novice Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 2, min_points: 0, max_points: 30, speed_multiplier: 1.1000, level_name: 'LV.2 Junior Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 3, min_points: 0, max_points: 50, speed_multiplier: 1.2000, level_name: 'LV.3 Intermediate Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 4, min_points: 0, max_points: 100, speed_multiplier: 1.3500, level_name: 'LV.4 Senior Miner' },"
+        ],
+        "sqlStatements": []
+      },
+      "speed_multiplier": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        speed_multiplier: speedMultiplier.toString(),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        speedMultiplier: parseFloat(data.speed_multiplier) || 1.0,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  mining_speed_multiplier: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:        SELECT DISTINCT ui.user_id, ui.user_level, ui.user_points, ui.mining_speed_multiplier",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            user.mining_speed_multiplier,"
+        ],
+        "sqlStatements": []
+      },
+      "level_name": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        'SELECT level, min_points, max_points, speed_multiplier, level_name, description FROM level_config ORDER BY level ASC'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 1, min_points: 0, max_points: 20, speed_multiplier: 1.0000, level_name: 'LV.1 Novice Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 2, min_points: 0, max_points: 30, speed_multiplier: 1.1000, level_name: 'LV.2 Junior Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 3, min_points: 0, max_points: 50, speed_multiplier: 1.2000, level_name: 'LV.3 Intermediate Miner' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        { level: 4, min_points: 0, max_points: 100, speed_multiplier: 1.3500, level_name: 'LV.4 Senior Miner' },"
+        ],
+        "sqlStatements": []
+      },
+      "description": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          description,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          description,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js: * @body    description - 原因说明",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js:    const { user_id, points, description } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js:    if (!user_id || !points || !description) {"
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      },
+      "updated_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - updated_at: 更新时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updated_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updatedAt: 'updated_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "mining_contracts": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "contract_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  contract_type: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['contract_type'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      name: 'idx_contract_type'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_type: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      fields: ['free_contract_type'],"
+        ],
+        "sqlStatements": []
+      },
+      "contract_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  contract_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['contract_creation_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      name: 'idx_contract_creation_time'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:      fields: ['free_contract_creation_time'],"
+        ],
+        "sqlStatements": []
+      },
+      "contract_end_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  contract_end_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['contract_end_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      name: 'idx_contract_end_time'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['mining_status', 'contract_end_time', 'user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/freeContractRecord.js:  free_contract_end_time: { "
+        ],
+        "sqlStatements": []
+      },
+      "contract_duration": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  contract_duration: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:  product_contract_duration: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/paidContractService.js:        contract_duration: durationTime,"
+        ],
+        "sqlStatements": []
+      },
+      "hashrate": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:  formatHashrate(hashrate) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    if (hashrate >= 1000) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:      return `${(hashrate / 1000).toFixed(2)} Th/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    return `${hashrate.toFixed(2)} Gh/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  hashrate: { "
+        ],
+        "sqlStatements": []
+      },
+      "mining_status": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  mining_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['mining_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      name: 'idx_mining_status'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['user_id', 'mining_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      fields: ['mining_status', 'contract_end_time', 'user_id'],"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "paid_products_list": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "product_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   foreignKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   sourceKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   foreignKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   targetKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  product_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "product_name": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  product_name: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:  product_name: { "
+        ],
+        "sqlStatements": []
+      },
+      "product_price": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  product_price: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:  product_price: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:      name: 'idx_product_price',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:      fields: ['product_price']"
+        ],
+        "sqlStatements": []
+      },
+      "hashrate": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:  formatHashrate(hashrate) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    if (hashrate >= 1000) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:      return `${(hashrate / 1000).toFixed(2)} Th/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    return `${hashrate.toFixed(2)} Gh/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  hashrate: { "
+        ],
+        "sqlStatements": []
+      },
+      "product_contract_duration": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:  product_contract_duration: { "
+        ],
+        "sqlStatements": []
+      }
+    },
+    "points_transaction": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "points_change": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:          points_change,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          points_change, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          points_change, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          points_change,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          SUM(CASE WHEN points_change > 0 THEN points_change ELSE 0 END) as total_earned,"
+        ],
+        "sqlStatements": []
+      },
+      "points_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:         AND points_type = ?`,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:         AND points_type = ?`,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:         AND points_type = ?`,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          points_type, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          points_type, "
+        ],
+        "sqlStatements": []
+      },
+      "balance_after": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          balance_after,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          balance_after,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          balance_after, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          balance_after, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:          balance_after,"
+        ],
+        "sqlStatements": []
+      },
+      "description": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          description,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          description,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js: * @body    description - 原因说明",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js:    const { user_id, points, description } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/pointsRoutes.js:    if (!user_id || !points || !description) {"
+        ],
+        "sqlStatements": []
+      },
+      "related_user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:         AND related_user_id = ? ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationRewardService.js:        'SELECT id FROM points_transaction WHERE user_id = ? AND reason_type = ? AND related_user_id = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationRewardService.js:        'SELECT COUNT(DISTINCT related_user_id) as count FROM points_transaction WHERE user_id = ? AND reason_type = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:          related_user_id,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:         AND related_user_id = ? "
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "referral_milestone": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "milestone_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:              SUM(CASE WHEN irp.milestone_type = 'INVITE_5' AND irp.is_claimed = 1 THEN 1 ELSE 0 END) as milestone_5_claimed,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:              SUM(CASE WHEN irp.milestone_type = 'INVITE_10' AND irp.is_claimed = 1 THEN 1 ELSE 0 END) as milestone_10_claimed",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:         WHERE user_id = ? AND milestone_type = '10_FRIENDS'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "milestone_count": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `SELECT milestone_count ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        'SELECT milestone_type, milestone_count, points_earned, claimed_at FROM referral_milestone WHERE user_id = ? ORDER BY claimed_at DESC',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "total_referrals_at_claim": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "points_earned": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          SUM(points_earned) as total_points_from_ads,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "claimed_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:         ORDER BY claimed_at DESC`,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        'SELECT milestone_type, milestone_count, points_earned, claimed_at FROM referral_milestone WHERE user_id = ? ORDER BY claimed_at DESC',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "user_check_in": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "check_in_date": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:              'SELECT user_id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          check_in_date, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        'SELECT check_in_date, consecutive_days FROM user_check_in WHERE user_id = ? ORDER BY check_in_date DESC LIMIT 1',"
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      },
+      "consecutive_days": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        consecutive_days: consecutiveDays.toString(),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        consecutiveDays: parseInt(data.consecutive_days) || 0,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    const { user_id, cumulative_days, consecutive_days } = req.body;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    // 兼容旧的consecutive_days参数",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/checkInRoutes.js:    const days = cumulative_days || consecutive_days;"
+        ],
+        "sqlStatements": []
+      },
+      "points_earned": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          SUM(points_earned) as total_points_from_ads,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          points_earned,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationPointsService.js:          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)"
+        ],
+        "sqlStatements": []
+      },
+      "daily_bonus_active": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        daily_bonus_active: dailyBonusActive ? '1' : '0',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/redis.js:        dailyBonusActive: data.daily_bonus_active === '1',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          daily_bonus_active, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          daily_bonus_active, ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          daily_bonus_active,"
+        ],
+        "sqlStatements": []
+      },
+      "bonus_expire_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          bonus_expire_time",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          bonus_expire_time,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:          bonus_expire_time",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:      if (lastCheckIn.bonus_expire_time) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/checkInService.js:        const expireTime = new Date(lastCheckIn.bonus_expire_time);"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "user_information": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "invitation_code": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_invitation_code: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['invitation_code'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      name: 'idx_invitation_code'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:      fields: ['referrer_invitation_code'],"
+        ],
+        "sqlStatements": []
+      },
+      "email": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  email: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:      fields: ['email'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:      name: 'idx_email'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  email: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      name: 'idx_email',"
+        ],
+        "sqlStatements": []
+      },
+      "google_account": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  google_account: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      google_account,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      google_account,                             // Google账号(可选)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js:        google_account: null,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js: *   google_account: \"Google账号邮箱\""
+        ],
+        "sqlStatements": []
+      },
+      "android_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  android_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      android_id,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      android_id: android_id || '',              // Android设备ID为空时使用空字符串",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js: * 用户首次打开APP时，通过android_id自动创建账号或登录",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js: *   android_id: \"设备唯一标识\","
+        ],
+        "sqlStatements": []
+      },
+      "gaid": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  gaid: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      gaid,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      gaid,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js: *   gaid: \"Google广告ID(可选)\",",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js:      gaid,"
+        ],
+        "sqlStatements": []
+      },
+      "register_ip": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  register_ip: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:    const register_ip = ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:    // register_ip 由后端自动获取，客户端不应该传递",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:      register_ip,                                // 自动获取的真实IP",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js:      const register_ip = "
+        ],
+        "sqlStatements": []
+      },
+      "country": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const countryRoutes = require('./routes/countryRoutes'); // 国家配置接口路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const countryMiningRoutes = require('./routes/countryMiningRoutes'); // 国家挖矿倍率配置路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/country', countryRoutes); // 国家配置接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/country-mining', countryMiningRoutes); // 国家挖矿倍率配置接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const CountryMiningService = require('./services/countryMiningService');"
+        ],
+        "sqlStatements": []
+      },
+      "user_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  user_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  createdAt: 'user_creation_time', // 使用现有字段作为 createdAt",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userController.js:    // user_creation_time 会自动设置为当前时间（模型中已配置 defaultValue）",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js:        attributes: ['user_id', 'email', 'country', 'user_creation_time']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/authController.js:        attributes: ['user_id', 'invitation_code', 'email', 'country', 'user_creation_time']"
+        ],
+        "sqlStatements": []
+      },
+      "country_multiplier": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  country_multiplier: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/multiplierService.js: * 1. 国家倍率 (存储在 user_information.country_multiplier)",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/multiplierService.js:        attributes: ['user_id', 'country', 'country_multiplier']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/multiplierService.js:      const countryMultiplier = parseFloat(user.country_multiplier) || 1.00;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/multiplierService.js:        country_multiplier: validMultiplier"
+        ],
+        "sqlStatements": []
+      },
+      "user_level": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  user_level: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:        SELECT DISTINCT ui.user_id, ui.user_level, ui.user_points, ui.mining_speed_multiplier",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            user.user_level,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationRewardService.js:          u.user_level,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/invitationRewardService.js:          level: r.user_level,"
+        ],
+        "sqlStatements": []
+      },
+      "user_points": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  user_points: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:        SELECT DISTINCT ui.user_id, ui.user_level, ui.user_points, ui.mining_speed_multiplier",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            user.user_points,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            'SELECT total_points FROM user_points WHERE user_id = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          'CALL sp_add_user_points(?, ?, ?, ?, NULL, ?)',"
+        ],
+        "sqlStatements": []
+      },
+      "mining_speed_multiplier": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  mining_speed_multiplier: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:        SELECT DISTINCT ui.user_id, ui.user_level, ui.user_points, ui.mining_speed_multiplier",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            user.mining_speed_multiplier,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/multiplierService-old.js:      const countryMultiplier = countryInfo?.mining_speed_multiplier || 1.0;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/levelService.js:        'SELECT user_level, user_points, mining_speed_multiplier FROM user_information WHERE user_id = ?',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "user_log": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "action": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:// bitcoin_transaction_records 表的 Sequelize 模型",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:const BitcoinTransactionRecord = sequelize.define('bitcoin_transaction_records', {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_type: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_amount: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  transaction_creation_time: { "
+        ],
+        "sqlStatements": []
+      },
+      "log_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userLog.js:  log_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userLog.js:      fields: ['log_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userLog.js:      name: 'idx_log_time',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userLog.js:      fields: ['user_id', 'log_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userLog.js:      name: 'idx_user_log_time',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "user_orders": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "email": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  email: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:      fields: ['email'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:      name: 'idx_email'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  email: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      name: 'idx_email',"
+        ],
+        "sqlStatements": []
+      },
+      "product_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   foreignKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   sourceKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   foreignKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/index.js://   targetKey: 'product_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  product_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "product_name": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  product_name: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:  product_name: { "
+        ],
+        "sqlStatements": []
+      },
+      "product_price": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  product_price: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:  product_price: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:      name: 'idx_product_price',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/paidProductList.js:      fields: ['product_price']"
+        ],
+        "sqlStatements": []
+      },
+      "hashrate": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:  formatHashrate(hashrate) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    if (hashrate >= 1000) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:      return `${(hashrate / 1000).toFixed(2)} Th/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/config/mining.js:    return `${hashrate.toFixed(2)} Gh/s`;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:  hashrate: { "
+        ],
+        "sqlStatements": []
+      },
+      "order_creation_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  order_creation_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      name: 'idx_order_creation_time',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      fields: ['order_creation_time']"
+        ],
+        "sqlStatements": []
+      },
+      "payment_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  payment_time: { "
+        ],
+        "sqlStatements": []
+      },
+      "currency_type": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  currency_type: { "
+        ],
+        "sqlStatements": []
+      },
+      "country": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const countryRoutes = require('./routes/countryRoutes'); // 国家配置接口路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const countryMiningRoutes = require('./routes/countryMiningRoutes'); // 国家挖矿倍率配置路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/country', countryRoutes); // 国家配置接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/country-mining', countryMiningRoutes); // 国家挖矿倍率配置接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const CountryMiningService = require('./services/countryMiningService');"
+        ],
+        "sqlStatements": []
+      },
+      "payment_gateway_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  payment_gateway_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      name: 'idx_payment_gateway_id',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      fields: ['payment_gateway_id']"
+        ],
+        "sqlStatements": []
+      },
+      "payment_network_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  payment_network_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "order_status": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  order_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      name: 'idx_order_status',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      fields: ['order_status']",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      fields: ['user_id', 'order_status']"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "user_points": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "total_points": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:          if (!cachedData || !cachedData.total_points) {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            'SELECT total_points FROM user_points WHERE user_id = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            const dbPoints = parseInt(dbData[0].total_points) || 0;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/scheduledTasks.js:            const cachedPoints = parseInt(cachedData.total_points) || 0;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adService.js:          SUM(points_earned) as total_points_from_ads,"
+        ],
+        "sqlStatements": []
+      },
+      "available_points": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:        `INSERT INTO user_points (user_id, total_points, available_points) ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:         available_points = available_points + ?,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:         SET available_points = available_points - ?,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/pointsService.js:        `SELECT user_id, user_points as total_points, user_points as available_points "
+        ],
+        "sqlStatements": []
+      },
+      "created_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - created_at: 创建时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  created_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  createdAt: 'created_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          created_at",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          created_at"
+        ],
+        "sqlStatements": []
+      },
+      "updated_at": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js: * - updated_at: 更新时间",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updated_at: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/countryMiningConfig.js:  updatedAt: 'updated_at',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/services/adPointsService.js:            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "user_status": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "bitcoin_accumulated_amount": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:  bitcoin_accumulated_amount: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js: *   - bitcoin_accumulated_amount: 累计挖矿金额",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js: * @param {number} req.body.bitcoin_accumulated_amount - 累计挖矿金额（可选，默认0）"
+        ],
+        "sqlStatements": []
+      },
+      "current_bitcoin_balance": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:  current_bitcoin_balance: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:        'SELECT current_bitcoin_balance FROM user_status WHERE user_id = ?',",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:          current_bitcoin_balance = current_bitcoin_balance + ?,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/referralRebateTask.js:      const newBalance = parseFloat(referrerStatus[0].current_bitcoin_balance) + rebateAmount;",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          current_bitcoin_balance, "
+        ],
+        "sqlStatements": []
+      },
+      "total_invitation_rebate": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:  total_invitation_rebate: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js: *   - total_invitation_rebate: 总邀请返利",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js: * @param {number} req.body.total_invitation_rebate - 邀请返利总额（可选，默认0）",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js:      total_invitation_rebate = 0,",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js:      total_invitation_rebate,          // 邀请返利总额"
+        ],
+        "sqlStatements": []
+      },
+      "total_withdrawal_amount": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:  total_withdrawal_amount: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js: *   - total_withdrawal_amount: 总提现金额",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js: * @param {number} req.body.total_withdrawal_amount - 提现总额（可选，默认0）",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js:      total_withdrawal_amount = 0",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/controllers/userStatusController.js:      total_withdrawal_amount,          // 提现总额"
+        ],
+        "sqlStatements": []
+      },
+      "last_login_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/userStatusScheduler.js:          last_login_time: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/userStatusScheduler.js:          last_login_time: {",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:  last_login_time: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:      fields: ['last_login_time'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userStatus.js:      name: 'idx_last_login_time'"
+        ],
+        "sqlStatements": []
+      },
+      "user_status": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/userStatusScheduler.js:      { user_status: 'active within 3 days' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/userStatusScheduler.js:          user_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/userStatusScheduler.js:      { user_status: 'no login within 7 days' },",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/userStatusScheduler.js:          user_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/miningContract.js:      name: 'idx_user_status'"
+        ],
+        "sqlStatements": []
+      },
+      "last_balance_update_time": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          last_balance_update_time ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:      const lastUpdateTime = new Date(userStatus[0].last_balance_update_time || Date.now() - 2 * 60 * 60 * 1000);",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/jobs/balanceSyncTask.js:          last_balance_update_time = NOW()",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/balanceRoutes.js:        last_balance_update_time ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/balanceRoutes.js:    const lastUpdateTime = new Date(userStatus[0].last_balance_update_time || Date.now());"
+        ],
+        "sqlStatements": []
+      }
+    },
+    "withdrawal_records": {
+      "id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:// 已移除限流中间件 rateLimiter（按 IP 易误伤正常用户），如需再次启用可在 middleware 目录恢复",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:const paidContractRoutes = require('./routes/paidContractRoutes'); // 付费合约路由",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/index.js:app.use('/api/paid-contracts', paidContractRoutes); // 付费合约接口",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/utils/miningBalance.js:    let balance = Number(await redis.get(BALANCE_KEY(user.id))) || 0;"
+        ],
+        "sqlStatements": []
+      },
+      "user_id": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      fields: ['user_id'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/bitcoinTransactionRecord.js:      name: 'idx_user_id'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  user_id: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/invitationRelationship.js:  referrer_user_id: { "
+        ],
+        "sqlStatements": []
+      },
+      "email": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:  email: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:      fields: ['email'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userInformation.js:      name: 'idx_email'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:  email: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/userOrder.js:      name: 'idx_email',"
+        ],
+        "sqlStatements": []
+      },
+      "wallet_address": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:  wallet_address: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:      fields: ['wallet_address'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:      name: 'idx_wallet_address'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status) ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:      walletAddress: record.wallet_address,"
+        ],
+        "sqlStatements": []
+      },
+      "withdrawal_request_amount": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:  withdrawal_request_amount: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status) ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:      amount: parseFloat(record.withdrawal_request_amount),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:        amount: parseFloat(withdrawal.withdrawal_request_amount),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:        by: parseFloat(withdrawal.withdrawal_request_amount),"
+        ],
+        "sqlStatements": []
+      },
+      "network_fee": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:  network_fee: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status) ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:      networkFee: parseFloat(record.network_fee),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:        networkFee: parseFloat(withdrawal.network_fee),"
+        ],
+        "sqlStatements": []
+      },
+      "received_amount": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:  received_amount: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status) ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:      receivedAmount: parseFloat(record.received_amount),",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:        receivedAmount: parseFloat(withdrawal.received_amount),"
+        ],
+        "sqlStatements": []
+      },
+      "withdrawal_status": {
+        "usedInBackend": true,
+        "locations": [
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:  withdrawal_status: { ",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:      fields: ['withdrawal_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:      name: 'idx_withdrawal_status'",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/models/withdrawalRecord.js:      fields: ['user_id', 'withdrawal_status'],",
+          "/Users/davidpony/Desktop/工程文件夹/Bitcoin_Mining_Master/backend/src/routes/withdrawalRoutes.js:       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status) "
+        ],
+        "sqlStatements": []
+      }
+    }
+  },
+  "unusedFieldsList": [
+    {
+      "table": "check_in_reward_config",
+      "field": "bonus_duration_hours",
+      "type": "int(11)",
+      "comment": "加成持续时间（小时）",
+      "recordCount": 4
+    }
+  ]
+}
