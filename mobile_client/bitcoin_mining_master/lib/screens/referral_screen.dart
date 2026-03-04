@@ -192,10 +192,12 @@ class _ReferralScreenState extends State<ReferralScreen> {
     }
     
     if (_invitationCode != 'Loading...' && _invitationCode != 'Error' && _invitationCode != 'N/A') {
-      Clipboard.setData(ClipboardData(text: _invitationCode));
+      const String downloadUrl = 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/download.html';
+      final String copyText = '🎁 Join Bitcoin Mining Master!\n\nUse my invitation code to get a FREE 2-hour mining contract:\n\n📋 Code: $_invitationCode\n\nDownload now and start earning Bitcoin! 💰\n$downloadUrl';
+      Clipboard.setData(ClipboardData(text: copyText));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Invitation code copied!'),
+          content: Text('Invitation message copied!'),
           backgroundColor: Colors.green,
           duration: Duration(seconds: 2),
         ),
@@ -228,8 +230,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
       sharePositionOrigin = offset & renderBox.size;
     }
 
-    // App Store 下载链接（上架后替换为真实 ID）
-    const String downloadUrl = 'https://apps.apple.com/app/id000000000';
+    // 下载落地页链接
+    const String downloadUrl = 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/download.html';
 
     final String shareText = '''
 🎁 Join Bitcoin Mining Master!
