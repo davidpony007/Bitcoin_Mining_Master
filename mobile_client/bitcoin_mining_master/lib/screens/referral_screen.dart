@@ -536,49 +536,63 @@ $downloadUrl
 
   /// 显示帮助说明对话框
   void _showHelpDialog() {
+    final scrollController = ScrollController();
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardDark,
-        title: const Text('Rebate System Info'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildInfoItem('1', 'The rebate ratio is 20%.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('2', 'Rebates are updated every 2 hours.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('3', 'Rebate earnings don\'t have a corresponding mining task queue display. They are calculated automatically on a scheduled basis.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('4', 'Invite more friends to get more rebate earnings. All your friends\' mining revenue will contribute to your rebate calculation.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('5', 'Successfully inviting more friends can increase your points, which can upgrade your miner level and mining speed.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('6', 'How to successfully invite and bind friends: Copy and share your "My Invitation Code" with friends. After your friends install and open the app, they enter your Invitation Code, and the system will successfully bind the invitation relationship.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('7', 'For each friend you successfully invite and bind, you will receive an "Invite Friend Reward" mining contract.'),
-              const SizedBox(height: 12),
-              _buildInfoItem('8', 'Enter your referrer\'s Invitation Code to receive a "Bind Referrer Reward" mining contract.'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Got it',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: const Text('Rebate System Info'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: MediaQuery.of(context).size.height * 0.55,
+            child: Scrollbar(
+              controller: scrollController,
+              thumbVisibility: true,
+              thickness: 4,
+              radius: const Radius.circular(4),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.only(right: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInfoItem('1', 'The rebate ratio is 20%.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('2', 'Rebates are updated every 2 hours.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('3', 'Rebate earnings don\'t have a corresponding mining task queue display. They are calculated automatically on a scheduled basis.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('4', 'Invite more friends to get more rebate earnings. All your friends\' mining revenue will contribute to your rebate calculation.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('5', 'Successfully inviting more friends can increase your points, which can upgrade your miner level and mining speed.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('6', 'How to successfully invite and bind friends: Copy and share your "My Invitation Code" with friends. After your friends install and open the app, they enter your Invitation Code, and the system will successfully bind the invitation relationship.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('7', 'For each friend you successfully invite and bind, you will receive an "Invite Friend Reward" mining contract.'),
+                    const SizedBox(height: 12),
+                    _buildInfoItem('8', 'Enter your referrer\'s Invitation Code to receive a "Bind Referrer Reward" mining contract.'),
+                  ],
+                ),
               ),
             ),
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Got it',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ).then((_) => scrollController.dispose());
   }
 
   Widget _buildInfoItem(String number, String text) {
