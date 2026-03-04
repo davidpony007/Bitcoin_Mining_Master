@@ -8,6 +8,7 @@ const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
 const CheckInService = require('./checkInService');
+const redisClient = require('../config/redis');
 
 class CheckInMiningContractService {
   /**
@@ -58,7 +59,18 @@ class CheckInMiningContractService {
 
       console.log(`✅ 创建签到挖矿合约: 用户 ${userId}, 结束时间 ${endTime}, 基础速率 ${BASE_HASHRATE.toExponential(2)} BTC/s (将动态应用等级/国家/签到加成)`);
 
-      // 4. 计算当前的速度信息（仅用于返回给前端显示）
+      // 4. 激活签到加成 Redis 缓存（2小时有效期，与合约到期时间对齐）
+      try {
+        if (redisClient.isReady()) {
+          const expireTimestamp = endTime.getTime();
+          await redisClient.addDailyBonusUser(userId, expireTimestamp);
+          console.log(`✅ 签到加成Redis已激活: 用户 ${userId}, 过期时间 ${endTime}`);
+        }
+      } catch (redisErr) {
+        console.error(`⚠️ 设置签到加成Redis缓存失败(不影响合约): ${redisErr.message}`);
+      }
+
+      // 5. 计算当前的速度信息（仅用于返回给前端显示）
       const speedInfo = await LevelService.calculateMiningSpeed(userId);
       const finalHashrate = speedInfo.finalSpeedWithoutBonus * 1.36;  // 用于显示
 

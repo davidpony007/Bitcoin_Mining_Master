@@ -97,6 +97,15 @@ class RealtimeBalanceService {
         console.error(`获取用户 ${userId} 国家倍数失败，使用默认值1.0`, error);
       }
 
+      // 1.3 检查签到加成状态（2小时有效期）
+      let dailyBonusActive = false;
+      try {
+        dailyBonusActive = await redisClient.isDailyBonusActive(userId);
+      } catch (error) {
+        // Redis查询失败，签到加成默认无效
+      }
+      const dailyBonusMultiplier = dailyBonusActive ? 1.36 : 1.0;
+
       // === 2. 计算免费合约收益（广告、签到、邀请、绑定推荐人） ===
       const freeContracts = await sequelize.query(`
         SELECT 
@@ -118,9 +127,10 @@ class RealtimeBalanceService {
           ? parseFloat(contract.base_hashrate) 
           : parseFloat(contract.hashrate);
         
-        // 签到合约：has_daily_bonus = 1，固定使用1.36倍加成
-        // 其他合约：不使用签到加成
-        const bonus = (contract.has_daily_bonus === 1) ? 1.36 : 1.0;
+        // 检查该合约是否应用签到加成（仅签到合约has_daily_bonus=1）
+        const bonus = (contract.has_daily_bonus === 1 && dailyBonusActive) 
+          ? dailyBonusMultiplier 
+          : 1.0;
         
         // 动态计算最终速率
         const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier * bonus;
@@ -156,23 +166,19 @@ class RealtimeBalanceService {
 
   /**
    * 更新单个用户的余额
-   * @param {number} intervalSeconds - 更新间隔（秒），默认5秒
    */
-  static async updateUserBalance(userId, revenuePerSecond, intervalSeconds = 5) {
+  static async updateUserBalance(userId, revenuePerSecond) {
     try {
       if (revenuePerSecond <= 0) return false;
 
-      // 计算该时间间隔内的总收益
-      const intervalRevenue = revenuePerSecond * intervalSeconds;
-
-      // 直接更新余额，增加间隔时间内的收益
+      // 直接更新余额，增加每秒收益
       await sequelize.query(`
         UPDATE user_status 
         SET 
           current_bitcoin_balance = current_bitcoin_balance + ?
         WHERE user_id = ?
       `, {
-        replacements: [intervalRevenue, userId],
+        replacements: [revenuePerSecond, userId],
         type: sequelize.QueryTypes.UPDATE
       });
 
@@ -185,9 +191,9 @@ class RealtimeBalanceService {
 
   /**
    * 批量更新所有活跃挖矿用户的余额
-   * 每5秒执行一次
+   * 每秒执行一次
    */
-  static async updateAllActiveBalances(intervalSeconds = 5) {
+  static async updateAllActiveBalances() {
     try {
       const startTime = Date.now();
       
@@ -212,7 +218,7 @@ class RealtimeBalanceService {
         const promise = (async () => {
           const revenue = await this.calculateUserPerSecondRevenue(userId);
           if (revenue > 0) {
-            const updated = await this.updateUserBalance(userId, revenue, intervalSeconds);
+            const updated = await this.updateUserBalance(userId, revenue);
             if (updated) updatedCount++;
           }
         })();
