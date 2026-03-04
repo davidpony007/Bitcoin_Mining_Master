@@ -171,14 +171,20 @@ class RealtimeBalanceService {
     try {
       if (revenuePerSecond <= 0) return false;
 
-      // 直接更新余额，增加每秒收益
+      // 每5秒执行一次，写入5秒的累积收益，同时更新 last_balance_update_time
+      // 这样 API 计算 elapsedSeconds 时不会无限累积，最多只有 ~5 秒的差值
+      const INTERVAL_SECONDS = 5;
+      const revenueToAdd = revenuePerSecond * INTERVAL_SECONDS;
+
       await sequelize.query(`
         UPDATE user_status 
         SET 
-          current_bitcoin_balance = current_bitcoin_balance + ?
+          current_bitcoin_balance = current_bitcoin_balance + ?,
+          bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?,
+          last_balance_update_time = NOW()
         WHERE user_id = ?
       `, {
-        replacements: [revenuePerSecond, userId],
+        replacements: [revenueToAdd, revenueToAdd, userId],
         type: sequelize.QueryTypes.UPDATE
       });
 
