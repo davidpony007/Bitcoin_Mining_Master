@@ -25,9 +25,29 @@ class _HomeScreenState extends State<HomeScreen> {
   final _storageService = StorageService();
   final _apiService = ApiService();
 
+  // ContractsScreen 的 GlobalKey，用于在奖励领取后立即触发刷新
+  final _contractsKey = GlobalKey<ContractsScreenState>();
+
+  // 稳定的页面列表，避免每次 build 重建实例导致 GlobalKey 失效
+  late final List<Widget> _screens;
+
   @override
   void initState() {
     super.initState();
+    // 稳定建立页面列表（必须在 initState 中，不能用 getter）
+    _screens = [
+      DashboardScreen(
+        onSwitchTab: switchToTab,
+        onContractRefreshNeeded: () =>
+            _contractsKey.currentState?.refreshContracts(),
+        onAdRewardClaimed: () =>
+            _contractsKey.currentState?.activateAdRewardImmediately(),
+      ),
+      ContractsScreen(key: _contractsKey),
+      const ReferralScreen(),
+      const WalletScreen(),
+      const SettingsScreen(),
+    ];
     // 预加载广告
     AdMobService().loadRewardedAd();
     // 延迟显示欢迎弹窗，确保界面已加载
@@ -93,15 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // 所有屏幕页面（使用getter动态创建，以便传递回调）
-  List<Widget> get _screens => [
-    DashboardScreen(onSwitchTab: switchToTab),
-    const ContractsScreen(),
-    const ReferralScreen(),
-    const WalletScreen(),
-    const SettingsScreen(),
-  ];
-
+  // 所有屏幕页面已在 initState 中初始化
   // 底部导航栏项目
   final List<BottomNavigationBarItem> _navigationItems = const [
     BottomNavigationBarItem(

@@ -17,18 +17,13 @@ class WithdrawalScreen extends StatefulWidget {
 class _WithdrawalScreenState extends State<WithdrawalScreen> {
   final _addressController = TextEditingController();
   final _amountController = TextEditingController();
-  String _selectedNetwork = 'BNB Smart Chain(BEP20)';
+  // 提现方式：'Binance UID' 或 'BEP20'
+  String _selectedWithdrawMethod = 'Binance UID';
   bool _useAllBalance = false;
 
-  final double _minimumAmount = 0.00002200;
-  final double _networkFee = 0.00000790;
-
-  final List<String> _networkOptions = [
-    'BNB Smart Chain(BEP20)',
-    'Bitcoin(BTC)',
-    'Ethereum(ERC20)',
-    'Tron(TRC20)',
-  ];
+  double get _minimumAmount => 0.00002200;
+  double get _networkFee =>
+      _selectedWithdrawMethod == 'Binance UID' ? 0.0 : 0.00000028;
 
   @override
   void dispose() {
@@ -56,24 +51,20 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
   bool get _canWithdraw {
     return _withdrawAmount >= _minimumAmount &&
-        _isValidBitcoinAddress(_addressController.text) &&
+        _isValidAddress(_addressController.text) &&
         _withdrawAmount <= _currentBalance;
   }
 
-  /// 验证比特币地址格式
-  bool _isValidBitcoinAddress(String address) {
+  /// 根据提现方式验证地址/UID格式
+  bool _isValidAddress(String address) {
     if (address.isEmpty) return false;
-
-    // Legacy地址 (P2PKH): 以1开头，26-35个字符
-    final legacyPattern = RegExp(r'^1[a-km-zA-HJ-NP-Z1-9]{25,34}$');
-    // Script Hash地址 (P2SH): 以3开头，26-35个字符
-    final p2shPattern = RegExp(r'^3[a-km-zA-HJ-NP-Z1-9]{25,34}$');
-    // SegWit地址 (Bech32): 以bc1开头，42-62个字符
-    final segwitPattern = RegExp(r'^bc1[a-z0-9]{39,59}$');
-
-    return legacyPattern.hasMatch(address) ||
-        p2shPattern.hasMatch(address) ||
-        segwitPattern.hasMatch(address);
+    if (_selectedWithdrawMethod == 'Binance UID') {
+      // Binance UID: 纯数字，6-12位
+      return RegExp(r'^\d{6,12}$').hasMatch(address);
+    } else {
+      // BEP20地址: 0x开头，40位十六进制
+      return RegExp(r'^0x[0-9a-fA-F]{40}$').hasMatch(address);
+    }
   }
 
   @override
@@ -162,6 +153,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Widget _buildWarningBanner() {
+    final isUID = _selectedWithdrawMethod == 'Binance UID';
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -176,7 +168,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Please enter the correct BTC wallet address.\nIncorrect entry may result in loss of your BTC.',
+              isUID
+                  ? 'Please enter your Binance UID. The system will transfer BTC directly to your Binance account for free.'
+                  : 'Please enter the correct BEP20 wallet address (starting with 0x).\nIncorrect entry may result in loss of your BTC.',
               style: TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 13,
@@ -330,7 +324,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Network',
+            'Withdrawal Network',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -338,61 +332,137 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.cardDark,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.divider, width: 1),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedNetwork,
-                isExpanded: true,
-                dropdownColor: AppColors.cardDark,
-                icon: const Icon(
-                  Icons.keyboard_arrow_down,
-                  color: AppColors.textPrimary,
+          Row(
+            children: [
+              Expanded(
+                child: _buildMethodCard(
+                  method: 'Binance UID',
+                  icon: Icons.account_circle_outlined,
+                  title: 'Binance UID',
+                  subtitle: 'Fee: 0 BTC',
+                  badge: 'DEFAULT',
                 ),
-                items: _networkOptions.map((String network) {
-                  return DropdownMenuItem<String>(
-                    value: network,
-                    child: Text(
-                      network,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  );
-                }).toList(),
-                onChanged: (String? newValue) {
-                  if (newValue != null) {
-                    setState(() {
-                      _selectedNetwork = newValue;
-                    });
-                  }
-                },
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildMethodCard(
+                  method: 'BEP20',
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'BNB Smart Chain',
+                  subtitle: 'Fee: 0.00000028 BTC',
+                  badge: 'BEP20',
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  Widget _buildMethodCard({
+    required String method,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String badge,
+  }) {
+    final isSelected = _selectedWithdrawMethod == method;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedWithdrawMethod = method;
+          _addressController.clear();
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.primary.withOpacity(0.12)
+              : AppColors.cardDark,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.divider,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                  size: 20,
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.divider,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: isSelected ? Colors.black : AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? AppColors.primary : AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildWalletAddressSection() {
+    final isUID = _selectedWithdrawMethod == 'Binance UID';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Wallet address',
-            style: TextStyle(
+          Text(
+            isUID ? 'Binance UID' : 'Wallet Address',
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            isUID
+                ? 'Find your UID in Binance Account → Profile → UID'
+                : 'Must start with 0x, 42 characters total',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
             ),
           ),
           const SizedBox(height: 12),
@@ -406,7 +476,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: const Text('Address pasted'),
+                      content: Text(isUID ? 'UID pasted' : 'Address pasted'),
                       backgroundColor: AppColors.success,
                     ),
                   );
@@ -422,17 +492,26 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               ),
               child: TextField(
                 controller: _addressController,
-                inputFormatters: [
-                  // 限制长度为最大62个字符（Taproot地址长度）
-                  LengthLimitingTextInputFormatter(62),
-                  // 只允许字母数字字符（比特币地址格式）
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
-                ],
+                keyboardType: isUID
+                    ? TextInputType.number
+                    : TextInputType.text,
+                inputFormatters: isUID
+                    ? [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(12),
+                      ]
+                    : [
+                        LengthLimitingTextInputFormatter(42),
+                        FilteringTextInputFormatter.allow(
+                            RegExp(r'[0-9a-fA-Fx]')),
+                      ],
                 decoration: InputDecoration(
-                  hintText: 'Long press to paste',
+                  hintText: isUID
+                      ? 'Enter Binance UID (e.g. 123456789)'
+                      : 'Long press to paste (0x...)',
                   hintStyle: TextStyle(
                     color: AppColors.textSecondary.withOpacity(0.5),
-                    fontSize: 16,
+                    fontSize: 15,
                   ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
@@ -441,7 +520,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   fontSize: 16,
                   color: AppColors.textPrimary,
                 ),
-                maxLines: 2,
+                maxLines: isUID ? 1 : 2,
                 onChanged: (value) {
                   setState(() {});
                 },
@@ -472,119 +551,35 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             onTap: () => _openBinanceRegistration(),
             child: Container(
               width: double.infinity,
-              height: 140,
               decoration: BoxDecoration(
-                color: Colors.black,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF2B2B2B), width: 1),
-              ),
-              child: Stack(
-                children: [
-                  // 右侧装饰图标（盾牌+钥匙）
-                  Positioned(
-                    right: 16,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          Icon(
-                            Icons.shield,
-                            size: 80,
-                            color: const Color(0xFFF0B90B),
-                          ),
-                          Positioned(
-                            right: 0,
-                            bottom: 4,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: Colors.black,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.vpn_key,
-                                size: 22,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // 左侧内容
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 100, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Binance Wallet logo 行
-                        Row(
-                          children: [
-                            Container(
-                              width: 20,
-                              height: 20,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFF0B90B),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'B',
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            RichText(
-                              text: const TextSpan(
-                                children: [
-                                  TextSpan(
-                                    text: 'BINANCE ',
-                                    style: TextStyle(
-                                      color: Color(0xFFF0B90B),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                  TextSpan(
-                                    text: 'WALLET',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // 主标题
-                        const Text(
-                          'A TRUE\nSELF-CUSTODY\nWALLET',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            height: 1.15,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
+                border: Border.all(color: AppColors.primary, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.18),
+                    blurRadius: 8,
+                    spreadRadius: 0,
                   ),
                 ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10.5),
+                child: Image.asset(
+                  'assets/images/binance_wallet_banner.png',
+                  fit: BoxFit.fitWidth,
+                  errorBuilder: (context, error, stackTrace) {
+                    // 图片未放置时显示降级UI
+                    return Container(
+                      color: const Color(0xFF1A1A1A),
+                      child: const Center(
+                        child: Text(
+                          'Register Binance Wallet',
+                          style: TextStyle(color: Color(0xFFF0B90B), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -592,7 +587,6 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       ),
     );
   }
-
   Widget _buildBottomSection(UserProvider provider) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -776,19 +770,14 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               valueColor: AppColors.primary,
             ),
             const SizedBox(height: 12),
-            _buildDialogRow('Network', _selectedNetwork),
+            _buildDialogRow('Network',
+              _selectedWithdrawMethod == 'Binance UID'
+                  ? 'Binance UID'
+                  : 'BNB Smart Chain(BEP20)'),
             const SizedBox(height: 12),
-            const Text(
-              'Address:',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-            ),
-            const SizedBox(height: 4),
-            Text(
+            _buildDialogRow(
+              _selectedWithdrawMethod == 'Binance UID' ? 'UID' : 'Address',
               _addressController.text,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-              ),
             ),
             const SizedBox(height: 16),
             Container(
@@ -812,7 +801,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Please double-check the address. Incorrect addresses will result in permanent loss.',
+                      _selectedWithdrawMethod == 'Binance UID'
+                          ? 'Please double-check your Binance UID. Incorrect UID will result in permanent loss.'
+                          : 'Please double-check the BEP20 address. Incorrect addresses will result in permanent loss.',
                       style: TextStyle(
                         color: AppColors.error,
                         fontSize: 12,
@@ -868,7 +859,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       final success = await provider.withdrawBitcoin(
         _withdrawAmount.toString(),
         _addressController.text,
-        _selectedNetwork,
+        _selectedWithdrawMethod == 'Binance UID' ? 'BINANCE_UID' : 'BEP20',
         _networkFee.toString(),
       );
 

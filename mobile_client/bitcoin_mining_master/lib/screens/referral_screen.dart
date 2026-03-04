@@ -27,6 +27,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   bool _hasReferrer = false; // 是否已有推荐人
   String? _referrerInvitationCode; // 推荐人的邀请码
   List<Map<String, dynamic>> _invitedUsersList = []; // 邀请的用户列表
+  final GlobalKey _shareButtonKey = GlobalKey(); // iOS sharePositionOrigin 定位用
 
   @override
   void initState() {
@@ -202,7 +203,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
     }
   }
 
-  void _shareInvitationCode() {
+  Future<void> _shareInvitationCode() async {
     // 过滤无效状态（包括 OFFLINE 前缀）
     if (_invitationCode == 'Loading...' || 
         _invitationCode == 'Error' || 
@@ -218,23 +219,46 @@ class _ReferralScreenState extends State<ReferralScreen> {
       );
       return;
     }
-    
-    if (_invitationCode != 'Loading...' && _invitationCode != 'Error' && _invitationCode != 'N/A') {
-      final String shareText = '''
+
+    // 获取 Share 按钮位置（iOS 分享面板定位）
+    Rect? sharePositionOrigin;
+    final renderBox = _shareButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final offset = renderBox.localToGlobal(Offset.zero);
+      sharePositionOrigin = offset & renderBox.size;
+    }
+
+    // App Store 下载链接（上架后替换为真实 ID）
+    const String downloadUrl = 'https://apps.apple.com/app/id000000000';
+
+    final String shareText = '''
 🎁 Join Bitcoin Mining Master!
 
 Use my invitation code to get a FREE 2-hour mining contract:
 
 📋 Code: $_invitationCode
 
-Start earning Bitcoin today! 💰
-Download now and start mining!
+Download now and start earning Bitcoin! 💰
+$downloadUrl
 ''';
-      
-      Share.share(
+
+    try {
+      await Share.share(
         shareText,
         subject: 'Join Bitcoin Mining Master - Free Mining Contract!',
+        sharePositionOrigin: sharePositionOrigin,
       );
+    } catch (e) {
+      debugPrint('Share error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Share failed, please try again'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -602,6 +626,7 @@ Download now and start mining!
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Invite Friends'),
+        centerTitle: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -1018,6 +1043,7 @@ Download now and start mining!
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton.icon(
+                  key: _shareButtonKey,
                   onPressed: _shareInvitationCode,
                   icon: const Icon(Icons.share, size: 18),
                   label: const Text('Share'),

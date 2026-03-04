@@ -52,14 +52,14 @@ class ApiService {
   /// 设备登录/注册 - 对应后端 /api/auth/device-login
   /// 首次打开APP时自动创建账号或登录
   Future<DeviceLoginResponse> deviceLogin({
-    required String androidId,
+    required String deviceId,
     String? referrerInvitationCode,
     String? gaid,
     String? country,
     String? email,
   }) async {
     final payload = {
-      'android_id': androidId,
+      'device_id': deviceId,
       if (referrerInvitationCode != null)
         'referrer_invitation_code': referrerInvitationCode,
       if (gaid != null) 'gaid': gaid,
@@ -155,7 +155,7 @@ class ApiService {
     required String? googleId,
     required String googleEmail,
     required String googleName,
-    String? androidId,
+    String? deviceId,
     String? gaid,
     String? country,
   }) async {
@@ -164,7 +164,7 @@ class ApiService {
         'google_id': googleId,
         'google_account': googleEmail,
         'google_name': googleName,
-        'android_id': androidId,
+        'device_id': deviceId,
         'gaid': gaid,
         'country': country,
       };
@@ -200,7 +200,6 @@ class ApiService {
     String? appleAccount,
     String? appleName,
     String? iosDeviceId,
-    String? idfv,
     String? idfa,
     int? attStatus,
     String? country,
@@ -211,7 +210,6 @@ class ApiService {
         'apple_account': appleAccount,
         'apple_name':    appleName,
         'ios_device_id': iosDeviceId,
-        'idfv':          idfv,
         'idfa':          idfa,
         'att_status':    attStatus,
         'country':       country,
@@ -617,7 +615,8 @@ class ApiService {
           // 继续尝试下一个
         }
       }
-      throw _handleError(e);
+      // 价格获取失败时静默抛出，不弹出 Toast（调用方已有 try/catch 兜底）
+      throw Exception('Bitcoin price fetch failed: ${e.message}');
     }
   }
 

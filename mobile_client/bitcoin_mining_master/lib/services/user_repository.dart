@@ -36,32 +36,32 @@ class UserRepository {
       final deviceInfo = DeviceInfoPlugin();
 
       // 获取稳定的设备标识符（兼容 Android / iOS）
-      String androidId;
+      String deviceId;
 
       print('🔍 [Guest Login] 开始获取设备ID...');
       if (!kIsWeb && Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
-        final String? nativeAndroidId = await NativeDeviceIdService.getAndroidId();
+        final String? nativeDeviceId = await NativeDeviceIdService.getAndroidId();
 
-        if (nativeAndroidId != null && nativeAndroidId.isNotEmpty) {
-          androidId = nativeAndroidId;
-          print('✅ [Guest Login] 使用原生Android ID: $androidId');
+        if (nativeDeviceId != null && nativeDeviceId.isNotEmpty) {
+          deviceId = nativeDeviceId;
+          print('✅ [Guest Login] 使用原生Android ID: $deviceId');
         } else if (androidInfo.id.isNotEmpty && androidInfo.id != 'unknown') {
-          androidId = androidInfo.id;
-          print('⚠️ [Guest Login] 原生方法失败，使用device_info_plus ID: $androidId');
+          deviceId = androidInfo.id;
+          print('⚠️ [Guest Login] 原生方法失败，使用device_info_plus ID: $deviceId');
         } else if (androidInfo.fingerprint.isNotEmpty) {
-          androidId = androidInfo.fingerprint;
-          print('⚠️ [Guest Login] 使用fingerprint: $androidId');
+          deviceId = androidInfo.fingerprint;
+          print('⚠️ [Guest Login] 使用fingerprint: $deviceId');
         } else {
           final brandModel = '${androidInfo.brand}_${androidInfo.model}_${androidInfo.device}';
           if (brandModel.replaceAll('_', '').isNotEmpty) {
-            androidId = brandModel;
+            deviceId = brandModel;
           } else {
             final now = DateTime.now();
             final timestamp = now.millisecondsSinceEpoch;
             final random = Random().nextInt(999999).toString().padLeft(6, '0');
-            androidId = 'GENERATED_ANDROID_$timestamp$random';
-            print('⚠️ 无法获取Android设备标识符，使用生成ID: $androidId');
+            deviceId = 'GENERATED_ANDROID_$timestamp$random';
+            print('⚠️ 无法获取Android设备标识符，使用生成ID: $deviceId');
           }
         }
 
@@ -76,8 +76,8 @@ class UserRepository {
         final identifierForVendor = iosInfo.identifierForVendor;
 
         if (identifierForVendor != null && identifierForVendor.isNotEmpty) {
-          androidId = 'IOS_$identifierForVendor';
-          print('✅ [Guest Login] 使用 iOS identifierForVendor: $androidId');
+          deviceId = 'IOS_$identifierForVendor';
+          print('✅ [Guest Login] 使用 iOS identifierForVendor: $deviceId');
         } else {
           final modelName = iosInfo.utsname.machine;
           final deviceName = iosInfo.name;
@@ -85,14 +85,14 @@ class UserRepository {
           final fallback = '${modelName}_${deviceName}_$systemVersion';
 
           if (fallback.replaceAll('_', '').isNotEmpty) {
-            androidId = 'IOS_$fallback';
-            print('⚠️ [Guest Login] identifierForVendor为空，使用iOS信息组合ID: $androidId');
+            deviceId = 'IOS_$fallback';
+            print('⚠️ [Guest Login] identifierForVendor为空，使用iOS信息组合ID: $deviceId');
           } else {
             final now = DateTime.now();
             final timestamp = now.millisecondsSinceEpoch;
             final random = Random().nextInt(999999).toString().padLeft(6, '0');
-            androidId = 'GENERATED_IOS_$timestamp$random';
-            print('⚠️ 无法获取iOS设备标识符，使用生成ID: $androidId');
+            deviceId = 'GENERATED_IOS_$timestamp$random';
+            print('⚠️ 无法获取iOS设备标识符，使用生成ID: $deviceId');
           }
         }
 
@@ -105,11 +105,11 @@ class UserRepository {
         final now = DateTime.now();
         final timestamp = now.millisecondsSinceEpoch;
         final random = Random().nextInt(999999).toString().padLeft(6, '0');
-        androidId = 'GENERATED_GENERIC_$timestamp$random';
-        print('⚠️ [Guest Login] 非移动端环境，使用生成ID: $androidId');
+        deviceId = 'GENERATED_GENERIC_$timestamp$random';
+        print('⚠️ [Guest Login] 非移动端环境，使用生成ID: $deviceId');
       }
 
-      print('🔍 [Guest Login] 最终使用的设备ID: $androidId');
+      print('🔍 [Guest Login] 最终使用的设备ID: $deviceId');
 
       // 3. 获取GAID和设备地区信息（独立try-catch，失败不影响整体）
       String? gaid;
@@ -130,10 +130,10 @@ class UserRepository {
         
         // 4. 尝试通过后端API创建用户（有网络）
         print('正在通过后端API创建新用户...');
-        print('   设备ID: $androidId');
+        print('   设备ID: $deviceId');
         
         final response = await _apiService.deviceLogin(
-          androidId: androidId,
+          deviceId: deviceId,
           gaid: gaid,
           country: country,
         );
@@ -225,14 +225,14 @@ class UserRepository {
   /// 当检测到离线用户且网络恢复时调用
   Future<void> _syncOfflineUserToBackend(String offlineUserId) async {
     try {
-      final androidId = _storageService.getAndroidId();
-      if (androidId == null || androidId.isEmpty) {
+      final deviceId = _storageService.getDeviceId();
+      if (deviceId == null || deviceId.isEmpty) {
         print('⚠️ 无法同步：未找到设备ID');
         return;
       }
 
       print('开始同步离线用户到后端...');
-      final response = await _apiService.deviceLogin(androidId: androidId);
+      final response = await _apiService.deviceLogin(deviceId: deviceId);
       
       if (response.success && response.data != null) {
         final newUserId = response.data!.userId;

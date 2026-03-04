@@ -140,14 +140,14 @@ class StorageService {
     return _prefs?.getBool('is_offline_user') ?? false;
   }
 
-  /// 保存AndroidId（用于离线用户同步）
-  Future<bool> saveAndroidId(String androidId) async {
-    return await _prefs?.setString('android_id', androidId) ?? false;
+  /// 保存DeviceId（用于离线用户同步）
+  Future<bool> saveDeviceId(String deviceId) async {
+    return await _prefs?.setString('device_id', deviceId) ?? false;
   }
 
-  /// 获取AndroidId
-  String? getAndroidId() {
-    return _prefs?.getString('android_id');
+  /// 获取DeviceId
+  String? getDeviceId() {
+    return _prefs?.getString('device_id');
   }
 
   /// 清除用户ID

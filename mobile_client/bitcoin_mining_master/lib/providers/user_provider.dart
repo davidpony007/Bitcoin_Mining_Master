@@ -21,27 +21,24 @@ class UserProvider with ChangeNotifier {
   String? _errorMessage;
   List<Transaction> _transactions = [];
   bool _isOfflineMode = false; // 离线模式标记
+  Timer? _offlineDebounce; // 防抖：避免短暂断连立即弹 Toast
   
   StreamSubscription? _connectivitySubscription;
 
   // Getters
   String? get userId => _userId;
+  double get miningSpeedPerSecond => _miningSpeedPerSecond;
+
   String get bitcoinBalance {
-    // 如果有挖矿速率，计算实时余额
+    // 如果有挖矿速率，计算实时余额（使用毫秒精度，避免整数秒的离散跳变）
     if (_miningSpeedPerSecond > 0 && _lastBalanceUpdateTime != null) {
       final baseBalance = double.tryParse(_bitcoinBalance) ?? 0.0;
-      final secondsElapsed = DateTime.now().difference(_lastBalanceUpdateTime!).inSeconds;
+      final secondsElapsed = DateTime.now().difference(_lastBalanceUpdateTime!).inMilliseconds / 1000.0;
       final minedAmount = _miningSpeedPerSecond * secondsElapsed;
       final currentBalance = baseBalance + minedAmount;
-      
-      // 调试日志（每10秒打印一次，避免刷屏）
-      if (secondsElapsed % 10 == 0) {
-        print('💰 余额计算: 基准=$baseBalance, 已过${secondsElapsed}秒, 挖到=${minedAmount.toStringAsExponential(15)}, 当前=$currentBalance');
-      }
-      
       return currentBalance.toStringAsFixed(15);
     }
-    return _bitcoinBalance;
+    return (double.tryParse(_bitcoinBalance) ?? 0.0).toStringAsFixed(15);
   }
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
@@ -89,24 +86,32 @@ class UserProvider with ChangeNotifier {
 
   /// 网络状态变化回调
   Future<void> _onConnectivityChanged(List<ConnectivityResult> results) async {
-    // 检查是否有网络连接
+    // 检查是否有网络连接（包含 VPN 场景）
     final hasConnection = results.any((result) => 
       result == ConnectivityResult.mobile || 
       result == ConnectivityResult.wifi ||
-      result == ConnectivityResult.ethernet
+      result == ConnectivityResult.ethernet ||
+      result == ConnectivityResult.vpn
     );
     
     if (hasConnection && _isOfflineMode) {
+      // 网络恢复：取消待触发的离线提示，开始同步
+      _offlineDebounce?.cancel();
+      _offlineDebounce = null;
       print('📡 网络已恢复，开始同步离线用户数据...');
       await _syncOfflineData();
     } else if (!hasConnection && !_isOfflineMode) {
-      print('📴 网络断开连接');
-      _setError('Network connection lost, using offline mode');
-      Fluttertoast.showToast(
-        msg: 'Network connection error, please try again!',
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-      );
+      print('📴 检测到网络变化，等待3秒确认...');
+      // 防抖 3 秒：短暂切换网络（如 VPN 重连、信号切换）不弹 Toast
+      _offlineDebounce?.cancel();
+      _offlineDebounce = Timer(const Duration(seconds: 3), () {
+        _setError('Network connection lost, using offline mode');
+        Fluttertoast.showToast(
+          msg: 'Network connection error, please try again!',
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.CENTER,
+        );
+      });
     }
   }
 
@@ -225,6 +230,7 @@ class UserProvider with ChangeNotifier {
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
+    _offlineDebounce?.cancel();
     super.dispose();
   }
 }

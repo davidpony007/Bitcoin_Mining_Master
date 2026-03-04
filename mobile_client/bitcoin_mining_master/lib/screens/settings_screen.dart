@@ -394,6 +394,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Settings'),
+        centerTitle: false,
         automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(

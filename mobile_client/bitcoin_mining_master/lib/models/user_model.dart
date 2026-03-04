@@ -49,7 +49,7 @@ class UserData {
   final String invitationCode;
   final String? email;
   final String? googleAccount;
-  final String androidId;
+  final String deviceId;
   final String? gaid;
   final String? registerIp;
   final String? country;
@@ -67,7 +67,7 @@ class UserData {
     required this.invitationCode,
     this.email,
     this.googleAccount,
-    required this.androidId,
+    required this.deviceId,
     this.gaid,
     this.registerIp,
     this.country,
@@ -87,7 +87,7 @@ class UserData {
       invitationCode: json['invitation_code']?.toString() ?? '',
       email: json['email']?.toString(),
       googleAccount: json['google_account']?.toString(),
-      androidId: json['android_id']?.toString() ?? '',
+      deviceId: json['device_id']?.toString() ?? '',
       gaid: json['gaid']?.toString(),
       registerIp: json['register_ip']?.toString(),
       country: json['country']?.toString(),

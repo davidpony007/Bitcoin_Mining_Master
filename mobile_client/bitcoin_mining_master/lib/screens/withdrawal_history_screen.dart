@@ -73,11 +73,12 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
         
         setState(() {
           _allTransactions = withdrawals.map((json) {
+            final addr = json['walletAddress'] as String? ?? '';
             return WithdrawalTransaction(
               id: json['id'].toString(),
               amount: (json['amount'] as num).toDouble(),
-              address: json['walletAddress'] as String,
-              network: 'Bitcoin(BTC)', // 暂时固定,后续从API获取
+              address: addr,
+              network: _inferNetwork(addr),
               fee: (json['networkFee'] as num).toDouble(),
               status: _parseStatus(json['status'] as String),
               createdAt: json['createdAt'] != null 
@@ -103,6 +104,13 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
         _isLoading = false;
       });
     }
+  }
+
+  /// 根据钱包地址格式推断提现网络名称
+  String _inferNetwork(String address) {
+    if (RegExp(r'^\d{6,12}$').hasMatch(address)) return 'Binance UID';
+    if (RegExp(r'^0x[0-9a-fA-F]{40}$').hasMatch(address)) return 'BNB Smart Chain (BEP20)';
+    return 'Bitcoin(BTC)';
   }
 
   WithdrawalStatus _parseStatus(String status) {

@@ -11,10 +11,10 @@ class ContractsScreen extends StatefulWidget {
   const ContractsScreen({super.key});
 
   @override
-  State<ContractsScreen> createState() => _ContractsScreenState();
+  State<ContractsScreen> createState() => ContractsScreenState();
 }
 
-class _ContractsScreenState extends State<ContractsScreen>
+class ContractsScreenState extends State<ContractsScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final _storageService = StorageService();
@@ -127,6 +127,22 @@ class _ContractsScreenState extends State<ContractsScreen>
 
   // 公开的刷新方法，供外部调用
   void refreshContracts() {
+    _loadContracts();
+  }
+
+  /// 广告奖励领取成功后立即乐观更新 UI，不等待 API 回叁
+  /// [addedSeconds] 本次增加的秒数（默认 2 小时 = 7200）
+  void activateAdRewardImmediately({int addedSeconds = 7200}) {
+    setState(() {
+      _isAdRewardActive = true;
+      // 如果已有剩余时间则叠加，否则直接设为 addedSeconds
+      _adRewardRemainingSeconds =
+          (_adRewardRemainingSeconds > 0
+              ? _adRewardRemainingSeconds
+              : 0) +
+          addedSeconds;
+    });
+    // 后台真实刷新，让数据与服务器对齐
     _loadContracts();
   }
 

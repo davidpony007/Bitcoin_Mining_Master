@@ -18,8 +18,15 @@ import 'ad_reward_screen.dart';
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
 class DashboardScreen extends StatefulWidget {
   final Function(int)? onSwitchTab; // 切换标签的回调函数
+  final VoidCallback? onContractRefreshNeeded; // 奖励领取后通知 Contracts 页到噟刷新
+  final VoidCallback? onAdRewardClaimed;       // 广告奖励成功：立即乐观更新 Contracts UI
 
-  const DashboardScreen({super.key, this.onSwitchTab});
+  const DashboardScreen({
+    super.key,
+    this.onSwitchTab,
+    this.onContractRefreshNeeded,
+    this.onAdRewardClaimed,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -51,12 +58,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   // Battery management
   late List<BatteryState> _batteries;
   Timer? _miningTimer;
+  Timer? _uiRefreshTimer; // 100ms 轻量UI刷新，让余额数字平滑递增
   late AnimationController _breathingController;
-  
-  // Balance bounce animation
-  late AnimationController _balanceAnimationController;
-  late Animation<double> _balanceScaleAnimation;
-  String _previousBalance = '0.000000000000000';
 
   @override
   void initState() {
@@ -70,32 +73,44 @@ class _DashboardScreenState extends State<DashboardScreen>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
-    
-    // 初始化余额数字递增动画控制器
-    _balanceAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-    // 初始化为0，稍后会在_triggerBalanceBounce中设置正确的Tween
-    _balanceScaleAnimation = Tween<double>(begin: 0.0, end: 0.0)
-        .animate(CurvedAnimation(
-          parent: _balanceAnimationController,
-          curve: Curves.easeOutCubic,
-        ));
+
+    // 启动 100ms UI刷新定时器：直接读取 provider.bitcoinBalance（毫秒精度实时计算值）
+    // 无需 Tween/动画，数字每 100ms 刷新一次，视觉极其平滑
+    _uiRefreshTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (mounted) setState(() {});
+    });
     
     _loadPointsData();
     _loadUserLevel(); // 加载用户等级
     _loadContractAndUpdateBatteries();
+
+    // 立即同步一次余额和挖矿速率，避免等待10秒计时器才更新
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<UserProvider>().fetchBitcoinBalance();
+      }
+    });
   }
 
   /// 公共方法：手动刷新余额（由HomeScreen调用）
   Future<void> refreshBalance() async {
     if (!mounted) return;
-    final prevBalance = context.read<UserProvider>().bitcoinBalance;
     await context.read<UserProvider>().fetchBitcoinBalance();
-    final newBalance = context.read<UserProvider>().bitcoinBalance;
-    if (prevBalance != newBalance) {
-      _triggerBalanceBounce();
+    if (mounted) setState(() {});
+  }
+
+  /// 合约激活后立即同步余额与挖矿速率，确保 100ms 计时器即将开始平滑递增显示
+  Future<void> _refreshBalanceAfterMiningStart() async {
+    if (!mounted) return;
+    await context.read<UserProvider>().fetchBitcoinBalance();
+    // 若速率仍为0（后端缓存路径还未清除），每 800ms 重试，最多 5 次
+    for (int _r = 0;
+        _r < 5 &&
+            mounted &&
+            context.read<UserProvider>().miningSpeedPerSecond == 0;
+        _r++) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
     }
   }
 
@@ -108,7 +123,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _loadContractAndUpdateBatteries();
       _loadPointsData();
       _loadUserLevel();
-      _triggerBalanceBounce();
+      // 恢复前台后立即从后端同步基准余额，消除后台期间的时间漂移
+      context.read<UserProvider>().fetchBitcoinBalance();
     }
   }
 
@@ -123,41 +139,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         remainingSeconds: 0,
       );
     });
-  }
-
-  /// 触发余额数字递增动画
-  void _triggerBalanceBounce() {
-    if (!mounted) return;
-    final currentBalanceStr = context.read<UserProvider>().bitcoinBalance;
-    final currentBalance = double.tryParse(currentBalanceStr) ?? 0.0;
-    final previousBalance = double.tryParse(_previousBalance) ?? 0.0;
-    
-    if (currentBalance != previousBalance) {
-      // 创建从旧值到新值的数字递增动画
-      _balanceScaleAnimation = Tween<double>(
-        begin: previousBalance,
-        end: currentBalance,
-      ).animate(CurvedAnimation(
-        parent: _balanceAnimationController,
-        curve: Curves.easeOutCubic,
-      ));
-      
-      _previousBalance = currentBalanceStr;
-      _balanceAnimationController.forward(from: 0.0);
-      print('💰 Dashboard: 余额从 ${previousBalance.toStringAsFixed(15)} 递增到 ${currentBalance.toStringAsFixed(15)}');
-    } else if (_previousBalance == '0.000000000000000') {
-      // 首次加载，直接显示当前值
-      _balanceScaleAnimation = Tween<double>(
-        begin: currentBalance,
-        end: currentBalance,
-      ).animate(CurvedAnimation(
-        parent: _balanceAnimationController,
-        curve: Curves.easeOutCubic,
-      ));
-      _previousBalance = currentBalanceStr;
-      _balanceAnimationController.value = 1.0;
-      print('💰 Dashboard: 首次加载余额 ${currentBalance.toStringAsFixed(15)}');
-    }
   }
 
   /// 直接播放广告并领取奖励（无中间页）
@@ -210,10 +191,22 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!mounted) return;
 
         if (success) {
-          // 立即刷新所有数据
+          // 立即刷新所有数据（包括余额和挖矿速率，确保计数器立即启动）
+          await context.read<UserProvider>().fetchBitcoinBalance();
+          // 若速率仍为0（后端缓存残留），循环重试，确保 0.1s UI 平滑递增立即启动
+          for (int _retry = 0;
+              _retry < 5 &&
+                  mounted &&
+                  context.read<UserProvider>().miningSpeedPerSecond == 0;
+              _retry++) {
+            await Future.delayed(const Duration(milliseconds: 800));
+            if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
+          }
           await _loadContractAndUpdateBatteries();
           await _loadUserLevel();
           await _loadPointsData();
+          // 立即通知 Contracts 页面刷新，无需等待 30 秒轮询
+          widget.onContractRefreshNeeded?.call();
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -363,7 +356,17 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (!mounted) return;
 
         if (success) {
-          // 立即刷新所有数据
+          // 立即刷新所有数据（包括余额和挖矿速率，确保计数器立即启动）
+          await context.read<UserProvider>().fetchBitcoinBalance();
+          // 若速率仍为0，循环重试，确保 0.1s UI 平滑递增立即启动
+          for (int _retry = 0;
+              _retry < 5 &&
+                  mounted &&
+                  context.read<UserProvider>().miningSpeedPerSecond == 0;
+              _retry++) {
+            await Future.delayed(const Duration(milliseconds: 800));
+            if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
+          }
           await _loadContractAndUpdateBatteries();
           await _loadUserLevel();
           await _loadPointsData();
@@ -462,7 +465,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _startMiningTimer() {
-    int secondsCounter = 0; // 计数器，每10秒请求一次后端
+    int secondsCounter = 9; // 从9开始，使第1秒就触发一次余额同步，之后每10秒同步一次
     
     _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
@@ -510,21 +513,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         _sortBatteries();
       }
 
-      // 每秒强制刷新UI以显示实时计算的余额
+      // 每10秒从后端同步一次真实余额和挖矿速率（校准基准值）
       secondsCounter++;
-      if (mounted) {
-        // 每10秒从后端刷新一次数据（同步真实余额和挖矿速率）
-        if (secondsCounter >= 10) {
-          await context.read<UserProvider>().fetchBitcoinBalance();
-          secondsCounter = 0;
-        }
-        
-        if (hasMiningBatteries) {
-          _triggerBalanceBounce();
-        }
-        
-        // 每秒强制刷新UI，确保余额实时更新
-        setState(() {});
+      if (mounted && secondsCounter >= 10) {
+        await context.read<UserProvider>().fetchBitcoinBalance();
+        secondsCounter = 0;
       }
     });
   }
@@ -533,9 +526,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this); // 移除observer
     _miningTimer?.cancel();
-    _priceUpdateTimer?.cancel(); // 取消价格更新定时器
+    _uiRefreshTimer?.cancel();
+    _priceUpdateTimer?.cancel();
     _breathingController.dispose();
-    _balanceAnimationController.dispose();
     super.dispose();
   }
 
@@ -731,14 +724,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
-          // 监听余额变化，自动触发动画更新
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            final newBalance = userProvider.bitcoinBalance;
-            if (newBalance != _previousBalance && mounted) {
-              _triggerBalanceBounce();
-            }
-          });
-          
           return RefreshIndicator(
             onRefresh: () async {
               await _loadPointsData();
@@ -874,20 +859,15 @@ class _DashboardScreenState extends State<DashboardScreen>
             style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 8),
-          AnimatedBuilder(
-            animation: _balanceScaleAnimation,
-            builder: (context, child) {
-              return Text(
-                '${_balanceScaleAnimation.value.toStringAsFixed(15)} BTC',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              );
-            },
+          Text(
+            '${provider.bitcoinBalance} BTC',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
@@ -1030,11 +1010,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               Row(
                 children: [
-                  Icon(
-                    Icons.battery_charging_full,
-                    size: 16,
-                    color: AppColors.textSecondary,
-                  ),
+                  _buildMiniFullBattery(),
                   const SizedBox(width: 4),
                   Text(
                     '= mine 1 hour',
@@ -1198,6 +1174,65 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // Mining Pool 标题旁的迷你满电四格电池图标
+  Widget _buildMiniFullBattery() {
+    const color = AppColors.textSecondary;
+    return SizedBox(
+      width: 13,
+      height: 18,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 电池顶部凸起
+          Container(
+            width: 7,
+            height: 2,
+            decoration: const BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(1),
+                topRight: Radius.circular(1),
+              ),
+            ),
+          ),
+          // 电池主体（四格充满）
+          Container(
+            width: 13,
+            height: 16,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              border: Border.all(color: color, width: 1.5),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(1.5),
+              child: Column(
+                children: [
+                  Expanded(child: _buildMiniBatteryBar(color)),
+                  const SizedBox(height: 1),
+                  Expanded(child: _buildMiniBatteryBar(color)),
+                  const SizedBox(height: 1),
+                  Expanded(child: _buildMiniBatteryBar(color)),
+                  const SizedBox(height: 1),
+                  Expanded(child: _buildMiniBatteryBar(color)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniBatteryBar(Color color) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(1),
+      ),
+    );
+  }
+
   Widget _buildBatteryLevel(bool isFilled, bool isMining, double opacity) {
     return Expanded(
       child: Container(
@@ -1235,7 +1270,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           const SizedBox(height: 12),
-          Row(
+          IntrinsicHeight(
+            child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
                 child: ElevatedButton(
@@ -1259,9 +1296,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                             MaterialPageRoute(
                               builder: (context) => const AdRewardScreen(isDailyCheckIn: false),
                             ),
-                          ).then((_) {
-                            print('✅ 从AdRewardScreen返回,刷新数据');
-                            // 返回后刷新数据
+                          ).then((result) {
+                            print('✅ 从AdRewardScreen返回, result=$result');
+                            if (result == true) {
+                              // 立即乐观更新 Contracts 页 UI，无需等待 API
+                              widget.onAdRewardClaimed?.call();
+                              // 异步刷新余额与挖矿速率，确保 0.1s 递增立即启动
+                              _refreshBalanceAfterMiningStart();
+                            }
+                            // 后台刷新本页数据
                             _loadContractAndUpdateBatteries();
                             _loadUserLevel();
                             _loadPointsData();
@@ -1356,9 +1399,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                     // 签到成功后刷新数据（不需要跳转，AdRewardScreen已经处理）
                     if (result == true && mounted) {
                       print('✅ [Dashboard] 签到成功，刷新数据');
+                      // 刷新余额和挖矿速率，确保 0.1s 递增立即启动
+                      await _refreshBalanceAfterMiningStart();
                       await _loadContractAndUpdateBatteries();
                       await _loadUserLevel();
                       await _loadPointsData();
+                      // 立即通知 Contracts 页刷新
+                      widget.onContractRefreshNeeded?.call();
                     }
                   },
                   style: ElevatedButton.styleFrom(
@@ -1401,6 +1448,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ),
             ],
+          ),
           ),
         ],
       ),

@@ -155,7 +155,7 @@ class _WalletScreenState extends State<WalletScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Wallet')),
+      appBar: AppBar(title: const Text('Wallet'), centerTitle: false),
       body: Consumer<UserProvider>(
         builder: (context, userProvider, child) {
           return RefreshIndicator(

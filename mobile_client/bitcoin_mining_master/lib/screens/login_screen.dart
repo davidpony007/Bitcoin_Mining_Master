@@ -108,7 +108,6 @@ class _LoginScreenState extends State<LoginScreen> {
         appleAccount: appleEmail,
         appleName:   appleName?.isEmpty == true ? null : appleName,
         iosDeviceId: _idfv,
-        idfv:        _idfv,
         idfa:        _idfa,
         attStatus:   _attStatus,
         country:     country,
@@ -201,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
         googleId: googleId,
         googleEmail: email,
         googleName: googleName,
-        androidId: devicePayload['androidId'],
+        deviceId: devicePayload['deviceId'],
         gaid: devicePayload['gaid'],
         country: devicePayload['country'],
       );
@@ -268,32 +267,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<Map<String, String?>> _collectDevicePayloadForGoogleLogin() async {
     final deviceInfo = DeviceInfoPlugin();
-    String androidId;
+    String deviceId;
 
     if (!kIsWeb && Platform.isAndroid) {
       final androidInfo = await deviceInfo.androidInfo;
-      final nativeAndroidId = await NativeDeviceIdService.getAndroidId();
+      final nativeDeviceId = await NativeDeviceIdService.getAndroidId();
 
-      if (nativeAndroidId != null && nativeAndroidId.isNotEmpty) {
-        androidId = nativeAndroidId;
+      if (nativeDeviceId != null && nativeDeviceId.isNotEmpty) {
+        deviceId = nativeDeviceId;
       } else if (androidInfo.id.isNotEmpty && androidInfo.id != 'unknown') {
-        androidId = androidInfo.id;
+        deviceId = androidInfo.id;
       } else if (androidInfo.fingerprint.isNotEmpty) {
-        androidId = androidInfo.fingerprint;
+        deviceId = androidInfo.fingerprint;
       } else {
-        androidId = 'ANDROID_${DateTime.now().millisecondsSinceEpoch}';
+        deviceId = 'ANDROID_${DateTime.now().millisecondsSinceEpoch}';
       }
     } else if (!kIsWeb && Platform.isIOS) {
       final iosInfo = await deviceInfo.iosInfo;
       final identifierForVendor = iosInfo.identifierForVendor;
 
       if (identifierForVendor != null && identifierForVendor.isNotEmpty) {
-        androidId = 'IOS_$identifierForVendor';
+        deviceId = 'IOS_$identifierForVendor';
       } else {
-        androidId = 'IOS_${DateTime.now().millisecondsSinceEpoch}';
+        deviceId = 'IOS_${DateTime.now().millisecondsSinceEpoch}';
       }
     } else {
-      androidId = 'GENERIC_${DateTime.now().millisecondsSinceEpoch}';
+      deviceId = 'GENERIC_${DateTime.now().millisecondsSinceEpoch}';
     }
 
     final deviceInfoMap = await DeviceInfoService.getDeviceInfo();
@@ -301,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final country = deviceInfoMap['country'];
 
     return {
-      'androidId': androidId,
+      'deviceId': deviceId,
       'gaid': gaid,
       'country': country,
     };
