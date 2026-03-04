@@ -532,7 +532,8 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
           ),
         ),
         padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
+          bottom: MediaQuery.of(context).viewInsets.bottom +
+              MediaQuery.of(context).padding.bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -548,68 +549,74 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
               ),
             ),
 
+            // 可滚动的详情区域
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Transaction Details',
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        _buildStatusBadge(transaction.status),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Details
+                    _buildDetailRow('Transaction ID', transaction.id, canCopy: true),
+                    _buildDetailRow('Amount', '${transaction.amount.toStringAsFixed(8)} BTC'),
+                    _buildDetailRow('Network Fee', '${transaction.fee.toStringAsFixed(8)} BTC'),
+                    _buildDetailRow('Received', '${(transaction.amount - transaction.fee).toStringAsFixed(8)} BTC'),
+                    _buildDetailRow('Network', transaction.network),
+                    _buildDetailRow('Wallet Address', transaction.address, canCopy: true),
+                    _buildDetailRow('Created At', _formatFullDateTime(transaction.createdAt)),
+
+                    if (transaction.completedAt != null)
+                      _buildDetailRow('Completed At', _formatFullDateTime(transaction.completedAt!)),
+
+                    if (transaction.rejectedReason != null)
+                      _buildDetailRow('Rejection Reason', transaction.rejectedReason!),
+
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+
+            // Close 按钮固定在底部，始终可见
             Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Transaction Details',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      _buildStatusBadge(transaction.status),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Details
-                  _buildDetailRow('Transaction ID', transaction.id, canCopy: true),
-                  _buildDetailRow('Amount', '${transaction.amount.toStringAsFixed(8)} BTC'),
-                  _buildDetailRow('Network Fee', '${transaction.fee.toStringAsFixed(8)} BTC'),
-                  _buildDetailRow('Received', '${(transaction.amount - transaction.fee).toStringAsFixed(8)} BTC'),
-                  _buildDetailRow('Network', transaction.network),
-                  _buildDetailRow('Wallet Address', transaction.address, canCopy: true),
-                  _buildDetailRow('Created At', _formatFullDateTime(transaction.createdAt)),
-                  
-                  if (transaction.completedAt != null)
-                    _buildDetailRow('Completed At', _formatFullDateTime(transaction.completedAt!)),
-
-                  if (transaction.rejectedReason != null)
-                    _buildDetailRow('Rejection Reason', transaction.rejectedReason!),
-
-                  const SizedBox(height: 16),
-
-                  // Close button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Close',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                ],
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

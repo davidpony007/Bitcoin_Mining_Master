@@ -725,18 +725,22 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
   Widget _buildDialogRow(String label, String value, {Color? valueColor}) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor ?? AppColors.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              color: valueColor ?? AppColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
