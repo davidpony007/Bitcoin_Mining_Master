@@ -32,7 +32,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   final _userRepository = UserRepository();
   final _apiService = ApiService();
   bool _isLoading = false;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+    serverClientId: GoogleAuthConstants.webClientId, // Android 12+ Credential Manager 必须传此参数
+  );
   
   // 用户等级相关
   int _userLevel = 1;
