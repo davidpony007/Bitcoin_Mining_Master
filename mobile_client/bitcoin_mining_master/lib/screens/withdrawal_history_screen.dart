@@ -629,10 +629,10 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 120,
+            width: 110,
             child: Text(
               label,
               style: TextStyle(
@@ -641,8 +641,10 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
               ),
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Text(
@@ -655,9 +657,8 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
                   ),
                 ),
                 if (canCopy)
-                  IconButton(
-                    onPressed: () {
-                      // Copy to clipboard
+                  GestureDetector(
+                    onTap: () {
                       Clipboard.setData(ClipboardData(text: value));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -667,10 +668,13 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
                         ),
                       );
                     },
-                    icon: const Icon(
-                      Icons.copy,
-                      size: 18,
-                      color: AppColors.primary,
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 8),
+                      child: Icon(
+                        Icons.copy,
+                        size: 18,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ),
               ],
