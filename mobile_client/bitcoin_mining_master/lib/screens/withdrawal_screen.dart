@@ -429,16 +429,16 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Use Trust Wallet or MetaMask to get your BNB Smart Chain (BEP20) address:',
+                        'Follow these steps to find your BEP20 deposit address in Binance:',
                         style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.6),
                       ),
                       const SizedBox(height: 8),
                       for (final step in [
-                        ('assets/images/step1.jpg', '① Open Trust Wallet and select "Receive"'),
-                        ('assets/images/step2.jpg', '② Choose BNB Smart Chain (BEP20)'),
-                        ('assets/images/step3.jpg', '③ Your BEP20 address starts with "0x"'),
-                        ('assets/images/step4.jpg', '④ Copy the address (42 characters)'),
-                        ('assets/images/step5.jpg', '⑤ Paste it into the withdrawal address field'),
+                        ('assets/images/step1.jpg', '① Open Binance app and tap "Wallets" at the bottom'),
+                        ('assets/images/step2.jpg', '② Tap "Deposit" on the wallet page'),
+                        ('assets/images/step3.jpg', '③ Search and select the cryptocurrency (e.g. BTC)'),
+                        ('assets/images/step4.jpg', '④ Select "BNB Smart Chain (BEP20)" as the network'),
+                        ('assets/images/step5.jpg', '⑤ Copy the deposit address starting with "0x" (42 characters)'),
                       ]) ...[
                         Text(
                           step.$2,
