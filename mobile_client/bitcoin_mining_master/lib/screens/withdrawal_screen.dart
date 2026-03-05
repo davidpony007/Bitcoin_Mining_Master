@@ -333,51 +333,99 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Choose the right network to receive your BTC. Wrong network selection may result in permanent loss of funds.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
-            ),
-            const SizedBox(height: 20),
-            _buildNetworkHelpItem(
-              icon: Icons.account_circle_outlined,
-              badge: 'DEFAULT',
-              title: 'Binance UID',
-              description: 'Transfer BTC directly to your Binance account using your Binance UID. No wallet address needed. Zero network fee. Recommended for Binance users.',
-            ),
-            const SizedBox(height: 16),
-            _buildNetworkHelpItem(
-              icon: Icons.account_balance_wallet_outlined,
-              badge: 'BEP20',
-              title: 'BNB Smart Chain (BEP20)',
-              description: 'Withdraw BTC to any BEP20-compatible wallet (e.g. Trust Wallet, MetaMask). The wallet address must start with "0x" and be exactly 42 characters. A small network fee of 0.00000028 BTC applies.',
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.error.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.error.withOpacity(0.3)),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Always double-check your address or UID before confirming. Transactions cannot be reversed once submitted.',
-                      style: TextStyle(color: AppColors.error, fontSize: 12, height: 1.5),
-                    ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Choose the right network to receive your BTC. Wrong network selection may result in permanent loss of funds.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+                ),
+                const SizedBox(height: 20),
+                _buildNetworkHelpItem(
+                  icon: Icons.account_circle_outlined,
+                  badge: 'DEFAULT',
+                  title: 'Binance UID',
+                  description: 'Transfer BTC directly to your Binance account using your Binance UID. No wallet address needed. Zero network fee. Recommended for Binance users.',
+                ),
+                const SizedBox(height: 16),
+                _buildNetworkHelpItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  badge: 'BEP20',
+                  title: 'BNB Smart Chain (BEP20)',
+                  description: 'Withdraw BTC to any BEP20-compatible wallet (e.g. Trust Wallet, MetaMask). The wallet address must start with "0x" and be exactly 42 characters. A small network fee of 0.00000028 BTC applies.',
+                ),
+                const SizedBox(height: 20),
+                // How to get Binance UID section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
                   ),
-                ],
-              ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.help_outline_rounded, color: AppColors.primary, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'How to get my Binance UID?',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        '① Open Binance app and go to your Profile\n② Your UID is displayed on the dashboard page\n③ Tap the UID to copy it',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.6),
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset(
+                          'assets/images/binance_uid_guide.png',
+                          fit: BoxFit.contain,
+                          width: double.infinity,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Always double-check your address or UID before confirming. Transactions cannot be reversed once submitted.',
+                          style: TextStyle(color: AppColors.error, fontSize: 12, height: 1.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         actions: [
           ElevatedButton(
