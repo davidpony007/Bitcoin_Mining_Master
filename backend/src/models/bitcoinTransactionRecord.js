@@ -16,26 +16,26 @@ const BitcoinTransactionRecord = sequelize.define('bitcoin_transaction_records',
     comment: '用户唯一标识符'
   },
   transaction_type: { 
-    type: DataTypes.ENUM(
-      'Free Ad Reward',
-      'Daily Check-in Reward',
-      'Invite Friend Reward',
-      'Bind Referrer Reward',
-      'contract_4.99',
-      'contract_6.99',
-      'contract_9.99',
-      'contract_19.99',
-      'withdrawal',
-      'subordinate rebate',
-      'refund for withdrawal failure'
-    ),
+    type: DataTypes.STRING(100),
     allowNull: false,
-    comment: '交易类型: 广告奖励/签到奖励/邀请奖励/绑定推荐人奖励/4.99合约/6.99合约/9.99合约/19.99合约/提现/下级返利/提现失败退款'
+    comment: '交易类型: Free Ad Reward / Daily Check-in Reward / Invite Friend Reward / Bind Referrer Reward / contract_4.99 / contract_6.99 / contract_9.99 / contract_19.99 / withdrawal / subordinate rebate / refund for withdrawal failure / mining_reward'
   },
   transaction_amount: { 
-    type: DataTypes.DECIMAL(18, 18), 
+    type: DataTypes.DECIMAL(20, 18), 
     allowNull: false,
-    comment: '交易金额(比特币数量)'
+    comment: '交易金额(比特币数量，正数)'
+  },
+  balance_after: {
+    type: DataTypes.DECIMAL(20, 18),
+    allowNull: true,
+    defaultValue: null,
+    comment: '交易后余额 (BTC)'
+  },
+  description: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    defaultValue: null,
+    comment: '交易描述 (人类可读)'
   },
   transaction_creation_time: { 
     type: DataTypes.DATE, 
@@ -44,10 +44,10 @@ const BitcoinTransactionRecord = sequelize.define('bitcoin_transaction_records',
     comment: '交易创建时间'
   },
   transaction_status: { 
-    type: DataTypes.ENUM('success', 'error'),
+    type: DataTypes.STRING(20),
     allowNull: false,
     defaultValue: 'success',
-    comment: '交易状态: 成功/失败'
+    comment: '交易状态: success / error / pending'
   }
 }, {
   timestamps: false,

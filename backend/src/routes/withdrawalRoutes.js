@@ -104,20 +104,23 @@ router.post('/request', async (req, res) => {
     
     const withdrawalId = insertResult;
 
-    // 8. 记录比特币交易(提现) - 暂时注释，避免user_id字段长度问题
-    // await BitcoinTransactionRecord.create({
-    //   user_id: userId,
-    //   transaction_type: 'withdrawal',
-    //   transaction_amount: withdrawAmount,
-    //   transaction_status: 'pending',
-    //   description: `Withdrawal to ${walletAddress.substring(0, 10)}...${walletAddress.substring(walletAddress.length - 6)}`
-    // }, { transaction });
-
-    // 9. 更新累计提现金额(等待审核通过后再更新)
-    // await userStatus.increment('total_withdrawal_amount', {
-    //   by: withdrawAmount,
-    //   transaction
-    // });
+    // 8. 记录比特币交易（提现）
+    const newBalanceAfterWithdraw = currentBalance - withdrawAmount;
+    await sequelize.query(
+      `INSERT INTO bitcoin_transaction_records
+         (user_id, transaction_type, transaction_amount, balance_after, description,
+          transaction_status, transaction_creation_time)
+       VALUES (?, 'withdrawal', ?, ?, ?, 'pending', NOW())`,
+      {
+        replacements: [
+          userId,
+          withdrawAmount,
+          newBalanceAfterWithdraw,
+          `Withdrawal to ${walletAddress.substring(0, 10)}...${walletAddress.substring(walletAddress.length - 6)} (${network || 'Bitcoin'})`
+        ],
+        transaction
+      }
+    );
 
     await transaction.commit();
 

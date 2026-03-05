@@ -515,18 +515,33 @@ class ApiService {
   }
 
   /// 获取交易记录
-  Future<List<Transaction>> getTransactions(String userId) async {
+  Future<Map<String, dynamic>> getTransactions(
+    String userId, {
+    int limit = 20,
+    int offset = 0,
+    String type = 'all',
+  }) async {
     try {
       final response = await _dio.get(
         ApiConstants.getTransactions,
-        queryParameters: {'userId': userId, 'limit': 100},
+        queryParameters: {
+          'userId': userId,
+          'limit': limit,
+          'offset': offset,
+          if (type != 'all') 'type': type,
+        },
       );
 
       if (response.data['success'] == true) {
         final List<dynamic> data = response.data['data']['records'] ?? [];
-        return data.map((json) => Transaction.fromJson(json)).toList();
+        final pagination = response.data['data']['pagination'] ?? {};
+        return {
+          'records': data.map((json) => Transaction.fromJson(json)).toList(),
+          'total': pagination['total'] ?? 0,
+          'hasMore': pagination['hasMore'] ?? false,
+        };
       }
-      return [];
+      return {'records': <Transaction>[], 'total': 0, 'hasMore': false};
     } on DioException catch (e) {
       throw _handleError(e);
     }

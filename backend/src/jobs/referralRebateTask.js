@@ -210,16 +210,17 @@ class ReferralRebateTask {
         INSERT INTO bitcoin_transaction_records (
           user_id,
           transaction_type,
-          amount,
+          transaction_amount,
           balance_after,
           description,
-          created_at
-        ) VALUES (?, 'referral_rebate', ?, ?, ?, NOW())
+          transaction_status,
+          transaction_creation_time
+        ) VALUES (?, 'subordinate rebate', ?, ?, ?, 'success', NOW())
       `, [
         referrerId,
         rebateAmount,
         newBalance,
-        `下级返利 (${subordinates.length}个下级，广告合约收益 ${totalSubordinateAdRevenue.toFixed(18)} BTC × 20%)`
+        `Referral rebate: ${subordinates.length} subordinate(s), ad revenue ${totalSubordinateAdRevenue.toFixed(18)} BTC × 20%`
       ]);
       
       await connection.commit();

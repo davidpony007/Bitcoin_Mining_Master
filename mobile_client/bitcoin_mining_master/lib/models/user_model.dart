@@ -224,6 +224,8 @@ class Transaction {
   final String userId;
   final String type;
   final double amount;
+  final double? balanceAfter;
+  final String? description;
   final String typeLabel;
   final DateTime createdAt;
   final String status;
@@ -233,6 +235,8 @@ class Transaction {
     required this.userId,
     required this.type,
     required this.amount,
+    this.balanceAfter,
+    this.description,
     required this.typeLabel,
     required this.createdAt,
     required this.status,
@@ -246,6 +250,12 @@ class Transaction {
       amount: (json['amount'] is num) 
           ? (json['amount'] as num).toDouble() 
           : double.tryParse(json['amount'].toString()) ?? 0.0,
+      balanceAfter: json['balanceAfter'] != null
+          ? (json['balanceAfter'] is num
+              ? (json['balanceAfter'] as num).toDouble()
+              : double.tryParse(json['balanceAfter'].toString()))
+          : null,
+      description: json['description'] as String?,
       typeLabel: json['typeLabel'] as String? ?? '',
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
@@ -260,6 +270,8 @@ class Transaction {
       'userId': userId,
       'type': type,
       'amount': amount,
+      'balanceAfter': balanceAfter,
+      'description': description,
       'typeLabel': typeLabel,
       'createdAt': createdAt.toIso8601String(),
       'status': status,

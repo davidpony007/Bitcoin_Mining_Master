@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../models/user_model.dart';
 import 'withdrawal_screen.dart';
+import 'transaction_history_screen.dart';
 
 /// 钱包屏幕 - 对应WalletFragment.kt
 class WalletScreen extends StatefulWidget {
@@ -291,7 +292,12 @@ class _WalletScreenState extends State<WalletScreen>
               ),
               TextButton(
                 onPressed: transactions.isEmpty ? null : () {
-                  // TODO: Navigate to full transaction history
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const TransactionHistoryScreen(),
+                    ),
+                  );
                 },
                 child: Text(
                   'View All',

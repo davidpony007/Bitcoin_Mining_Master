@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const sequelize = require('../config/database');
 const { QueryTypes } = require('sequelize');
+const auth = require('../middleware/auth');
 
 /**
  * GET /api/bitcoin-transactions/records
@@ -15,7 +16,7 @@ const { QueryTypes } = require('sequelize');
  * - limit: 每页记录数(默认20, 最大100)
  * - offset: 偏移量(默认0)
  */
-router.get('/records', async (req, res) => {
+router.get('/records', auth, async (req, res) => {
   try {
     const { userId, type = 'all', limit = 20, offset = 0 } = req.query;
 
@@ -46,6 +47,8 @@ router.get('/records', async (req, res) => {
         user_id,
         transaction_type,
         transaction_amount,
+        balance_after,
+        description,
         transaction_creation_time,
         transaction_status
        FROM bitcoin_transaction_records
@@ -75,6 +78,8 @@ router.get('/records', async (req, res) => {
       userId: record.user_id,
       type: record.transaction_type,
       amount: parseFloat(record.transaction_amount),
+      balanceAfter: record.balance_after != null ? parseFloat(record.balance_after) : null,
+      description: record.description || null,
       createdAt: record.transaction_creation_time,
       status: record.transaction_status,
       // 添加类型描述
@@ -108,7 +113,7 @@ router.get('/records', async (req, res) => {
  * GET /api/bitcoin-transactions/summary
  * 获取用户交易统计摘要
  */
-router.get('/summary', async (req, res) => {
+router.get('/summary', auth, async (req, res) => {
   try {
     const { userId } = req.query;
 
@@ -160,18 +165,22 @@ router.get('/summary', async (req, res) => {
 });
 
 /**
- * 获取交易类型的中文标签
+ * 获取交易类型的显示标签
  */
 function getTypeLabel(type) {
   const labels = {
-    'Free Ad Reward': 'Ad Reward',
-    'Daily Check-in Reward': 'Daily Check-in',
-    'Invite Friend Reward': 'Invitation Reward',
-    'Bind Referrer Reward': 'Referral Reward',
-    'paid contract': 'Paid Contract',
-    'withdrawal': 'Withdrawal',
-    'subordinate rebate': 'Referral Rebate',
-    'refund for withdrawal failure': 'Refund'
+    'Free Ad Reward':               'Ad Reward',
+    'Daily Check-in Reward':        'Daily Check-in',
+    'Invite Friend Reward':         'Invitation Reward',
+    'Bind Referrer Reward':         'Referral Reward',
+    'contract_4.99':                'Contract ($4.99)',
+    'contract_6.99':                'Contract ($6.99)',
+    'contract_9.99':                'Contract ($9.99)',
+    'contract_19.99':               'Contract ($19.99)',
+    'withdrawal':                   'Withdrawal',
+    'subordinate rebate':           'Referral Rebate',
+    'refund for withdrawal failure':'Withdrawal Refund',
+    'mining_reward':                'Mining Reward',
   };
   return labels[type] || type;
 }

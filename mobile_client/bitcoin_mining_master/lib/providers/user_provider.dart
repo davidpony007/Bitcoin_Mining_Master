@@ -20,6 +20,9 @@ class UserProvider with ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   List<Transaction> _transactions = [];
+  int _transactionTotal = 0;
+  bool _transactionHasMore = false;
+  bool _isLoadingMoreTransactions = false;
   bool _isOfflineMode = false; // 离线模式标记
   Timer? _offlineDebounce; // 防抖：避免短暂断连立即弹 Toast
   
@@ -43,6 +46,9 @@ class UserProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   List<Transaction> get transactions => _transactions;
+  int get transactionTotal => _transactionTotal;
+  bool get transactionHasMore => _transactionHasMore;
+  bool get isLoadingMoreTransactions => _isLoadingMoreTransactions;
   bool get isOfflineMode => _isOfflineMode;
 
   /// 初始化用户数据
@@ -164,19 +170,44 @@ class UserProvider with ChangeNotifier {
     _setLoading(false);
   }
 
-  /// 获取交易记录
+  /// 获取交易记录（第一页，替换现有数据）
   Future<void> fetchTransactions() async {
     _setLoading(true);
     
-    final result = await _repository.fetchTransactions();
+    final result = await _repository.fetchTransactions(limit: 20, offset: 0);
     if (result.isSuccess) {
-      _transactions = result.data!;
+      final data = result.data!;
+      _transactions = (data['records'] as List).cast<Transaction>();
+      _transactionTotal = (data['total'] as int?) ?? 0;
+      _transactionHasMore = (data['hasMore'] as bool?) ?? false;
       _errorMessage = null;
     } else {
       _setError('Failed to get transaction records: ${result.error}');
     }
     
     _setLoading(false);
+  }
+
+  /// 加载更多交易记录（追加到现有数据）
+  Future<void> loadMoreTransactions() async {
+    if (_isLoadingMoreTransactions || !_transactionHasMore) return;
+    _isLoadingMoreTransactions = true;
+    notifyListeners();
+
+    final result = await _repository.fetchTransactions(
+      limit: 20,
+      offset: _transactions.length,
+    );
+    if (result.isSuccess) {
+      final data = result.data!;
+      _transactions = List.from(_transactions)
+        ..addAll((data['records'] as List).cast<Transaction>());
+      _transactionTotal = (data['total'] as int?) ?? _transactionTotal;
+      _transactionHasMore = (data['hasMore'] as bool?) ?? false;
+    }
+
+    _isLoadingMoreTransactions = false;
+    notifyListeners();
   }
 
   /// 提现

@@ -250,7 +250,7 @@ class ContractRewardService {
           transaction_type,
           transaction_amount,
           transaction_status,
-          transaction_time
+          transaction_creation_time
         ) VALUES (?, 'mining_reward', ?, 'success', NOW())
       `, [userId, amount]);
 

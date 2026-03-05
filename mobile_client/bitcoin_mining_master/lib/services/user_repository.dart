@@ -298,8 +298,11 @@ class UserRepository {
     }
   }
 
-  /// 获取交易记录
-  Future<Result<List<Transaction>>> fetchTransactions() async {
+  /// 获取交易记录（支持分页）
+  Future<Result<Map<String, dynamic>>> fetchTransactions({
+    int limit = 20,
+    int offset = 0,
+  }) async {
     try {
       final userIdResult = await fetchUserId();
       if (!userIdResult.isSuccess) {
@@ -307,8 +310,12 @@ class UserRepository {
       }
 
       final userId = userIdResult.data!;
-      final transactions = await _apiService.getTransactions(userId);
-      return Result.success(transactions);
+      final result = await _apiService.getTransactions(
+        userId,
+        limit: limit,
+        offset: offset,
+      );
+      return Result.success(result);
     } catch (e) {
       return Result.failure(e as Exception);
     }

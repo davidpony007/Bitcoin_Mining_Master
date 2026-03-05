@@ -140,16 +140,17 @@ class BalanceSyncTask {
         INSERT INTO bitcoin_transaction_records (
           user_id,
           transaction_type,
-          amount,
+          transaction_amount,
           balance_after,
           description,
-          created_at
-        ) VALUES (?, 'mining_reward', ?, ?, ?, NOW())
+          transaction_status,
+          transaction_creation_time
+        ) VALUES (?, 'mining_reward', ?, ?, ?, 'success', NOW())
       `, [
         userId,
         minedAmount,
         newBalance,
-        `2小时挖矿收益 (${elapsedSeconds}秒 × ${speedPerSecond.toFixed(18)} BTC/s)`
+        `2h mining reward (${elapsedSeconds}s × ${speedPerSecond.toFixed(18)} BTC/s)`
       ]);
       
       await connection.commit();
