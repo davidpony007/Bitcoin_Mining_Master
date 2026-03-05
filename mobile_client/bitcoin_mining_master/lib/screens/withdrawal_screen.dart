@@ -402,6 +402,63 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                // How to get BEP20 address section
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.help_outline_rounded, color: AppColors.primary, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'How to get my BEP20 address?',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Use Trust Wallet or MetaMask to get your BNB Smart Chain (BEP20) address:',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.6),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final step in [
+                        ('assets/images/step1.jpg', '① Open Trust Wallet and select "Receive"'),
+                        ('assets/images/step2.jpg', '② Choose BNB Smart Chain (BEP20)'),
+                        ('assets/images/step3.jpg', '③ Your BEP20 address starts with "0x"'),
+                        ('assets/images/step4.jpg', '④ Copy the address (42 characters)'),
+                        ('assets/images/step5.jpg', '⑤ Paste it into the withdrawal address field'),
+                      ]) ...[
+                        Text(
+                          step.$2,
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.6),
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.asset(
+                            step.$1,
+                            fit: BoxFit.contain,
+                            width: double.infinity,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
