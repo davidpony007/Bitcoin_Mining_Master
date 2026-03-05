@@ -335,8 +335,11 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         ),
         content: SizedBox(
           width: double.maxFinite,
-          child: SingleChildScrollView(
-            child: Column(
+          child: Scrollbar(
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              primary: true,
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -365,7 +368,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A2E),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.85), width: 1.8),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -386,7 +389,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        '① Open Binance app and go to your Profile\n② Your UID is displayed on the dashboard page\n③ Tap the UID to copy it',
+                        '① Open Binance account and go to your Profile\n② Your UID is displayed on the dashboard page\n③ Tap the UID to copy it',
                         style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.6),
                       ),
                       const SizedBox(height: 10),
@@ -408,7 +411,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A2E),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.85), width: 1.8),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,14 +432,14 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                       ),
                       const SizedBox(height: 10),
                       const Text(
-                        'Follow these steps to find your BEP20 deposit address in Binance:',
+                        'Follow these steps to find your BNB Smart Chain(BEP20) address in Binance:',
                         style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.6),
                       ),
                       const SizedBox(height: 8),
                       for (final step in [
-                        ('assets/images/step1.jpg', '① Open Binance app and tap "Wallets" at the bottom'),
-                        ('assets/images/step2.jpg', '② Tap "Deposit" on the wallet page'),
-                        ('assets/images/step3.jpg', '③ Search and select the cryptocurrency (e.g. BTC)'),
+                        ('assets/images/step1.jpg', '① Tap "Deposit"'),
+                        ('assets/images/step2.jpg', '② Tap "Deposit Crypto"'),
+                        ('assets/images/step3.jpg', '③ Choose "BTC"'),
                         ('assets/images/step4.jpg', '④ Select "BNB Smart Chain (BEP20)" as the network'),
                         ('assets/images/step5.jpg', '⑤ Copy the deposit address starting with "0x" (42 characters)'),
                       ]) ...[
@@ -483,6 +486,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               ],
             ),
           ),
+          ),
         ),
         actions: [
           ElevatedButton(
@@ -523,12 +527,14 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             children: [
               Row(
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 6),
@@ -581,22 +587,22 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   color: AppColors.textPrimary,
                 ),
               ),
-              const SizedBox(width: 6),
+              const Spacer(),
               GestureDetector(
                 onTap: _showNetworkHelp,
                 child: Container(
-                  width: 22,
-                  height: 22,
+                  width: 18,
+                  height: 18,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.textSecondary, width: 1.5),
+                    border: Border.all(color: AppColors.primary, width: 1.5),
                   ),
                   child: const Center(
                     child: Text(
                       '?',
                       style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
+                        color: AppColors.primary,
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
                         height: 1.0,
                       ),
