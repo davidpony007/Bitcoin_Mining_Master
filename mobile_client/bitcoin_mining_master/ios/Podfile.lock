@@ -71,19 +71,19 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
-  - "app_tracking_transparency (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/app_tracking_transparency/ios`)"
-  - "connectivity_plus (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/connectivity_plus/ios`)"
-  - "device_info_plus (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/device_info_plus/ios`)"
-  - "Flutter (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/Flutter`)"
-  - "fluttertoast (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/fluttertoast/ios`)"
-  - "google_mobile_ads (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/google_mobile_ads/ios`)"
-  - "google_sign_in_ios (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/google_sign_in_ios/darwin`)"
-  - "in_app_purchase_storekit (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/in_app_purchase_storekit/darwin`)"
-  - "share_plus (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/share_plus/ios`)"
-  - "shared_preferences_foundation (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/shared_preferences_foundation/darwin`)"
-  - "sign_in_with_apple (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/sign_in_with_apple/ios`)"
-  - "url_launcher_ios (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/url_launcher_ios/ios`)"
-  - "webview_flutter_wkwebview (from `../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/webview_flutter_wkwebview/darwin`)"
+  - app_tracking_transparency (from `.symlinks/plugins/app_tracking_transparency/ios`)
+  - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
+  - Flutter (from `Flutter`)
+  - fluttertoast (from `.symlinks/plugins/fluttertoast/ios`)
+  - google_mobile_ads (from `.symlinks/plugins/google_mobile_ads/ios`)
+  - google_sign_in_ios (from `.symlinks/plugins/google_sign_in_ios/darwin`)
+  - in_app_purchase_storekit (from `.symlinks/plugins/in_app_purchase_storekit/darwin`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - sign_in_with_apple (from `.symlinks/plugins/sign_in_with_apple/ios`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
+  - webview_flutter_wkwebview (from `.symlinks/plugins/webview_flutter_wkwebview/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -99,31 +99,31 @@ SPEC REPOS:
 
 EXTERNAL SOURCES:
   app_tracking_transparency:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/app_tracking_transparency/ios"
+    :path: ".symlinks/plugins/app_tracking_transparency/ios"
   connectivity_plus:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/connectivity_plus/ios"
+    :path: ".symlinks/plugins/connectivity_plus/ios"
   device_info_plus:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/device_info_plus/ios"
+    :path: ".symlinks/plugins/device_info_plus/ios"
   Flutter:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/Flutter"
+    :path: Flutter
   fluttertoast:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/fluttertoast/ios"
+    :path: ".symlinks/plugins/fluttertoast/ios"
   google_mobile_ads:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/google_mobile_ads/ios"
+    :path: ".symlinks/plugins/google_mobile_ads/ios"
   google_sign_in_ios:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/google_sign_in_ios/darwin"
+    :path: ".symlinks/plugins/google_sign_in_ios/darwin"
   in_app_purchase_storekit:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/in_app_purchase_storekit/darwin"
+    :path: ".symlinks/plugins/in_app_purchase_storekit/darwin"
   share_plus:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/share_plus/ios"
+    :path: ".symlinks/plugins/share_plus/ios"
   shared_preferences_foundation:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/shared_preferences_foundation/darwin"
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   sign_in_with_apple:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/sign_in_with_apple/ios"
+    :path: ".symlinks/plugins/sign_in_with_apple/ios"
   url_launcher_ios:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/url_launcher_ios/ios"
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
   webview_flutter_wkwebview:
-    :path: "../../../../../../../iCloud云盘（归档）/Desktop/工程文件夹/Bitcoin_Mining_Master/mobile_client/bitcoin_mining_master/ios/.symlinks/plugins/webview_flutter_wkwebview/darwin"
+    :path: ".symlinks/plugins/webview_flutter_wkwebview/darwin"
 
 SPEC CHECKSUMS:
   app_tracking_transparency: 3d84f147f67ca82d3c15355c36b1fa6b66ca7c92

@@ -64,5 +64,35 @@ ssl/
 
 # ===== Logs & temp =====
 logs/
+*.log
 *.sql.bak
 backup_*.sql
+
+# ===== Archives & tarballs =====
+*.tar.gz
+*.gz
+*.zip
+*.tar
+
+# ===== Backup/temp artifacts =====
+*.backup
+*.bak
+*.broken
+*.verbose
+*.old
+
+# ===== Redis data =====
+*.rdb
+
+# ===== Backup directories =====
+backups/
+
+# ===== Analysis outputs =====
+*_data.json
+analysis_output.log
+
+# ===== Env backup =====
+.env.backup
+
+# ===== PM2 logs =====
+pm2-*.log

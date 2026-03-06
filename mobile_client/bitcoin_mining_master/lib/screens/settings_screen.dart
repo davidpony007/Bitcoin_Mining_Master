@@ -365,6 +365,119 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     await launchUrl(emailUri, mode: LaunchMode.externalApplication);
   }
 
+  void _showRateDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppColors.cardDark,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 36),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 拖动指示条
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // 星星图标
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.star_rate_rounded,
+                  color: AppColors.primary,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // 标题
+              const Text(
+                'Enjoying Bitcoin Mining Master?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              // 正文
+              const Text(
+                'If you have a moment, would you mind leaving us a 5\u2011star rating? As a thank\u2011you, we\'ll add bonus points to your account.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 28),
+              // Rate Now 按钮
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    _openStoreReview();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Rate Now',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Not Now 按钮
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Not Now',
+                    style: TextStyle(fontSize: 15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _openStoreReview() async {
     if (Platform.isAndroid) {
       const packageName = 'com.cloudminingtool.bitcoin_mining_app';
@@ -502,7 +615,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 iconColor: AppColors.primary,
                 title: 'Support Us',
                 subtitle: 'Your rating helps us improve',
-                onTap: _openStoreReview,
+                onTap: _showRateDialog,
               ),
               _buildDivider(),
               _buildNavigationItem(

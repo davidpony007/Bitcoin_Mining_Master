@@ -1,0 +1,31 @@
+# Bitcoin Mining Master 服务器 SSH 配置
+# 文件位置: ~/.ssh/config
+# 
+# 使用方法:
+#   1. 将此文件内容追加到 ~/.ssh/config
+#   2. 之后可以直接使用: ssh bmm-server
+#   3. 建立隧道: ssh -N -L 8888:localhost:8888 bmm-server
+
+Host bmm-server
+    HostName 47.79.232.189
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+    # 以下选项提升连接稳定性
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    TCPKeepAlive yes
+    # 连接复用，加快后续连接速度
+    ControlMaster auto
+    ControlPath ~/.ssh/control-%C
+    ControlPersist 10m
+
+# 如果您想直接包含隧道配置
+Host bmm-tunnel
+    HostName 47.79.232.189
+    User root
+    Port 22
+    IdentityFile ~/.ssh/id_ed25519
+    LocalForward 8888 localhost:8888
+    ServerAliveInterval 60
+    ServerAliveCountMax 3

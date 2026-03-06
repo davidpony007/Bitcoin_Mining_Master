@@ -1,0 +1,119 @@
+{
+  "info": {
+    "name": "Bitcoin Mining Master - 注册新用户测试",
+    "description": "根据云服务器MySQL数据库user_information表结构创建的注册测试",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. 健康检查",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8888/api/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8888",
+          "path": ["api", "health"]
+        },
+        "description": "检查API服务是否正常运行"
+      }
+    },
+    {
+      "name": "2. 注册新用户 - 最小化字段",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"USER{{$timestamp}}\",\n  \"invitation_code\": \"INV123456\",\n  \"email\": \"user{{$timestamp}}@example.com\",\n  \"android_id\": \"android_{{$timestamp}}\",\n  \"gaid\": \"{{$guid}}\",\n  \"register_ip\": \"192.168.1.100\",\n  \"country\": \"US\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8888/api/users/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8888",
+          "path": ["api", "users", "register"]
+        },
+        "description": "使用最少必填字段注册新用户"
+      }
+    },
+    {
+      "name": "3. 注册新用户 - 完整字段",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"USER{{$timestamp}}\",\n  \"invitation_code\": \"INV123456789\",\n  \"email\": \"testuser{{$timestamp}}@bitcoin-mining.com\",\n  \"android_id\": \"android_device_{{$timestamp}}\",\n  \"gaid\": \"{{$guid}}\",\n  \"register_ip\": \"203.0.113.42\",\n  \"country\": \"CN\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8888/api/users/register",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8888",
+          "path": ["api", "users", "register"]
+        },
+        "description": "使用所有字段注册新用户（推荐）"
+      }
+    },
+    {
+      "name": "4. 查询用户列表",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8888/api/userInformation?page=1&pageSize=10",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8888",
+          "path": ["api", "userInformation"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "pageSize",
+              "value": "10"
+            }
+          ]
+        },
+        "description": "查询最近注册的用户列表"
+      }
+    },
+    {
+      "name": "5. 查询单个用户",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8888/api/userInformation/:userId",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8888",
+          "path": ["api", "userInformation", ":userId"],
+          "variable": [
+            {
+              "key": "userId",
+              "value": "USER1732501200",
+              "description": "替换为实际的 user_id"
+            }
+          ]
+        },
+        "description": "根据user_id查询单个用户信息"
+      }
+    }
+  ]
+}
