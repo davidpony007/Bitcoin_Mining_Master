@@ -52,6 +52,7 @@ const UserInformation = sequelize.define('user_information', {
   },
   android_id: { 
     type: DataTypes.STRING(255),  // 扩展长度支持长指纹
+    field: 'device_id',           // 数据库实际列名是 device_id
     allowNull: true,  // 允许为空：支持多平台、隐私限制、获取失败等情况
     defaultValue: null,
     comment: 'Android设备ID（支持长指纹）'
@@ -186,7 +187,7 @@ const UserInformation = sequelize.define('user_information', {
     },
     {
       unique: true,  // 唯一约束
-      fields: ['android_id'],
+      fields: ['device_id'],
       name: 'idx_android_id_unique'
     },
     {

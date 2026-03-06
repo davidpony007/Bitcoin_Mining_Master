@@ -59,7 +59,7 @@ class ApiService {
     String? email,
   }) async {
     final payload = {
-      'device_id': deviceId,
+      'android_id': deviceId,
       if (referrerInvitationCode != null)
         'referrer_invitation_code': referrerInvitationCode,
       if (gaid != null) 'gaid': gaid,
