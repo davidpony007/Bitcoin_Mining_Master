@@ -64,34 +64,10 @@ const UserInformation = sequelize.define('user_information', {
     comment: 'Google Advertising ID(可选)'
   },
   idfv: {
-    type: DataTypes.STRING(36),
+    type: DataTypes.VIRTUAL,  // DB无此列，设为虚拟字段避免SQL错误
     allowNull: true,
     defaultValue: null,
-    comment: 'iOS设备厂商标识符(无需权限)'
-  },
-  idfa: {
-    type: DataTypes.STRING(36),
-    allowNull: true,
-    defaultValue: null,
-    comment: 'iOS广告追踪标识符(需ATT授权)'
-  },
-  att_status: {
-    type: DataTypes.TINYINT(1),
-    allowNull: true,
-    defaultValue: null,
-    comment: 'iOS ATT授权状态: 0=未询问 1=受限 2=拒绝 3=已授权'
-  },
-  att_consent_updated_at: {
-    type: DataTypes.DATE,
-    allowNull: true,
-    defaultValue: null,
-    comment: 'ATT状态最后更新时间'
-  },
-  idfv: {
-    type: DataTypes.STRING(36),
-    allowNull: true,
-    defaultValue: null,
-    comment: 'iOS设备厂商标识符(无需权限)'
+    comment: 'iOS设备厂商标识符(无需权限) - 虚拟字段'
   },
   idfa: {
     type: DataTypes.STRING(36),
