@@ -4,6 +4,7 @@
 const { Op } = require('sequelize');
 const UserInformation = require('../models/userInformation');
 const InvitationRelationship = require('../models/invitationRelationship');
+const InvitationRebate = require('../models/invitationRebate');
 const UserStatus = require('../models/userStatus');
 const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
@@ -1942,6 +1943,44 @@ exports.bindAppleAccount = async (req, res) => {
   } catch (err) {
     console.error('绑定 Apple 账号失败:', err);
     res.status(500).json({ success: false, error: 'Binding failed', details: err.message });
+  }
+};
+
+/**
+ * 查询用户的邀请返利记录
+ * GET /api/auth/invitation-rebate?user_id=xxx&page=1&limit=20
+ */
+exports.getInvitationRebate = async (req, res) => {
+  try {
+    const { user_id, page = 1, limit = 20 } = req.query;
+
+    if (!user_id) {
+      return res.status(400).json({ success: false, error: 'user_id is required' });
+    }
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const { count, rows } = await InvitationRebate.findAndCountAll({
+      where: { user_id: user_id.trim() },
+      order: [['rebate_creation_time', 'DESC']],
+      limit: limitNum,
+      offset,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        total: count,
+        page: pageNum,
+        limit: limitNum,
+        records: rows,
+      },
+    });
+  } catch (err) {
+    console.error('查询邀请返利记录失败:', err);
+    res.status(500).json({ success: false, error: 'Query failed', details: err.message });
   }
 };
 

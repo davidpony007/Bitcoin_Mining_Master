@@ -70,5 +70,7 @@ router.post('/create-ad-contract', authController.createAdFreeContract);
 // 激活免费广告挖矿合约
 router.post('/activate-ad-contract', authController.activateAdFreeContract);
 
+router.get('/invitation-rebate', authController.getInvitationRebate);
+
 // 导出路由模块，供主应用挂载
 module.exports = router;
