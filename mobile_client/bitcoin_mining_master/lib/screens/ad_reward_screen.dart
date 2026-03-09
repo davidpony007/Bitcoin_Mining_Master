@@ -224,8 +224,8 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         }
       }
       
-      // 调用后端API检查签到状态
-      final apiUrl = '${ApiConstants.baseUrl}/check-in/status';
+      // 调用后端API检查签到状态（传入user_id作为查询参数）
+      final apiUrl = '${ApiConstants.baseUrl}/check-in/status?user_id=$userId';
       print('📍 检查签到状态 API URL: $apiUrl');
       
       final response = await http.get(
@@ -338,40 +338,37 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       
       print('📥 签到API响应状态: ${response.statusCode}');
       print('📥 签到API响应内容: ${response.body}');
-      
+
+      final data = json.decode(response.body);
+
+      // 检查是否是「今日已签到」（后端返回400 + alreadyCheckedIn:true）
+      if (data['data'] != null && data['data']['alreadyCheckedIn'] == true) {
+        print('ℹ️ [AdReward] 今日已签到，保存本地日期并视为成功');
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        await _storageService.saveLastCheckInDate(today);
+        setState(() { _hasCheckedInToday = true; });
+        return true; // 已签到视为成功，避免显示错误信息
+      }
+
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
         print('✅ 签到成功: $data');
-        
         if (data['success'] == true) {
           // 保存签到日期到本地
           final today = DateTime.now().toIso8601String().split('T')[0];
           final saved = await _storageService.saveLastCheckInDate(today);
           print('✅ [AdReward] 签到成功! 保存日期: $today, saved=$saved');
-          // 验证是否真的保存成功
           final verified = _storageService.getLastCheckInDate();
           print('🔍 [AdReward] 验证保存结果: $verified');
-          setState(() {
-            _hasCheckedInToday = true;
-          });
+          setState(() { _hasCheckedInToday = true; });
           return true;
         } else {
-          // 检查是否是今日已签到
-          if (data['data'] != null && data['data']['alreadyCheckedIn'] == true) {
-            _lastErrorMessage = 'You have already checked in today! Please try again after UTC 00:00';
-            final today = DateTime.now().toIso8601String().split('T')[0];
-            _storageService.saveLastCheckInDate(today);
-            setState(() {
-              _hasCheckedInToday = true;
-            });
-          } else {
-            _lastErrorMessage = data['message'] ?? 'Check-in failed, please try again later';
-          }
+          _lastErrorMessage = data['message'] ?? 'Check-in failed, please try again later';
           print('❌ API返回失败: ${data['message']}');
           return false;
         }
       } else {
-        _lastErrorMessage = 'Check-in failed, please try again later';
+        _lastErrorMessage = data['message'] ?? 'Check-in failed, please try again later';
+        print('❌ 签到HTTP错误 ${response.statusCode}: ${data['message']}');
         return false;
       }
     } catch (e) {

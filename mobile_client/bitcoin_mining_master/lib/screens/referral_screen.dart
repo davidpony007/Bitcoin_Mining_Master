@@ -8,13 +8,15 @@ import '../services/user_repository.dart';
 
 /// 推荐屏幕 - Invite with rebate earnings
 class ReferralScreen extends StatefulWidget {
-  const ReferralScreen({super.key});
+  final VoidCallback? onContractRefreshNeeded;
+
+  const ReferralScreen({super.key, this.onContractRefreshNeeded});
 
   @override
-  State<ReferralScreen> createState() => _ReferralScreenState();
+  State<ReferralScreen> createState() => ReferralScreenState();
 }
 
-class _ReferralScreenState extends State<ReferralScreen> {
+class ReferralScreenState extends State<ReferralScreen> {
   final _storageService = StorageService();
   final _apiService = ApiService();
   final _userRepository = UserRepository();
@@ -28,11 +30,26 @@ class _ReferralScreenState extends State<ReferralScreen> {
   String? _referrerInvitationCode; // 推荐人的邀请码
   List<Map<String, dynamic>> _invitedUsersList = []; // 邀请的用户列表
   final GlobalKey _shareButtonKey = GlobalKey(); // iOS sharePositionOrigin 定位用
+  final ScrollController _invitedListScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _invitedListScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadInvitationData();
+  }
+
+  /// 供外部调用：刷新 Invited Friends 列表
+  Future<void> refreshInvitedFriends() async {
+    final userId = _storageService.getUserId();
+    if (userId != null && userId.isNotEmpty && !userId.startsWith('OFFLINE_')) {
+      await _loadInvitationInfo(userId);
+    }
   }
 
   Future<void> _loadInvitationData() async {
@@ -400,9 +417,11 @@ $downloadUrl
       Navigator.pop(context); // 关闭加载
 
       if (response['success'] == true) {
-        // 更新状态：已有推荐人
+        // 更新状态：已有推荐人，同时直接从响应中拿到推荐人邀请码，避免等待二次请求
         setState(() {
           _hasReferrer = true;
+          _referrerInvitationCode =
+              response['data']?['referrer_invitation_code'] as String?;
         });
         
         // 创建免费广告合约
@@ -417,6 +436,9 @@ $downloadUrl
         
         // 重新加载数据
         _loadInvitationData();
+        
+        // 立即触发合约列表刷新，无需等待 30 秒定时器
+        widget.onContractRefreshNeeded?.call();
         
         return {'success': true};
       } else {
@@ -1138,12 +1160,15 @@ $downloadUrl
                     color: AppColors.cardDark,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
+                  child: Scrollbar(
+                    controller: _invitedListScrollController,
+                    thumbVisibility: true,
+                    child: ListView.builder(
+                    controller: _invitedListScrollController,
                     itemCount: _invitedUsersList.length,
                     itemBuilder: (context, index) {
                       final user = _invitedUsersList[index];
-                      final invitationCode = user['invitation_code'] ?? 'N/A';
+                      final userId = user['user_id'] ?? 'N/A';
                       final creationTime = user['invitation_creation_time'] ?? '';
                       
                       // 格式化时间（精确到秒）
@@ -1185,7 +1210,7 @@ $downloadUrl
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    invitationCode,
+                                    userId,
                                     style: TextStyle(
                                       color: AppColors.textPrimary,
                                       fontSize: 13,
@@ -1211,6 +1236,7 @@ $downloadUrl
                         ),
                       );
                     },
+                  ),
                   ),
                 ),
         ],

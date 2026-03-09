@@ -613,16 +613,22 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (response['success'] == true) {
         print('✅ Referrer code added successfully');
-        // 创建免费广告合约
-        await _apiService.createAdFreeContract(userId: userId);
         return true;  // 验证成功，允许继续登录
       } else {
-        // 邀请码验证失败 - 阻止登录
+        final errorCode = response['errorCode']?.toString() ?? '';
         final messageValue = response['message'];
         String errorMsg = (messageValue != null) ? messageValue.toString() : 'Invalid invitation code';
-        print('❌ 邀请码验证失败: $errorMsg');
+        print('❌ 邀请码验证失败: errorCode=$errorCode, msg=$errorMsg');
+
+        // 已绑定过推荐人：直接放行，不阻止登录
+        if (errorCode == 'ALREADY_HAS_REFERRER') {
+          print('ℹ️ 用户已绑定推荐人，跳过绑定直接登录');
+          return true;
+        }
+
         if (errorMsg.contains('not found') || 
-            errorMsg.contains('not exist')) {
+            errorMsg.contains('not exist') ||
+            errorCode == 'INVALID_INVITATION_CODE') {
           errorMsg = 'The invitation code you entered does not exist. Please confirm and try again.';
         }
         _showInvitationCodeError(errorMsg);
@@ -710,16 +716,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// 检查网络连接
   Future<bool> _checkNetworkConnection() async {
+    // 只做本地网络状态检测（快速，无需发起实际 HTTP 请求）
+    // 服务器可达性交由后续 API 调用自行处理，避免因超时误报 "无网络"
     final isConnected = await _networkService.isConnected();
     
     if (!isConnected) {
-      _showNetworkError();
-      return false;
-    }
-
-    // 检查是否能连接到后端
-    final canReach = await _networkService.canReachBackend();
-    if (!canReach) {
       _showNetworkError();
       return false;
     }
@@ -1034,7 +1035,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Enter your referrer\'s invitation code to get extra reward! If you have already bound it, please ignore this.',
+                  'Enter your referrer\'s invitation code to get an extra reward! If you already have a referrer linked, please skip this.',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 13,

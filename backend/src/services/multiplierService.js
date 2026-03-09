@@ -21,7 +21,7 @@ class MultiplierService {
       // 获取用户信息(包含国家倍率)
       const user = await UserInformation.findOne({
         where: { user_id: userId },
-        attributes: ['user_id', 'country', 'country_multiplier']
+        attributes: ['user_id', 'country_code', 'country_multiplier']
       });
 
       if (!user) {
@@ -127,13 +127,13 @@ class MultiplierService {
 
       const stats = await sequelize.query(`
         SELECT 
-          country,
+          country_code,
           country_multiplier,
           COUNT(*) as user_count
         FROM user_information
-        WHERE country IS NOT NULL
-        GROUP BY country, country_multiplier
-        ORDER BY country, country_multiplier DESC
+        WHERE country_code IS NOT NULL
+        GROUP BY country_code, country_multiplier
+        ORDER BY country_code, country_multiplier DESC
       `, { type: QueryTypes.SELECT });
 
       return stats;

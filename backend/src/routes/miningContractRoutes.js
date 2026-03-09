@@ -26,7 +26,14 @@ router.post('/ad/watch', async (req, res) => {
       });
     }
 
-    const result = await AdMiningContractService.watchAdAndExtendMining(user_id.trim());
+    // 提取请求IP，用于与AdMob保持一致的国家判断
+    const requestIp = req.headers['x-forwarded-for']?.split(',')[0].trim()
+                   || req.headers['x-real-ip']
+                   || req.ip
+                   || req.connection?.remoteAddress
+                   || '未知';
+
+    const result = await AdMiningContractService.watchAdAndExtendMining(user_id.trim(), requestIp);
     
     if (!result.success) {
       return res.status(400).json(result);
@@ -88,7 +95,14 @@ router.post('/checkin', async (req, res) => {
       });
     }
 
-    const result = await CheckInMiningContractService.checkInAndCreateMiningContract(user_id.trim());
+    // 提取请求IP，用于与AdMob保持一致的国家判断
+    const requestIp = req.headers['x-forwarded-for']?.split(',')[0].trim()
+                   || req.headers['x-real-ip']
+                   || req.ip
+                   || req.connection?.remoteAddress
+                   || '未知';
+
+    const result = await CheckInMiningContractService.checkInAndCreateMiningContract(user_id.trim(), requestIp);
     
     if (!result.success) {
       return res.status(400).json(result);

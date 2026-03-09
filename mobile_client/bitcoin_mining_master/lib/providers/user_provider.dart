@@ -150,14 +150,45 @@ class UserProvider with ChangeNotifier {
     _setLoading(true);
     
     print('🔍 Provider: 开始获取余额...');
+    // 记录上次的余额和时间，用于在 speedPerSecond=0 时推导本地速率
+    final prevBalance = double.tryParse(_bitcoinBalance) ?? 0.0;
+    final prevFetchTime = _lastBalanceUpdateTime;
+    
     final result = await _repository.fetchBitcoinBalance();
     print('🔍 Provider: 获取结果: ${result.isSuccess}, data=${result.data}');
     if (result.isSuccess && result.data != null) {
       // 从响应中提取完整信息
       final response = result.data as BitcoinBalanceResponse;
+      final newBalance = double.tryParse(response.balance) ?? 0.0;
       _bitcoinBalance = response.balance;
-      _miningSpeedPerSecond = response.speedPerSecond;
-      _lastBalanceUpdateTime = response.lastUpdateTime;
+      
+      // 关键修复：用本地 DateTime.now() 作为基准时间点。
+      // 服务端返回的 balance 是"服务端 lastUpdateTime + elapsedSeconds"的累计值。
+      // 若用服务端 lastUpdateTime 做基准，getter 会把已计算的 elapsedSeconds 再重算一遍，导致
+      // 余额虚高，并在下次 fetch 时出现"跳降"现象。
+      _lastBalanceUpdateTime = DateTime.now();
+      
+      if (response.speedPerSecond > 0) {
+        _miningSpeedPerSecond = response.speedPerSecond;
+      } else if (prevFetchTime != null && newBalance > prevBalance) {
+        // 后端暂时返回 speedPerSecond=0（激活后约 30-45 秒内常见），
+        // 但余额已在增加 → 从增量推导本地速率，保持 100ms 平滑动画连续。
+        // 
+        // ⚠️ 关键约束：elapsedSec 必须 >= 3 秒，否则不进行推导。
+        // 原因：_refreshBalanceAfterMiningStart 每 800ms 重试一次，当余额从 0 首次跳变时
+        // elapsedSec ≈ 0.8s，此时 derivedSpeed = delta / 0.8 ≫ 真实速率，
+        // 会导致 100ms timer 快速累加使显示值超出真实余额，下次 fetch 时发生"回退"。
+        // elapsedSec >= 3s 确保只有常规 10s 周期的 fetch 才执行推导，速率计算准确。
+        final elapsedSec =
+            DateTime.now().difference(prevFetchTime).inMilliseconds / 1000.0;
+        if (elapsedSec >= 3.0) {
+          _miningSpeedPerSecond = (newBalance - prevBalance) / elapsedSec;
+          print('🔍 Provider: 速率推导: (${newBalance} - ${prevBalance}) / ${elapsedSec}s = $_miningSpeedPerSecond BTC/秒');
+        }
+        // elapsedSec < 3s（属于 800ms 重试期间）：不更新速率，保持 0 或上次值
+      } else {
+        _miningSpeedPerSecond = 0.0;
+      }
       
       print('🔍 Provider: 余额已更新为: $_bitcoinBalance');
       print('🔍 Provider: 挖矿速率: $_miningSpeedPerSecond BTC/秒');

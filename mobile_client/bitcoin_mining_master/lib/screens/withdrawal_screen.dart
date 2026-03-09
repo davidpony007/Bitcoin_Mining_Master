@@ -590,24 +590,10 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               const Spacer(),
               GestureDetector(
                 onTap: _showNetworkHelp,
-                child: Container(
-                  width: 18,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.primary, width: 1.5),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      '?',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        height: 1.0,
-                      ),
-                    ),
-                  ),
+                child: const Icon(
+                  Icons.help_outline,
+                  color: AppColors.primary,
+                  size: 24,
                 ),
               ),
             ],

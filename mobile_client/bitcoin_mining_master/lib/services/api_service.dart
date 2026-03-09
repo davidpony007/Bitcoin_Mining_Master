@@ -340,6 +340,10 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
+      // 4xx 响应：直接返回后端的 JSON data，保留 errorCode 供上层判断
+      if (e.type == DioExceptionType.badResponse && e.response?.data is Map) {
+        return Map<String, dynamic>.from(e.response!.data as Map);
+      }
       throw _handleError(e);
     }
   }

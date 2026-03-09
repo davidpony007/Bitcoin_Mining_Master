@@ -59,6 +59,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   late List<BatteryState> _batteries;
   Timer? _miningTimer;
   Timer? _uiRefreshTimer; // 100ms 轻量UI刷新，让余额数字平滑递增
+  int _syncCounter = 9; // 提升为类字段，便于激活挖矿后立即触发同步
   late AnimationController _breathingController;
 
   @override
@@ -103,14 +104,19 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _refreshBalanceAfterMiningStart() async {
     if (!mounted) return;
     await context.read<UserProvider>().fetchBitcoinBalance();
-    // 若速率仍为0（后端缓存路径还未清除），每 800ms 重试，最多 5 次
+    // 若速率仍为0（后端缓存路径还未清除），每 800ms 重试，最多 8 次（≈6.4秒）
     for (int _r = 0;
-        _r < 5 &&
+        _r < 8 &&
             mounted &&
             context.read<UserProvider>().miningSpeedPerSecond == 0;
         _r++) {
       await Future.delayed(const Duration(milliseconds: 800));
       if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
+    }
+    // 若重试结束仍为0，将计数器重置为9，确保 _miningTimer 在下一个tick（≤1秒）
+    // 立即再同步一次，避免用户等待最长10秒的空档期
+    if (mounted && context.read<UserProvider>().miningSpeedPerSecond == 0) {
+      _syncCounter = 9;
     }
   }
 
@@ -465,7 +471,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _startMiningTimer() {
-    int secondsCounter = 9; // 从9开始，使第1秒就触发一次余额同步，之后每10秒同步一次
+    _syncCounter = 9; // 从9开始，使第1秒就触发一次余额同步，之后每10秒同步一次
     
     _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
@@ -514,10 +520,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
 
       // 每10秒从后端同步一次真实余额和挖矿速率（校准基准值）
-      secondsCounter++;
-      if (mounted && secondsCounter >= 10) {
+      _syncCounter++;
+      if (mounted && _syncCounter >= 10) {
         await context.read<UserProvider>().fetchBitcoinBalance();
-        secondsCounter = 0;
+        _syncCounter = 0;
       }
     });
   }
@@ -722,47 +728,45 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ],
       ),
-      body: Consumer<UserProvider>(
-        builder: (context, userProvider, child) {
-          return RefreshIndicator(
-            onRefresh: () async {
-              await _loadPointsData();
-              await _loadUserLevel(); // 刷新等级信息
-            },
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 16),
-
-                  // Balance Card with gradient
-                  _buildBalanceCard(userProvider),
-
-                  const SizedBox(height: 16),
-
-                  // Level Card
-                  _buildLevelCard(),
-
-                  const SizedBox(height: 20),
-
-                  // Quick Actions
-                  _buildQuickActions(),
-
-                  const SizedBox(height: 20),
-
-                  // Hashrate Pool Section
-                  _buildHashratePoolSection(),
-
-                  const SizedBox(height: 20),
-                  
-                  // 底部安全区域，避开底部导航栏
-                  SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
-                ],
-              ),
-            ),
-          );
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _loadPointsData();
+          await _loadUserLevel(); // 刷新等级信息
         },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 16),
+
+              // Balance Card with gradient
+              // 直接读取 UserProvider（不经过 Consumer），确保 100ms _uiRefreshTimer 的
+              // setState 能实时触发重新计算 bitcoinBalance getter
+              _buildBalanceCard(context.read<UserProvider>()),
+
+              const SizedBox(height: 16),
+
+              // Level Card
+              _buildLevelCard(),
+
+              const SizedBox(height: 20),
+
+              // Quick Actions
+              _buildQuickActions(),
+
+              const SizedBox(height: 20),
+
+              // Hashrate Pool Section
+              _buildHashratePoolSection(),
+
+              const SizedBox(height: 20),
+              
+              // 底部安全区域，避开底部导航栏
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 80),
+            ],
+          ),
+        ),
       ),
     );
   }

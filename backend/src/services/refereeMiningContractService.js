@@ -88,6 +88,7 @@ class RefereeMiningContractService {
         free_contract_end_time: endTime,
         base_hashrate: BASE_HASHRATE,  // 新字段：纯基础速率
         has_daily_bonus: 0,  // 标记：不含签到加成
+        mining_status: 'mining',  // 合约创建时立即处于挖矿状态
         hashrate: BASE_HASHRATE  // 兼容字段
       });
 

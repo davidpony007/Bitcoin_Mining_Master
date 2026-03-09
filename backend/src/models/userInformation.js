@@ -162,9 +162,8 @@ const UserInformation = sequelize.define('user_information', {
       name: 'idx_invitation_code_unique'
     },
     {
-      unique: true,  // 唯一约束
       fields: ['device_id'],
-      name: 'idx_android_id_unique'
+      name: 'idx_device_id'
     },
     {
       unique: true,  // 唯一约束
@@ -184,7 +183,7 @@ const UserInformation = sequelize.define('user_information', {
       name: 'idx_register_ip'
     },
     {
-      fields: ['country'],
+      fields: ['country_code'],
       name: 'idx_country_code'
     },
     {

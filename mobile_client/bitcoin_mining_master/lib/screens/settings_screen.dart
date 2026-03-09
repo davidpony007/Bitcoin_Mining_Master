@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,6 +39,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     serverClientId: GoogleAuthConstants.webClientId, // Android 12+ Credential Manager 必须传此参数
   );
   
+  // 评价奖励领取状态
+  bool _hasClaimedRatingPoints = false;
+
   // 用户等级相关
   int _userLevel = 1;
   String _levelName = 'Lv.1';
@@ -111,6 +116,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         
         // 4. 加载 Apple 登录状态（仅 iOS）
         if (Platform.isIOS) _loadAppleSignInStatus();
+
+        // 5. 加载评价奖励领取状态
+        _loadRatingClaimedStatus();
         return;
       }
 
@@ -131,6 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           _loadUserNickname();
           _loadGoogleSignInStatus();
           if (Platform.isIOS) _loadAppleSignInStatus();
+          _loadRatingClaimedStatus();
           return;
         }
       }
@@ -365,6 +374,53 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     await launchUrl(emailUri, mode: LaunchMode.externalApplication);
   }
 
+  /// 加载评价奖励领取状态
+  void _loadRatingClaimedStatus() {
+    final userId = _storageService.getUserId();
+    if (userId != null && userId.isNotEmpty) {
+      setState(() {
+        _hasClaimedRatingPoints = _storageService.isRatingRewardClaimed(userId);
+      });
+    }
+  }
+
+  /// 调用后端API领取10积分奖励（仅限一次）
+  Future<void> _claimRatingPoints() async {
+    if (_hasClaimedRatingPoints) return;
+    final userId = _storageService.getUserId();
+    if (userId == null || userId.isEmpty) return;
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/points/add'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'user_id': userId,
+          'points': 10,
+          'reason': 'app_rating',
+        }),
+      ).timeout(const Duration(seconds: 30));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          await _storageService.setRatingRewardClaimed(userId);
+          if (mounted) {
+            setState(() {
+              _hasClaimedRatingPoints = true;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('🎉 +10 bonus points added to your account!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ 评价积分领取失败: $e');
+    }
+  }
+
   void _showRateDialog() {
     showModalBottomSheet(
       context: context,
@@ -408,7 +464,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               // 标题
               const Text(
                 'Enjoying Bitcoin Mining Master?',
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.start,
                 style: TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 20,
@@ -417,10 +473,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               ),
               const SizedBox(height: 12),
               // 正文
-              const Text(
-                'If you have a moment, would you mind leaving us a 5\u2011star rating? As a thank\u2011you, we\'ll add bonus points to your account.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
+              Text(
+                _hasClaimedRatingPoints
+                    ? 'If you have a moment, would you mind leaving us a 5\u2011star rating? Thank you for your support!'
+                    : 'If you have a moment, would you mind leaving us a 5\u2011star rating? As a thank\u2011you, we\'ll add 10 bonus points to your account.',
+                textAlign: TextAlign.start,
+                style: const TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 14,
                   height: 1.6,
@@ -435,6 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   onPressed: () {
                     Navigator.of(ctx).pop();
                     _openStoreReview();
+                    if (!_hasClaimedRatingPoints) _claimRatingPoints();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -614,7 +673,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 icon: Icons.star_rate_rounded,
                 iconColor: AppColors.primary,
                 title: 'Support Us',
-                subtitle: 'Your rating helps us improve',
+                subtitle: _hasClaimedRatingPoints
+                    ? 'Your rating helps us improve'
+                    : 'Your rating helps us improve\nTap to get bonus points',
                 onTap: _showRateDialog,
               ),
               _buildDivider(),
@@ -874,7 +935,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.textSecondary,

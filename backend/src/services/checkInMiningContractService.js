@@ -9,6 +9,7 @@ const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
 const CheckInService = require('./checkInService');
 const redisClient = require('../config/redis');
+const { Op } = require('sequelize');
 
 class CheckInMiningContractService {
   /**
@@ -25,7 +26,7 @@ class CheckInMiningContractService {
    * 4. 📌 重要：不会增加电池数量显示（电池只显示Ad Reward合约）
    * 5. 📌 签到验证由调用方（路由层）负责
    */
-  static async checkInAndCreateMiningContract(userId) {
+  static async checkInAndCreateMiningContract(userId, requestIp = null) {
     try {
       // 1. 验证用户存在
       const user = await UserInformation.findOne({
@@ -37,6 +38,37 @@ class CheckInMiningContractService {
           success: false,
           message: '用户不存在'
         };
+      }
+
+      // 1.5 IP实时国家检测（与AdMob对齐：AdMob也是基于请求IP判断国家）
+      if (requestIp && requestIp !== '未知') {
+        try {
+          const geoip = require('geoip-lite');
+          const geo = geoip.lookup(requestIp);
+          if (geo && geo.country) {
+            const ipCountry = geo.country.toUpperCase();
+            const CountryMiningConfig = require('../models/countryMiningConfig');
+            const countryConfig = await CountryMiningConfig.findOne({
+              where: { country_code: ipCountry },
+              raw: true
+            });
+            const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
+            const oldCountry = user.country_code;
+            const oldMultiplier = parseFloat(user.country_multiplier) || 1.00;
+
+            if (ipCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
+              console.log(`🌍 [AdMob对齐-签到] 用户 ${userId}: IP国家=${ipCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新country_multiplier`);
+              await user.update({
+                country_code: ipCountry,
+                country_multiplier: newMultiplier
+              });
+            } else {
+              console.log(`🌍 [AdMob对齐-签到] 用户 ${userId}: IP国家=${ipCountry}, 倍率无变化(${oldMultiplier}x)`);
+            }
+          }
+        } catch (geoErr) {
+          console.warn(`⚠️ [AdMob对齐-签到] IP国家检测失败，使用原存储倍率: ${geoErr.message}`);
+        }
       }
 
       // 2. 获取纯基础挖矿速率（不含任何倍数）
@@ -54,6 +86,7 @@ class CheckInMiningContractService {
         free_contract_end_time: endTime,
         base_hashrate: BASE_HASHRATE,  // 新字段：纯基础速率
         has_daily_bonus: 1,  // 标记：该合约包含签到加成
+        mining_status: 'mining',  // 合约创建时立即处于挖矿状态
         hashrate: BASE_HASHRATE  // 兼容字段
       });
 
@@ -117,7 +150,7 @@ class CheckInMiningContractService {
           user_id: userId,
           free_contract_type: 'Daily Check-in Reward',
           free_contract_end_time: {
-            [Sequelize.Op.gt]: now
+            [Op.gt]: now
           }
         },
         order: [['free_contract_creation_time', 'DESC']]

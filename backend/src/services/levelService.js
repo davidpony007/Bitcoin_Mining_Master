@@ -129,7 +129,7 @@ class LevelService {
 
       // 2. 从数据库获取
       const [rows] = await connection.query(
-        'SELECT user_level, user_points, mining_speed_multiplier FROM user_information WHERE user_id = ?',
+        'SELECT user_level, user_points FROM user_information WHERE user_id = ?',
         [userId]
       );
 
@@ -377,7 +377,6 @@ class LevelService {
           user_id,
           user_level,
           user_points,
-          mining_speed_multiplier,
           created_at
         FROM user_information
         WHERE user_level > 0
@@ -386,14 +385,17 @@ class LevelService {
         [limit]
       );
 
-      return rows.map((row, index) => ({
-        rank: index + 1,
-        userId: row.user_id,
-        level: row.level,
-        points: row.user_points,
-        speedMultiplier: parseFloat(row.mining_speed_multiplier),
-        joinedAt: row.created_at
-      }));
+      return rows.map((row, index) => {
+        const levelInfo = this.calculateLevelInfo(row.user_level, row.user_points);
+        return {
+          rank: index + 1,
+          userId: row.user_id,
+          level: row.user_level,
+          points: row.user_points,
+          speedMultiplier: levelInfo.speedMultiplier,
+          joinedAt: row.created_at
+        };
+      });
     } catch (error) {
       console.error('❌ 获取等级排行榜失败:', error);
       throw error;

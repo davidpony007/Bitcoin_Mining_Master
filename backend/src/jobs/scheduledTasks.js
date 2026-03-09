@@ -130,7 +130,7 @@ function startLevelCacheWarmup() {
       
       // 获取最近7天有登录的活跃用户
       const [activeUsers] = await pool.query(`
-        SELECT DISTINCT ui.user_id, ui.user_level, ui.user_points, ui.mining_speed_multiplier
+        SELECT DISTINCT ui.user_id, ui.user_level, ui.user_points
         FROM user_information ui
         INNER JOIN user_status us ON ui.user_id = us.user_id
         WHERE us.last_login_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
@@ -152,7 +152,7 @@ function startLevelCacheWarmup() {
             user.user_id,
             user.user_level,
             user.user_points,
-            user.mining_speed_multiplier,
+            levelInfo.speedMultiplier,
             bonusActive,
             null,
             levelInfo.levelName,

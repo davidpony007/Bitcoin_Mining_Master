@@ -200,6 +200,16 @@ class StorageService {
     return _prefs?.getBool('is_logged_out') ?? false;
   }
 
+  /// 标记评价奖励已领取（按userId隔离，永久有效）
+  Future<bool> setRatingRewardClaimed(String userId) async {
+    return await _prefs?.setBool('rating_reward_claimed_$userId', true) ?? false;
+  }
+
+  /// 检查评价奖励是否已领取（按userId隔离）
+  bool isRatingRewardClaimed(String userId) {
+    return _prefs?.getBool('rating_reward_claimed_$userId') ?? false;
+  }
+
   /// 清除所有数据
   Future<bool> clearAll() async {
     return await _prefs?.clear() ?? false;

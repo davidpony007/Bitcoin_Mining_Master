@@ -59,7 +59,7 @@ exports.getUserStatus = async (req, res, next) => {
       include: [{
         model: UserInformation,
         as: 'userInfo',
-        attributes: ['user_id', 'email', 'country', 'user_creation_time']
+        attributes: ['user_id', 'email', 'country_code', 'user_creation_time']
       }]
     });
 

@@ -53,7 +53,7 @@ class NetworkService {
 
   /// 检查是否能连接到后端服务器
   /// timeout: 超时时间（秒）
-  Future<bool> canReachBackend({int timeout = 5}) async {
+  Future<bool> canReachBackend({int timeout = 10}) async {
     try {
       // 先检查基础网络连接
       final hasConnection = await isConnected();
@@ -61,14 +61,14 @@ class NetworkService {
         return false;
       }
 
-      // 尝试访问已有的公开接口
+      // 尝试访问已有的公开接口（路径不带前缀 "/"，避免 Dio 将 baseUrl 中的 /api 路径丢弃）
       final dio = Dio(BaseOptions(
         baseUrl: ApiConstants.baseUrl,
         connectTimeout: Duration(seconds: timeout),
         receiveTimeout: Duration(seconds: timeout),
       ));
 
-      final response = await dio.get('/bitcoin/price');
+      final response = await dio.get('bitcoin/price');
       return response.statusCode == 200;
     } catch (e) {
       print('❌ 无法连接到后端服务器: $e');

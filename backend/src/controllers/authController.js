@@ -1,6 +1,7 @@
 // 身份验证控制器
 // 处理用户登录、设备绑定、Google账号管理
 
+const { Op } = require('sequelize');
 const UserInformation = require('../models/userInformation');
 const InvitationRelationship = require('../models/invitationRelationship');
 const UserStatus = require('../models/userStatus');
@@ -86,19 +87,20 @@ exports.deviceLogin = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
-    // 🌍 从IP检测国家（如果前端未提供）
-    let detectedCountry = country; // 优先使用前端提供的国家代码
-    
-    if (!detectedCountry && register_ip !== '未知') {
+    // 🌍 IP优先检测国家（与AdMob对齐），IP失败才用前端值
+    let detectedCountry = null;
+    if (register_ip !== '未知') {
       const geo = geoip.lookup(register_ip);
       if (geo && geo.country) {
         detectedCountry = geo.country;
         console.log(`📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
       } else {
-        console.log(`⚠️ 无法从IP ${register_ip} 检测国家`);
+        console.log(`⚠️ 无法从IP ${register_ip} 检测国家，使用前端提供值`);
       }
-    } else if (detectedCountry) {
-      console.log(`📱 使用前端提供的国家代码: ${detectedCountry}`);
+    }
+    if (!detectedCountry && country) {
+      detectedCountry = country;
+      console.log(`📱 使用前端提供的国家代码（IP备选）: ${detectedCountry}`);
     }
 
     // 获取国家信息（中文名称和挖矿倍率）
@@ -482,13 +484,15 @@ exports.googleLoginOrCreate = async (req, res) => {
     // 添加原始请求体日志
     console.log('🔍 [RAW] req.body:', JSON.stringify(req.body, null, 2));
     
-    const { google_id, google_account, google_name, android_id, gaid, country } = req.body;
+    const { google_id, google_account, google_name, gaid, country } = req.body;
+    // 兼容 Flutter 发送的 device_id（iOS/Android 通用）和旧字段名 android_id
+    const android_id = req.body.android_id || req.body.device_id || null;
 
     console.log('🔍 [Google Login/Create] Received request:');
     console.log('   - google_id:', google_id);
     console.log('   - google_account:', google_account);
     console.log('   - google_name:', google_name);
-    console.log('   - android_id:', android_id);
+    console.log('   - android_id/device_id:', android_id);
     console.log('   - gaid:', gaid);
     console.log('   - country_code:', country);
 
@@ -526,15 +530,19 @@ exports.googleLoginOrCreate = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
-    // 如果前端没有提供country，尝试从IP地址获取
-    let detectedCountry = country;
-    if (!detectedCountry && register_ip !== '未知') {
+    // 🌍 IP优先检测国家（与AdMob对齐），IP失败才用前端值
+    let detectedCountry = null;
+    if (register_ip !== '未知') {
       const geoip = require('geoip-lite');
       const geo = geoip.lookup(register_ip);
       if (geo && geo.country) {
         detectedCountry = geo.country;
         console.log(`   📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
       }
+    }
+    if (!detectedCountry && country) {
+      detectedCountry = country;
+      console.log(`   📱 使用前端提供的国家代码（IP备选）: ${detectedCountry}`);
     }
 
     // 查找是否已有该Google账号绑定的用户
@@ -550,16 +558,8 @@ exports.googleLoginOrCreate = async (req, res) => {
       
       const updateData = {};
       if (android_id && android_id.trim() !== '') {
-        // 检查 android_id 是否已被其他用户占用（避免 UNIQUE 冲突）
-        const otherUserWithSameAndroidId = await UserInformation.findOne({
-          where: { android_id: android_id.trim() }
-        });
-        if (!otherUserWithSameAndroidId || otherUserWithSameAndroidId.user_id === user.user_id) {
-          updateData.android_id = android_id.trim();
-          console.log(`   📱 更新Android ID: ${android_id}`);
-        } else {
-          console.log(`   ⚠️ Android ID ${android_id} 已被用户 ${otherUserWithSameAndroidId.user_id} 占用，跳过更新`);
-        }
+        updateData.android_id = android_id.trim();
+        console.log(`   📱 更新Android ID: ${android_id}`);
       }
       if (gaid && gaid.trim() !== '') {
         updateData.gaid = gaid.trim();
@@ -596,17 +596,7 @@ exports.googleLoginOrCreate = async (req, res) => {
       
       const { user_id, invitation_code } = generateUserIds();
       
-      // 检查android_id是否已被其他用户使用
-      let finalAndroidId = android_id ? android_id.trim() : null;
-      if (finalAndroidId) {
-        const existingUser = await UserInformation.findOne({
-          where: { android_id: finalAndroidId }
-        });
-        if (existingUser) {
-          console.log(`   ⚠️ Android ID ${finalAndroidId} 已被用户 ${existingUser.user_id} 使用，本次不绑定设备ID`);
-          finalAndroidId = null; // 不绑定重复的android_id
-        }
-      }
+      const finalAndroidId = android_id ? android_id.trim() : null;
       
       // 获取国家信息（中文名称和挖矿倍率）
       let countryNameCn = null;
@@ -922,7 +912,7 @@ exports.getInvitationInfo = async (req, res) => {
       // 查找推荐人详细信息
       const referrer = await UserInformation.findOne({
         where: { user_id: myRelation.referrer_user_id },
-        attributes: ['user_id', 'invitation_code', 'email', 'country']
+        attributes: ['user_id', 'invitation_code', 'email', 'country_code']
       });
       referrerInfo = referrer;
     }
@@ -936,7 +926,7 @@ exports.getInvitationInfo = async (req, res) => {
     for (const relation of invitedRelations) {
       const invitedUser = await UserInformation.findOne({
         where: { user_id: relation.user_id },
-        attributes: ['user_id', 'invitation_code', 'email', 'country']
+        attributes: ['user_id', 'invitation_code', 'email', 'country_code']
       });
       if (invitedUser) {
         // 合并用户信息和邀请关系信息（包含邀请时间）
@@ -1098,6 +1088,37 @@ exports.addReferrer = async (req, res) => {
       referrer_user_id: referrer.user_id,
       referrer_invitation_code: referrer.invitation_code
     });
+
+    // 6.5 🌍 IP实时国家检测（与AdMob对齐：在发放合约之前用本次请求IP刷新被邀请人的国家倍率）
+    try {
+      const bindRequestIp = req.headers['x-forwarded-for']?.split(',')[0].trim()
+                         || req.headers['x-real-ip']
+                         || req.ip
+                         || req.connection?.remoteAddress
+                         || '未知';
+      if (bindRequestIp && bindRequestIp !== '未知') {
+        const bindGeo = geoip.lookup(bindRequestIp);
+        if (bindGeo && bindGeo.country) {
+          const ipCountry = bindGeo.country.toUpperCase();
+          const CountryMiningConfig = require('../models/countryMiningConfig');
+          const countryConfig = await CountryMiningConfig.findOne({
+            where: { country_code: ipCountry },
+            raw: true
+          });
+          const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
+          const oldCountry = user.country_code;
+          const oldMultiplier = parseFloat(user.country_multiplier) || 1.00;
+          if (ipCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
+            console.log(`🌍 [AdMob对齐-绑定推荐人] 用户 ${user.user_id}: IP国家=${ipCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新country_multiplier`);
+            await user.update({ country_code: ipCountry, country_multiplier: newMultiplier });
+          } else {
+            console.log(`🌍 [AdMob对齐-绑定推荐人] 用户 ${user.user_id}: IP国家=${ipCountry}, 倍率无变化(${oldMultiplier}x)`);
+          }
+        }
+      }
+    } catch (geoErr) {
+      console.warn(`⚠️ [AdMob对齐-绑定推荐人] IP国家检测失败，使用原存储倍率: ${geoErr.message}`);
+    }
 
     // 7. 🎁 处理邀请奖励（推荐人获得奖励）
     let rewardResult = null;
@@ -1688,8 +1709,9 @@ exports.appleLoginOrCreate = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
-    let detectedCountry = country;
-    if (!detectedCountry && register_ip !== '未知') {
+    // 🌍 IP优先检测国家（与AdMob对齐），IP失败才用前端值
+    let detectedCountry = null;
+    if (register_ip !== '未知') {
       try {
         const geoip = require('geoip-lite');
         const geo = geoip.lookup(register_ip);
@@ -1698,6 +1720,10 @@ exports.appleLoginOrCreate = async (req, res) => {
           console.log(`   📍 IP检测国家: ${detectedCountry}`);
         }
       } catch (_) {}
+    }
+    if (!detectedCountry && country) {
+      detectedCountry = country;
+      console.log(`   📱 使用前端提供的国家代码（IP备选）: ${detectedCountry}`);
     }
 
     // 查找已有该 apple_id 绑定的用户

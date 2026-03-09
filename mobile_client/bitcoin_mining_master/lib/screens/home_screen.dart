@@ -28,6 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // ContractsScreen 的 GlobalKey，用于在奖励领取后立即触发刷新
   final _contractsKey = GlobalKey<ContractsScreenState>();
 
+  // ReferralScreen 的 GlobalKey，用于切换到 tab 时刷新邀请列表
+  final _referralKey = GlobalKey<ReferralScreenState>();
+
   // 稳定的页面列表，避免每次 build 重建实例导致 GlobalKey 失效
   late final List<Widget> _screens;
 
@@ -44,7 +47,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _contractsKey.currentState?.activateAdRewardImmediately(),
       ),
       ContractsScreen(key: _contractsKey),
-      const ReferralScreen(),
+      ReferralScreen(
+        key: _referralKey,
+        onContractRefreshNeeded: () =>
+            _contractsKey.currentState?.refreshContracts(),
+      ),
       const WalletScreen(),
       const SettingsScreen(),
     ];
@@ -143,6 +150,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _currentIndex = index;
       });
+      // 切换到 Referral tab (index=2) 时刷新邀请好友列表
+      if (index == 2) {
+        _referralKey.currentState?.refreshInvitedFriends();
+      }
     }
   }
   @override
@@ -169,6 +180,10 @@ class _HomeScreenState extends State<HomeScreen> {
             setState(() {
               _currentIndex = index;
             });
+            // 切换到 Referral tab (index=2) 时刷新邀请好友列表
+            if (index == 2) {
+              _referralKey.currentState?.refreshInvitedFriends();
+            }
           },
           items: _navigationItems,
           backgroundColor: Colors.transparent,

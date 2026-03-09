@@ -4,6 +4,7 @@
  * 特点：每成功邀请一个好友，增加2小时挖矿时间
  */
 
+const { Op } = require('sequelize');
 const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
@@ -46,7 +47,7 @@ class InvitationMiningContractService {
           user_id: referrerId,
           free_contract_type: 'Invite Friend Reward',
           free_contract_end_time: {
-            [Sequelize.Op.gt]: now
+            [Op.gt]: now
           }
         },
         order: [['free_contract_creation_time', 'DESC']]
@@ -85,9 +86,10 @@ class InvitationMiningContractService {
           free_contract_type: 'Invite Friend Reward',
           free_contract_creation_time: now,
           free_contract_end_time: endTime,
-          base_hashrate: BASE_HASHRATE,  // 新字段：纯基础速率
-          has_daily_bonus: 0,  // 标记：不含签到加成
-          hashrate: BASE_HASHRATE  // 兼容字段
+          base_hashrate: BASE_HASHRATE,
+          has_daily_bonus: 0,
+          mining_status: 'mining',
+          hashrate: BASE_HASHRATE
         });
 
         isNewContract = true;
@@ -117,11 +119,7 @@ class InvitationMiningContractService {
           },
           speedInfo: {
             baseSpeed: speedInfo.baseSpeed,
-            baseHashrateDisplay: speedInfo.baseHashrateGhs + ' Gh/s',
-            actualHashrate: actualHashrate, // 实际BTC/s算力
-            displayHashrate: displayHashrateGhs + ' Gh/s', // 前端显示值
             levelMultiplier: speedInfo.levelMultiplier,
-            dailyBonusMultiplier: speedInfo.dailyBonusMultiplier,
             countryMultiplier: speedInfo.countryMultiplier
           },
           invitationStats: {
@@ -151,7 +149,7 @@ class InvitationMiningContractService {
           user_id: userId,
           free_contract_type: 'Invite Friend Reward',
           free_contract_end_time: {
-            [Sequelize.Op.gt]: now
+            [Op.gt]: now
           }
         },
         order: [['free_contract_creation_time', 'DESC']]
@@ -168,10 +166,16 @@ class InvitationMiningContractService {
       const remainingSeconds = Math.max(0, Math.floor((endTime - now) / 1000));
 
       // 获取总邀请人数
-      const [invitationStats] = await db.query(
-        'SELECT COUNT(*) as total FROM invitation_relationship WHERE referrer_user_id = ?',
-        [userId]
-      );
+      const conn = await pool.getConnection();
+      let invitationStats;
+      try {
+        [invitationStats] = await conn.query(
+          'SELECT COUNT(*) as total FROM invitation_relationship WHERE referrer_user_id = ?',
+          [userId]
+        );
+      } finally {
+        conn.release();
+      }
 
       const totalInvitations = invitationStats[0]?.total || 0;
 

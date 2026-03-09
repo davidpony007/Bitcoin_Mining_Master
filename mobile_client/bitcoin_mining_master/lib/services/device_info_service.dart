@@ -1,4 +1,4 @@
-// import 'package:advertising_id/advertising_id.dart'; // 暂时禁用
+import 'package:advertising_id/advertising_id.dart';
 import 'dart:io' show Platform;
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -8,18 +8,24 @@ import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 /// 设备信息服务 - 获取GAID和设备地区信息
 /// 注意：当前版本暂时禁用了GAID功能（Flutter SDK限制）
 class DeviceInfoService {
-  /// 获取Google Advertising ID (GAID)
-  /// 当前版本返回null（GAID功能已禁用）
+  /// 获取Google Advertising ID (GAID) - 仅 Android 适用
+  /// iOS 使用 IDFA，由 getIosAdInfo() 单独处理
   static Future<String?> getGAID() async {
-    print('ℹ️ GAID功能暂时禁用（Flutter SDK限制）');
-    return null;
-  }
-  
-  /// 检查是否限制广告追踪
-  /// 当前版本返回null（GAID功能已禁用）
-  static Future<bool?> isLimitAdTrackingEnabled() async {
-    print('ℹ️ 广告追踪限制检查暂时禁用（Flutter SDK限制）');
-    return null;
+    if (kIsWeb || !Platform.isAndroid) {
+      return null;
+    }
+    try {
+      final gaid = await AdvertisingId.id(true);
+      if (gaid != null && gaid.isNotEmpty) {
+        print('✅ GAID 获取成功: ${gaid.substring(0, 8)}...');
+      } else {
+        print('⚠️ GAID 为空（用户可能已关闭广告追踪）');
+      }
+      return gaid;
+    } catch (e) {
+      print('⚠️ GAID 获取失败: $e');
+      return null;
+    }
   }
   
   /// 获取设备的国家/地区代码
