@@ -1138,6 +1138,8 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         Navigator.pop(context); // 关闭加载对话框
 
         if (success) {
+          // 刷新钱包交易记录
+          context.read<UserProvider>().fetchTransactions();
           // 提现成功，跳转到历史页面，显示pending标签
           Navigator.pushReplacement(
             context,

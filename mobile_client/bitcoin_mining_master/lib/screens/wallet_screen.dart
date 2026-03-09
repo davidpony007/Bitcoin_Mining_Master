@@ -241,11 +241,14 @@ class _WalletScreenState extends State<WalletScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: ElevatedButton(
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const WithdrawalScreen()),
           );
+          if (mounted) {
+            context.read<UserProvider>().fetchTransactions();
+          }
         },
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF4CAF50),
@@ -314,44 +317,64 @@ class _WalletScreenState extends State<WalletScreen>
             ],
           ),
           const SizedBox(height: 12),
-          transactions.isEmpty
-              ? Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardDark,
-                    borderRadius: BorderRadius.circular(12),
+          Container(
+                height: 320,
+                decoration: BoxDecoration(
+                  color: AppColors.cardDark,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.textSecondary.withOpacity(0.1),
+                    width: 1,
                   ),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.receipt_long_outlined,
-                          size: 48,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'No Transaction Records',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : Column(
-                  children: transactions.take(5).map((tx) {
-                    return _buildTransactionItem(tx);
-                  }).toList(),
                 ),
+                child: transactions.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.receipt_long_outlined,
+                              size: 48,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'No Transaction Records',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: ListView.separated(
+                          padding: EdgeInsets.zero,
+                          itemCount: transactions.take(5).length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            thickness: 0.5,
+                            color: AppColors.textSecondary.withOpacity(0.15),
+                            indent: 68,
+                            endIndent: 16,
+                          ),
+                          itemBuilder: (context, i) {
+                            final items = transactions.take(5).toList();
+                            return _buildTransactionItem(items[i],
+                                isFirst: i == 0,
+                                isLast: i == items.length - 1);
+                          },
+                        ),
+                      ),
+              ),
         ],
       ),
     );
   }
 
-  Widget _buildTransactionItem(Transaction tx) {
+  Widget _buildTransactionItem(Transaction tx, {bool isFirst = false, bool isLast = false}) {
     // 根据交易类型确定图标和颜色
     IconData icon;
     Color iconColor;
@@ -386,17 +409,8 @@ class _WalletScreenState extends State<WalletScreen>
         iconColor = AppColors.primary;
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.cardDark,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.textSecondary.withOpacity(0.1),
-          width: 1,
-        ),
-      ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, isFirst ? 14 : 12, 16, isLast ? 14 : 12),
       child: Row(
         children: [
           // Icon
