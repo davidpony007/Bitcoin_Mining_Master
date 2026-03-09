@@ -55,6 +55,7 @@ class ApiConstants {
   static const String unbindGoogle = '/auth/unbind-google';
   static const String googleBindingStatus = '/auth/google-binding-status'; // 获取Google绑定状态
   static const String invitationInfo = '/auth/invitation-info';
+  static const String invitationRebate = '/auth/invitation-rebate';
   static const String userStatus = '/auth/user-status';
   static const String addReferrer = '/auth/add-referrer';
   static const String createAdContract = '/auth/create-ad-contract';

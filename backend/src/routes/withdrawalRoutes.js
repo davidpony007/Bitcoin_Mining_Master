@@ -55,12 +55,24 @@ router.post('/request', async (req, res) => {
       });
     }
 
-    // 3. 验证钱包地址格式(基础验证)
-    if (walletAddress.length < 26 || walletAddress.length > 80) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid wallet address'
-      });
+    // 3. 验证钱包地址/UID格式
+    const isBinanceUID = (network === 'BINANCE_UID');
+    if (isBinanceUID) {
+      // Binance UID: 纯数字，6-12位
+      if (!/^\d{6,12}$/.test(walletAddress)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Binance UID format. Must be 6-12 digits.'
+        });
+      }
+    } else {
+      // 普通钱包地址长度校验
+      if (walletAddress.length < 26 || walletAddress.length > 80) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid wallet address'
+        });
+      }
     }
 
     // 4. 查询用户余额
@@ -97,8 +109,8 @@ router.post('/request', async (req, res) => {
     // 7. 创建提现记录（使用原生SQL避免Sequelize验证问题）
     const [insertResult] = await sequelize.query(
       `INSERT INTO withdrawal_records 
-       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_id)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW())`,
       { replacements: [userId, email, walletAddress, withdrawAmount, fee, receivedAmount, googleAccount || null, appleId || null], transaction }
     );
     
@@ -106,6 +118,9 @@ router.post('/request', async (req, res) => {
 
     // 8. 记录比特币交易（提现）
     const newBalanceAfterWithdraw = currentBalance - withdrawAmount;
+    const txDescription = isBinanceUID
+      ? `Withdrawal to Binance UID: ${walletAddress}`
+      : `Withdrawal to ${walletAddress.substring(0, 10)}...${walletAddress.substring(walletAddress.length - 6)} (${network || 'BEP20'})`;
     await sequelize.query(
       `INSERT INTO bitcoin_transaction_records
          (user_id, transaction_type, transaction_amount, balance_after, description,
@@ -116,7 +131,7 @@ router.post('/request', async (req, res) => {
           userId,
           withdrawAmount,
           newBalanceAfterWithdraw,
-          `Withdrawal to ${walletAddress.substring(0, 10)}...${walletAddress.substring(walletAddress.length - 6)} (${network || 'Bitcoin'})`
+          txDescription
         ],
         transaction
       }

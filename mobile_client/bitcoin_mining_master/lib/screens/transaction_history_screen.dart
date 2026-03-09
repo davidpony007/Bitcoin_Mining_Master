@@ -5,7 +5,8 @@ import '../constants/app_constants.dart';
 import '../models/user_model.dart';
 
 class TransactionHistoryScreen extends StatefulWidget {
-  const TransactionHistoryScreen({super.key});
+  final int initialTab;
+  const TransactionHistoryScreen({super.key, this.initialTab = 0});
 
   @override
   State<TransactionHistoryScreen> createState() => _TransactionHistoryScreenState();
@@ -24,7 +25,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
+    _tabController = TabController(length: _tabs.length, vsync: this, initialIndex: widget.initialTab);
+    _activeTab = widget.initialTab;
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) return;
       setState(() => _activeTab = _tabController.index);
@@ -64,7 +66,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
               tx.type == 'Invite Friend Reward' ||
               tx.type == 'Bind Referrer Reward';
         case 'withdrawal':
-          return tx.type == 'withdrawal';
+          return tx.type == 'withdrawal' ||
+              tx.type == 'refund for withdrawal failure';
         case 'rebate':
           return tx.type == 'subordinate rebate';
         default:
@@ -98,6 +101,9 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
           indicatorColor: AppColors.primary,
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.textSecondary,
+          labelPadding: EdgeInsets.zero,
+          labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          unselectedLabelStyle: const TextStyle(fontSize: 13),
           tabs: _tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
@@ -321,9 +327,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-'
-        '${date.day.toString().padLeft(2, '0')} '
-        '${date.hour.toString().padLeft(2, '0')}:'
-        '${date.minute.toString().padLeft(2, '0')}';
+    final utcDate = date.toUtc();
+    return '${utcDate.year}-${utcDate.month.toString().padLeft(2, '0')}-'
+        '${utcDate.day.toString().padLeft(2, '0')} '
+        '${utcDate.hour.toString().padLeft(2, '0')}:'
+        '${utcDate.minute.toString().padLeft(2, '0')} UTC';
   }
 }

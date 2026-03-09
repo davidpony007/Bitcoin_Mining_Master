@@ -290,21 +290,24 @@ class _WalletScreenState extends State<WalletScreen>
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              TextButton(
-                onPressed: transactions.isEmpty ? null : () {
-                  Navigator.push(
-                    context,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const TransactionHistoryScreen(),
                     ),
                   );
                 },
-                child: Text(
-                  'View All',
-                  style: TextStyle(
-                    color: transactions.isEmpty 
-                        ? AppColors.textSecondary 
-                        : AppColors.primary
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Text(
+                    'View All',
+                    style: const TextStyle(
+                      color: Color(0xFFFF9800),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -450,7 +453,8 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
-        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    final utcDate = date.toUtc();
+    return '${utcDate.year}-${utcDate.month.toString().padLeft(2, '0')}-${utcDate.day.toString().padLeft(2, '0')} '
+        '${utcDate.hour.toString().padLeft(2, '0')}:${utcDate.minute.toString().padLeft(2, '0')} UTC';
   }
 }

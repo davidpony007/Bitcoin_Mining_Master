@@ -761,6 +761,48 @@ class _DashboardScreenState extends State<DashboardScreen>
               _buildHashratePoolSection(),
 
               const SizedBox(height: 20),
+
+              // Buy Contract 按钮
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PaidContractsScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.add_shopping_cart,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    label: const Text(
+                      'Buy Contract',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
               
               // 底部安全区域，避开底部导航栏
               SizedBox(height: MediaQuery.of(context).padding.bottom + 80),

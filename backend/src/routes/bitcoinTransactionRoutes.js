@@ -16,7 +16,7 @@ const auth = require('../middleware/auth');
  * - limit: 每页记录数(默认20, 最大100)
  * - offset: 偏移量(默认0)
  */
-router.get('/records', auth, async (req, res) => {
+router.get('/records', async (req, res) => {
   try {
     const { userId, type = 'all', limit = 20, offset = 0 } = req.query;
 
@@ -32,27 +32,65 @@ router.get('/records', auth, async (req, res) => {
     const safeOffset = Math.max(parseInt(offset) || 0, 0);
 
     // 构建WHERE条件
-    let whereClause = 'WHERE user_id = :userId';
     const replacements = { userId, limit: safeLimit, offset: safeOffset };
 
+    // 主查询 SQL：bitcoin_transaction_records
+    let btrWhere = 'WHERE btr.user_id = :userId';
     if (type !== 'all') {
-      whereClause += ' AND transaction_type = :type';
+      btrWhere += ' AND btr.transaction_type = :type';
       replacements.type = type;
     }
 
+    // 是否需要包含 withdrawal_records 中的存量旧数据（只在 withdrawal_records、不在 bitcoin_transaction_records 的记录）
+    const includeWithdrawal = (type === 'all' || type === 'withdrawal');
+
+    // UNION 补充 withdrawal_records 中不存在于 bitcoin_transaction_records 的记录
+    // 用 wr.id 做唯一标识（负数避免与主表 id 碰撞），只在 records 查询中 SELECT 完整列
+    const unionRecordsPart = includeWithdrawal ? `
+      UNION ALL
+      SELECT
+        (0 - wr.id)                                           AS id,
+        wr.user_id,
+        'withdrawal'                                          AS transaction_type,
+        wr.withdrawal_request_amount                          AS transaction_amount,
+        NULL                                                  AS balance_after,
+        CASE
+          WHEN wr.wallet_address REGEXP '^[0-9]{6,12}$'
+            THEN CONCAT('Withdrawal to Binance UID: ', wr.wallet_address)
+          ELSE CONCAT('Withdrawal to ', SUBSTRING(wr.wallet_address,1,10), '...',
+               SUBSTRING(wr.wallet_address, LENGTH(wr.wallet_address)-6))
+        END                                                   AS description,
+        wr.created_at                                         AS transaction_creation_time,
+        wr.withdrawal_status                                  AS transaction_status
+      FROM withdrawal_records wr
+      WHERE wr.user_id = :userId
+        AND NOT EXISTS (
+          SELECT 1 FROM bitcoin_transaction_records btr2
+          WHERE btr2.user_id = wr.user_id
+            AND btr2.transaction_type = 'withdrawal'
+            AND btr2.transaction_creation_time = wr.created_at
+        )` : '';
+
+    // count 查询使用相同逻辑，但两侧均只 SELECT id（列数一致，避免 MySQL UNION 列数不匹配报错）
+    const unionCountPart = includeWithdrawal ? `
+      UNION ALL
+      SELECT (0 - wr.id) AS id
+      FROM withdrawal_records wr
+      WHERE wr.user_id = :userId
+        AND NOT EXISTS (
+          SELECT 1 FROM bitcoin_transaction_records btr2
+          WHERE btr2.user_id = wr.user_id
+            AND btr2.transaction_type = 'withdrawal'
+            AND btr2.transaction_creation_time = wr.created_at
+        )` : '';
+
     // 查询交易记录
     const records = await sequelize.query(
-      `SELECT 
-        id,
-        user_id,
-        transaction_type,
-        transaction_amount,
-        balance_after,
-        description,
-        transaction_creation_time,
-        transaction_status
-       FROM bitcoin_transaction_records
-       ${whereClause}
+      `SELECT id, user_id, transaction_type, transaction_amount, balance_after,
+              description, transaction_creation_time, transaction_status
+       FROM bitcoin_transaction_records btr
+       ${btrWhere}
+       ${unionRecordsPart}
        ORDER BY transaction_creation_time DESC
        LIMIT :limit OFFSET :offset`,
       {
@@ -61,13 +99,15 @@ router.get('/records', auth, async (req, res) => {
       }
     );
 
-    // 查询总记录数
+    // 查询总记录数（两侧 SELECT 均只取 id，列数一致）
     const [countResult] = await sequelize.query(
-      `SELECT COUNT(*) as total
-       FROM bitcoin_transaction_records
-       ${whereClause}`,
+      `SELECT COUNT(*) as total FROM (
+        SELECT id FROM bitcoin_transaction_records btr
+        ${btrWhere}
+        ${unionCountPart}
+      ) AS combined`,
       {
-        replacements: { userId, type: type !== 'all' ? type : undefined },
+        replacements: { ...replacements },
         type: QueryTypes.SELECT
       }
     );

@@ -892,6 +892,7 @@ class _PointsScreenState extends State<PointsScreen> {
 
   String _formatDateTime(DateTime? date) {
     if (date == null) return '--';
-    return '${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    final utcDate = date.toUtc();
+    return '${utcDate.year}-${utcDate.month.toString().padLeft(2, '0')}-${utcDate.day.toString().padLeft(2, '0')} ${utcDate.hour.toString().padLeft(2, '0')}:${utcDate.minute.toString().padLeft(2, '0')} UTC';
   }
 }

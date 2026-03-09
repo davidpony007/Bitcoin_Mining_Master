@@ -686,8 +686,9 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
   }
 
   String _formatFullDateTime(DateTime dateTime) {
-    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
-        '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    final utcTime = dateTime.toUtc();
+    return '${utcTime.year}-${utcTime.month.toString().padLeft(2, '0')}-${utcTime.day.toString().padLeft(2, '0')} '
+        '${utcTime.hour.toString().padLeft(2, '0')}:${utcTime.minute.toString().padLeft(2, '0')} UTC';
   }
 }
 

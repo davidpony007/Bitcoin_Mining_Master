@@ -57,6 +57,12 @@ const WithdrawalRecord = sequelize.define('withdrawal_records', {
     allowNull: true,
     defaultValue: null,
     comment: 'Apple用户唯一ID(sub)，用于用户去重标识'
+  },
+  created_at: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    comment: '创建时间'
   }
 }, {
   timestamps: false,

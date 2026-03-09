@@ -5,6 +5,7 @@ import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/user_repository.dart';
+import 'transaction_history_screen.dart';
 
 /// 推荐屏幕 - Invite with rebate earnings
 class ReferralScreen extends StatefulWidget {
@@ -29,12 +30,17 @@ class ReferralScreenState extends State<ReferralScreen> {
   bool _hasReferrer = false; // 是否已有推荐人
   String? _referrerInvitationCode; // 推荐人的邀请码
   List<Map<String, dynamic>> _invitedUsersList = []; // 邀请的用户列表
+  List<Map<String, dynamic>> _rebateList = []; // 返利记录列表
+  int _rebateTotal = 0;
+  bool _isLoadingRebate = false;
   final GlobalKey _shareButtonKey = GlobalKey(); // iOS sharePositionOrigin 定位用
   final ScrollController _invitedListScrollController = ScrollController();
+  final ScrollController _rebateListScrollController = ScrollController();
 
   @override
   void dispose() {
     _invitedListScrollController.dispose();
+    _rebateListScrollController.dispose();
     super.dispose();
   }
 
@@ -49,6 +55,7 @@ class ReferralScreenState extends State<ReferralScreen> {
     final userId = _storageService.getUserId();
     if (userId != null && userId.isNotEmpty && !userId.startsWith('OFFLINE_')) {
       await _loadInvitationInfo(userId);
+      await _loadRebateRecords(userId);
     }
   }
 
@@ -112,8 +119,9 @@ class ReferralScreenState extends State<ReferralScreen> {
           _isLoading = false;
         });
         
-        // 4. 获取邀请关系信息（被邀请人数）
+        // 4. 获取邀请关系信息（被邀请人数）和返利记录
         _loadInvitationInfo(userId);
+        _loadRebateRecords(userId);
       } else {
         // 如果API调用失败但有缓存的邀请码，使用缓存
         if (cachedCode != null && cachedCode.isNotEmpty) {
@@ -188,6 +196,29 @@ class ReferralScreenState extends State<ReferralScreen> {
       }
     } catch (e) {
       print('Error loading invitation info: $e');
+    }
+  }
+
+  Future<void> _loadRebateRecords(String userId, {int page = 1}) async {
+    if (_isLoadingRebate) return;
+    setState(() => _isLoadingRebate = true);
+    try {
+      final response = await _apiService.getInvitationRebate(userId, page: page, limit: 20);
+      if (response['success'] == true && response['data'] != null) {
+        final data = response['data'];
+        setState(() {
+          _rebateTotal = data['total'] ?? 0;
+          if (page == 1) {
+            _rebateList = List<Map<String, dynamic>>.from(data['records'] ?? []);
+          } else {
+            _rebateList.addAll(List<Map<String, dynamic>>.from(data['records'] ?? []));
+          }
+        });
+      }
+    } catch (e) {
+      print('Error loading rebate records: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingRebate = false);
     }
   }
 
@@ -1175,8 +1206,8 @@ $downloadUrl
                       String formattedTime = '';
                       if (creationTime.isNotEmpty) {
                         try {
-                          final dateTime = DateTime.parse(creationTime);
-                          formattedTime = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')}';
+                          final dateTime = DateTime.parse(creationTime).toUtc();
+                          formattedTime = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}:${dateTime.second.toString().padLeft(2, '0')} UTC';
                         } catch (e) {
                           formattedTime = creationTime;
                         }
@@ -1262,7 +1293,14 @@ $downloadUrl
                 ),
               ),
               TextButton(
-                onPressed: () {},
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const TransactionHistoryScreen(initialTab: 3),
+                    ),
+                  );
+                },
                 child: Text(
                   'View All',
                   style: TextStyle(color: AppColors.primary),
@@ -1271,32 +1309,177 @@ $downloadUrl
             ],
           ),
           const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
-            decoration: BoxDecoration(
-              color: AppColors.cardDark,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.receipt_long_outlined,
-                  size: 48,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No rebate records',
-                  style: TextStyle(
+          if (_isLoadingRebate && _rebateList.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              ),
+            )
+          else if (_rebateList.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 48,
                     color: AppColors.textSecondary,
-                    fontSize: 14,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No rebate records yet',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Rebates are calculated every 2 hours\nbased on your friends\' ad mining earnings',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Scrollbar(
+                controller: _rebateListScrollController,
+                thumbVisibility: true,
+                child: ListView.builder(
+                  controller: _rebateListScrollController,
+                  itemCount: _rebateList.length,
+                  itemBuilder: (context, index) {
+                    final record = _rebateList[index];
+                    final subUserId = record['subordinate_user_id'] ?? 'Unknown';
+                    final amount = double.tryParse(
+                            record['subordinate_rebate_amount']?.toString() ?? '0') ??
+                        0.0;
+                    final creationTime = record['rebate_creation_time'] ?? '';
+
+                    String formattedTime = '';
+                    if (creationTime.isNotEmpty) {
+                      try {
+                        final dt = DateTime.parse(creationTime).toUtc();
+                        formattedTime =
+                            '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} '
+                            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')} UTC';
+                      } catch (_) {
+                        formattedTime = creationTime;
+                      }
+                    }
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        border: index < _rebateList.length - 1
+                            ? Border(
+                                bottom: BorderSide(
+                                  color: AppColors.textSecondary.withOpacity(0.15),
+                                  width: 0.5,
+                                ),
+                              )
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Icon(
+                              Icons.person,
+                              size: 18,
+                              color: Colors.orange,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  subUserId,
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (formattedTime.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    formattedTime,
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '+${amount.toStringAsFixed(14)} BTC',
+                            style: const TextStyle(
+                              color: Colors.orange,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          if (_rebateTotal > _rebateList.length)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const TransactionHistoryScreen(initialTab: 3),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'View all $_rebateTotal records →',
+                    style: TextStyle(color: AppColors.primary, fontSize: 13),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );

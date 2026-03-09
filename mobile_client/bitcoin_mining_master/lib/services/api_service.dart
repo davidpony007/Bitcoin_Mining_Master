@@ -325,6 +325,19 @@ class ApiService {
     }
   }
 
+  /// 查询邀请返利记录
+  Future<Map<String, dynamic>> getInvitationRebate(String userId, {int page = 1, int limit = 20}) async {
+    try {
+      final response = await _dio.get(
+        ApiConstants.invitationRebate,
+        queryParameters: {'user_id': userId, 'page': page, 'limit': limit},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   /// 后期添加推荐人 - 对应后端 /api/auth/add-referrer
   Future<Map<String, dynamic>> addReferrer({
     required String userId,
