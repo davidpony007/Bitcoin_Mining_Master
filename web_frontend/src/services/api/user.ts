@@ -4,7 +4,7 @@ import type {
   UserListResponse,
   UserDetailResponse,
   UserStatsResponse 
-} from '@types/user';
+} from '@/types/user';
 
 /**
  * 用户相关API
