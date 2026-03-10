@@ -246,6 +246,10 @@ async function initGameMechanics() {
       // 启动返利定时任务
       ReferralRebateTask.start();
       logger.info('✓ 推荐返利任务已启动（每2小时执行一次）');
+
+      // 启动余额同步定时任务（每2小时写入 mining_reward 交易记录）
+      BalanceSyncTask.start();
+      logger.info('✓ 余额同步任务已启动（每2小时执行一次）');
     
     // 旧调度器已废弃
     logger.info('旧调度器已暂时禁用,等待数据库连接稳定后启用');
