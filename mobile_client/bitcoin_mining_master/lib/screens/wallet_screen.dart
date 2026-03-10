@@ -391,6 +391,9 @@ class _WalletScreenState extends State<WalletScreen>
         iconColor = Colors.purple;
         break;
       case 'Free Ad Reward':
+        icon = Icons.play_arrow;
+        iconColor = Colors.blue;
+        break;
       case 'Daily Check-in Reward':
       case 'Invite Friend Reward':
       case 'Bind Referrer Reward':
