@@ -88,7 +88,7 @@ class BalanceSyncTask {
   }
   
   /**
-   * 结算单个用户的收益
+   * 结算单个用户的收益，按合约类型写入独立 transaction 记录
    */
   static async settleUserRewards(userId) {
     const connection = await pool.getConnection();
@@ -112,10 +112,15 @@ class BalanceSyncTask {
       
       const lastUpdateTime = new Date(userStatus[0].last_balance_update_time || Date.now() - 2 * 60 * 60 * 1000);
       const now = new Date();
-      
-      // 2. 计算从上次更新到现在的挖矿收益
-      const speedPerSecond = await RealtimeBalanceService.calculateUserPerSecondRevenue(userId);
       const elapsedSeconds = Math.floor((now - lastUpdateTime) / 1000);
+
+      if (elapsedSeconds <= 0) {
+        await connection.rollback();
+        return 0;
+      }
+      
+      // 2. 按合约类型拆分计算收益
+      const { total: speedPerSecond, byType } = await RealtimeBalanceService.calculateUserPerSecondRevenueByType(userId);
       const minedAmount = speedPerSecond * elapsedSeconds;
       
       if (minedAmount <= 0) {
@@ -133,29 +138,37 @@ class BalanceSyncTask {
         WHERE user_id = ?
       `, [minedAmount, minedAmount, userId]);
       
-      // 4. 记录奖励发放日志
-      const newBalance = parseFloat(userStatus[0].current_bitcoin_balance) + minedAmount;
-      
-      await connection.query(`
-        INSERT INTO bitcoin_transaction_records (
-          user_id,
-          transaction_type,
-          transaction_amount,
-          balance_after,
-          description,
-          transaction_status,
-          transaction_creation_time
-        ) VALUES (?, 'mining_reward', ?, ?, ?, 'success', NOW())
-      `, [
-        userId,
-        minedAmount,
-        newBalance,
-        `2h mining reward (${elapsedSeconds}s × ${speedPerSecond.toFixed(18)} BTC/s)`
-      ]);
+      // 4. 按合约类型写入独立交易记录
+      //    byType key: 'Free Ad Reward' | 'Daily Check-in Reward' | 'Invite Friend Reward'
+      //                'Bind Referrer Reward' | 'paid_contract'
+      //    paid_contract 对应 transaction_type = 'mining_reward'（付费合约聚合）
+      let runningBalance = parseFloat(userStatus[0].current_bitcoin_balance);
+      const typeEntries = Object.entries(byType);
+
+      // 把 paid_contract → mining_reward，让客户端 type.contains('mining') 能匹配
+      const typeLabel = (t) => t === 'paid_contract' ? 'mining_reward' : t;
+
+      for (const [contractType, typeSpeed] of typeEntries) {
+        if (typeSpeed <= 0) continue;
+        const typeAmount = typeSpeed * elapsedSeconds;
+        runningBalance += typeAmount;
+        await connection.query(`
+          INSERT INTO bitcoin_transaction_records (
+            user_id, transaction_type, transaction_amount,
+            balance_after, description, transaction_status, transaction_creation_time
+          ) VALUES (?, ?, ?, ?, ?, 'success', NOW())
+        `, [
+          userId,
+          typeLabel(contractType),
+          typeAmount,
+          runningBalance,
+          `${elapsedSeconds}s × ${typeSpeed.toFixed(18)} BTC/s`
+        ]);
+      }
       
       await connection.commit();
       
-      console.log(`✅ 用户 ${userId} 收益结算完成: +${minedAmount.toFixed(18)} BTC (${elapsedSeconds}秒)`);
+      console.log(`✅ 用户 ${userId} 收益结算完成: +${minedAmount.toFixed(18)} BTC (${elapsedSeconds}秒, ${typeEntries.length}种合约)`);
       
       return minedAmount;
       

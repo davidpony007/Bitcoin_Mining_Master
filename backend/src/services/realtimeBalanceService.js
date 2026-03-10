@@ -57,6 +57,95 @@ class RealtimeBalanceService {
    * @returns {number} 每秒收益（BTC）
    */
   static async calculateUserPerSecondRevenue(userId) {
+    const breakdown = await this.calculateUserPerSecondRevenueByType(userId);
+    return breakdown.total;
+  }
+
+  /**
+   * 计算用户当前每秒收益，按合约类型拆分返回
+   * @param {string} userId
+   * @returns {{ total: number, byType: Object.<string, number> }}
+   *   byType key 为 transaction_type 字符串（如 'Free Ad Reward', 'paid_contract'）
+   */
+  static async calculateUserPerSecondRevenueByType(userId) {
+    try {
+      const byType = {};
+      let totalPerSecond = 0;
+
+      // === 1. 获取动态倍数（与 calculateUserPerSecondRevenue 相同逻辑）===
+      let levelMultiplier = 1.0;
+      try {
+        const cachedLevel = await redisClient.getUserLevel(userId);
+        if (cachedLevel && cachedLevel.speedMultiplier) {
+          levelMultiplier = parseFloat(cachedLevel.speedMultiplier);
+        } else {
+          const userLevel = await LevelService.getUserLevel(userId);
+          if (userLevel && userLevel.speedMultiplier) {
+            levelMultiplier = parseFloat(userLevel.speedMultiplier);
+          }
+        }
+      } catch (_) {}
+
+      let countryMultiplier = 1.0;
+      try {
+        const [userInfo] = await sequelize.query(
+          `SELECT country_multiplier FROM user_information WHERE id = ?`,
+          { replacements: [userId], type: sequelize.QueryTypes.SELECT }
+        );
+        if (userInfo && userInfo.country_multiplier) {
+          countryMultiplier = parseFloat(userInfo.country_multiplier);
+        }
+      } catch (_) {}
+
+      let dailyBonusActive = false;
+      try { dailyBonusActive = await redisClient.isDailyBonusActive(userId); } catch (_) {}
+      const dailyBonusMultiplier = dailyBonusActive ? 1.36 : 1.0;
+
+      // === 2. 免费合约，按 free_contract_type 分组 ===
+      const freeContracts = await sequelize.query(`
+        SELECT base_hashrate, hashrate, has_daily_bonus, free_contract_type
+        FROM free_contract_records
+        WHERE user_id = ? AND free_contract_end_time > NOW()
+      `, { replacements: [userId], type: sequelize.QueryTypes.SELECT });
+
+      for (const contract of freeContracts) {
+        const baseSpeed = contract.base_hashrate
+          ? parseFloat(contract.base_hashrate)
+          : parseFloat(contract.hashrate);
+        const bonus = (contract.has_daily_bonus === 1 && dailyBonusActive) ? dailyBonusMultiplier : 1.0;
+        const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier * bonus;
+        const type = contract.free_contract_type; // e.g. 'Free Ad Reward'
+        byType[type] = (byType[type] || 0) + finalSpeed;
+        totalPerSecond += finalSpeed;
+      }
+
+      // === 3. 付费合约，统归 'paid_contract' 类型 ===
+      const paidContracts = await sequelize.query(`
+        SELECT base_hashrate, hashrate
+        FROM mining_contracts WHERE user_id = ? AND contract_end_time > NOW()
+      `, { replacements: [userId], type: sequelize.QueryTypes.SELECT });
+
+      for (const contract of paidContracts) {
+        const fixedSpeed = contract.base_hashrate
+          ? parseFloat(contract.base_hashrate)
+          : parseFloat(contract.hashrate);
+        byType['paid_contract'] = (byType['paid_contract'] || 0) + fixedSpeed;
+        totalPerSecond += fixedSpeed;
+      }
+
+      return { total: totalPerSecond, byType };
+    } catch (error) {
+      console.error(`❌ 计算用户 ${userId} 分类收益失败:`, error);
+      return { total: 0, byType: {} };
+    }
+  }
+
+  /**
+   * 计算用户当前每秒比特币收益（动态倍数版本）— 原始实现保留在下方
+   * @param {number} userId - 用户ID
+   * @returns {number} 每秒收益（BTC）
+   */
+  static async _calculateUserPerSecondRevenueLegacy(userId) {
     try {
       let totalPerSecond = 0;
 
