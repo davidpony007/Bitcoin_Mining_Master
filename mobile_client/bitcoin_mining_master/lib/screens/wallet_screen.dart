@@ -378,27 +378,36 @@ class _WalletScreenState extends State<WalletScreen>
     // 根据交易类型确定图标和颜色
     IconData icon;
     Color iconColor;
+    Color iconBgColor;
     bool isPositive = true;
 
     switch (tx.type) {
       case 'withdrawal':
         icon = Icons.arrow_upward;
-        iconColor = Colors.red;
+        iconColor = Colors.white;
+        iconBgColor = const Color(0xFF4CAF50);
         isPositive = false;
         break;
       case 'subordinate rebate':
         icon = Icons.people;
-        iconColor = Colors.purple;
+        iconColor = Colors.green;
+        iconBgColor = Colors.orange;
         break;
       case 'Free Ad Reward':
         icon = Icons.play_arrow;
-        iconColor = Colors.blue;
+        iconColor = Colors.white;
+        iconBgColor = Colors.orange;
         break;
       case 'Daily Check-in Reward':
+        icon = Icons.card_giftcard;
+        iconColor = Colors.black;
+        iconBgColor = Colors.yellow;
+        break;
       case 'Invite Friend Reward':
       case 'Bind Referrer Reward':
         icon = Icons.card_giftcard;
         iconColor = Colors.blue;
+        iconBgColor = Colors.blue.withOpacity(0.1);
         break;
       case 'contract_4.99':
       case 'contract_6.99':
@@ -406,10 +415,12 @@ class _WalletScreenState extends State<WalletScreen>
       case 'contract_19.99':
         icon = Icons.monetization_on;
         iconColor = Colors.amber;
+        iconBgColor = Colors.amber.withOpacity(0.1);
         break;
       default:
         icon = Icons.attach_money;
         iconColor = AppColors.primary;
+        iconBgColor = AppColors.primary.withOpacity(0.1);
     }
 
     return Padding(
@@ -421,7 +432,7 @@ class _WalletScreenState extends State<WalletScreen>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: iconBgColor,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
