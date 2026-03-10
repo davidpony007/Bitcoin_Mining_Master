@@ -1,7 +1,8 @@
 /**
  * 下级返利定时任务
  * 每2小时计算并发放下级返利
- * 规则：仅统计下级用户的【普通广告挖矿合约】收益，然后乘以20%发放给上级
+ * 规则：统计下级用户的全部挖矿收益（bitcoin_transaction_records.mining_reward），
+ *       乘以20%发放给上级。用 invitation_rebate 最新时间戳去重，防止重复发放。
  * 执行时间：比余额结算晚5分钟，确保余额已更新
  */
 
@@ -97,63 +98,52 @@ class ReferralRebateTask {
         return 0;
       }
       
-      // 2. 计算过去2小时内所有下级的【普通广告合约】收益
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      const now = new Date();
-      
-      let totalSubordinateAdRevenue = 0;
+      // 2. 基于 bitcoin_transaction_records.mining_reward 计算未发放的下级收益
+      //    以 invitation_rebate 最新时间戳为游标，避免重复发放
+      let totalSubordinateMiningRevenue = 0;
       const subordinateDetails = [];
-      
+
       for (const sub of subordinates) {
-        // 查询该下级在过去2小时的广告合约收益
-        const [contracts] = await connection.query(`
-          SELECT 
-            hashrate, 
-            free_contract_creation_time, 
-            free_contract_end_time
-          FROM free_contract_records
-          WHERE user_id = ?
-          AND free_contract_type = 'Free Ad Reward'
-          AND mining_status IN ('mining', 'completed')
-          AND free_contract_end_time > ?
-          AND free_contract_creation_time < ?
-        `, [sub.user_id, twoHoursAgo, now]);
-        
-        let subRevenue = 0;
-        
-        // 计算每个合约在这2小时内的收益
-        for (const contract of contracts) {
-          const contractStart = new Date(contract.free_contract_creation_time);
-          const contractEnd = new Date(contract.free_contract_end_time);
-          
-          // 计算交集时间段
-          const effectiveStart = contractStart > twoHoursAgo ? contractStart : twoHoursAgo;
-          const effectiveEnd = contractEnd < now ? contractEnd : now;
-          
-          if (effectiveStart < effectiveEnd) {
-            const seconds = Math.floor((effectiveEnd - effectiveStart) / 1000);
-            const revenue = parseFloat(contract.hashrate) * seconds;
-            subRevenue += revenue;
-          }
-        }
-        
+        // 查该下级上一次被计入返利的时间
+        const [[lastRebateRow]] = await connection.query(
+          `SELECT MAX(rebate_creation_time) AS last_time
+           FROM invitation_rebate
+           WHERE user_id = ? AND subordinate_user_id = ?`,
+          [referrerId, sub.user_id]
+        );
+        const lastRebateTime = lastRebateRow?.last_time
+          ? new Date(lastRebateRow.last_time)
+          : new Date(0);
+
+        // 累计该下级在 lastRebateTime 之后产生的所有 mining_reward
+        const [[rewardRow]] = await connection.query(
+          `SELECT COALESCE(SUM(transaction_amount), 0) AS total
+           FROM bitcoin_transaction_records
+           WHERE user_id = ?
+             AND transaction_type = 'mining_reward'
+             AND transaction_status = 'success'
+             AND transaction_creation_time > ?`,
+          [sub.user_id, lastRebateTime]
+        );
+        const subRevenue = parseFloat(rewardRow.total) || 0;
+
         if (subRevenue > 0) {
-          totalSubordinateAdRevenue += subRevenue;
+          totalSubordinateMiningRevenue += subRevenue;
           subordinateDetails.push({
             userId: sub.user_id,
             revenue: subRevenue
           });
         }
       }
-      
+
       // 3. 计算返利金额（20%）
-      const rebateAmount = totalSubordinateAdRevenue * 0.20;
-      
+      const rebateAmount = totalSubordinateMiningRevenue * 0.20;
+
       if (rebateAmount <= 0) {
         await connection.rollback();
         return 0;
       }
-      
+
       // 4. 获取推荐人当前余额和邀请码
       const [referrerStatus] = await connection.query(
         'SELECT current_bitcoin_balance FROM user_status WHERE user_id = ?',
@@ -220,12 +210,12 @@ class ReferralRebateTask {
         referrerId,
         rebateAmount,
         newBalance,
-        `Referral rebate: ${subordinates.length} subordinate(s), ad revenue ${totalSubordinateAdRevenue.toFixed(18)} BTC × 20%`
+        `Referral rebate: ${subordinates.length} subordinate(s), mining revenue ${totalSubordinateMiningRevenue.toFixed(18)} BTC × 20%`
       ]);
       
       await connection.commit();
       
-      console.log(`✅ 推荐人 ${referrerId} 获得返利: ${rebateAmount.toFixed(18)} BTC (下级收益: ${totalSubordinateAdRevenue.toFixed(18)} BTC)`);
+      console.log(`✅ 推荐人 ${referrerId} 获得返利: ${rebateAmount.toFixed(18)} BTC (下级挖矿收益: ${totalSubordinateMiningRevenue.toFixed(18)} BTC)`);
       
       return rebateAmount;
       
