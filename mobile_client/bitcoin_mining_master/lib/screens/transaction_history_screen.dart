@@ -305,10 +305,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(8)}',
+                '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)}',
                 style: TextStyle(
                   color: isPositive ? AppColors.primary : Colors.red,
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -316,7 +316,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
                 'BTC',
                 style: TextStyle(
                   color: AppColors.textSecondary,
-                  fontSize: 11,
+                  fontSize: 10,
                 ),
               ),
             ],

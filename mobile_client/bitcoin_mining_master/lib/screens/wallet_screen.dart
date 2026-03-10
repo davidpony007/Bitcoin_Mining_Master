@@ -453,13 +453,25 @@ class _WalletScreenState extends State<WalletScreen>
             ),
           ),
           // Amount
-          Text(
-            '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(8)} BTC',
-            style: TextStyle(
-              color: isPositive ? AppColors.primary : Colors.red,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)}',
+                style: TextStyle(
+                  color: isPositive ? AppColors.primary : Colors.red,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Text(
+                'BTC',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 10,
+                ),
+              ),
+            ],
           ),
         ],
       ),
