@@ -38,7 +38,7 @@ const helmet = require('helmet'); // 安全 HTTP 头
 const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常
 const userRoutes = require('./routes/userRoutes'); // 用户相关接口路由
 const userInformationRoutes = require('./routes/userInformationRoutes'); // 用户信息接口路由
-// const userStatusRoutes = require('./routes/userStatusRoutes'); // 用户状态接口路由 - 暂时禁用,有路由错误
+const userStatusRoutes = require('./routes/userStatusRoutes'); // 用户状态接口路由
 const miningRoutes = require('./routes/miningRoutes'); // 挖矿相关接口路由
 const authRoutes = require('./routes/authRoutes'); // 认证相关接口路由
 const publicRoutes = require('./routes/publicRoutes'); // 公共信息接口路由
@@ -119,7 +119,7 @@ app.use(helmet()); // 增强 HTTP 头安全，防止常见 Web 攻击
 app.use('/api/users', userRoutes); // 用户相关接口
 app.use('/api/user', userRoutes); // 用户相关接口（单数形式）
 app.use('/api/userInformation', userInformationRoutes); // 用户信息表接口
-// app.use('/api/userStatus', userStatusRoutes); // 用户状态接口 - 暂时禁用
+app.use('/api/userStatus', userStatusRoutes); // 用户状态接口
 app.use('/api/mining', miningRoutes); // 挖矿相关接口
 app.use('/api/auth', authRoutes); // 认证相关接口
 app.use('/api/public', publicRoutes); // 公共信息接口
