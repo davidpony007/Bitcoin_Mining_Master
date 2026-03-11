@@ -134,7 +134,9 @@ echo -e "${BLUE}[4b]${NC} 配置 Git 使用 HTTP/1.1（防止 curl 16 错误）.
 git config --global http.version HTTP/1.1
 git config --global http.postBuffer 524288000
 echo -e "  ${GREEN}✅ git http.version = HTTP/1.1，http.postBuffer = 500MB${NC}"
-echo -e "  ${YELLOW}（注：此为全局配置，影响本机所有 git 仓库）${NC}"
+echo -e "  ${YELLOW}（注：此为全局配置，影响本机所有 git 仓库。如需恢复默认值：${NC}"
+echo -e "   ${YELLOW} git config --global --unset http.version${NC}"
+echo -e "   ${YELLOW} git config --global --unset http.postBuffer）${NC}"
 echo ""
 
 # ── 5. 配置环境变量 ────────────────────────────────────────────
