@@ -1,0 +1,34 @@
+{
+  "recommendations": [
+    // ── JavaScript / Node.js (Backend) ──────────────────────────────────
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "christian-kohler.npm-intellisense",
+    "streetsidesoftware.code-spell-checker",
+
+    // ── TypeScript / React (Frontend) ───────────────────────────────────
+    "ms-vscode.vscode-typescript-next",
+    "dsznajder.es7-react-js-snippets",
+    "bradlc.vscode-tailwindcss",
+
+    // ── Docker / Compose ────────────────────────────────────────────────
+    "ms-azuretools.vscode-docker",
+
+    // ── Flutter / Dart (Mobile) ─────────────────────────────────────────
+    "dart-code.flutter",
+    "dart-code.dart-code",
+
+    // ── Git & GitHub ────────────────────────────────────────────────────
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+    "github.copilot",
+
+    // ── REST / API testing ───────────────────────────────────────────────
+    "humao.rest-client",
+
+    // ── Productivity ────────────────────────────────────────────────────
+    "editorconfig.editorconfig",
+    "wayou.vscode-todo-highlight",
+    "gruntfuggly.todo-tree"
+  ]
+}

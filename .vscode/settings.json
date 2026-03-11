@@ -1,0 +1,66 @@
+{
+  // ── Editor defaults ───────────────────────────────────────────────────
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  // ── Language overrides ────────────────────────────────────────────────
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[dart]": {
+    "editor.defaultFormatter": "dart-code.dart-code",
+    "editor.formatOnSave": true
+  },
+
+  // ── ESLint ────────────────────────────────────────────────────────────
+  "eslint.workingDirectories": [
+    { "directory": "backend", "changeProcessCWD": true },
+    { "directory": "web_frontend", "changeProcessCWD": true }
+  ],
+  "eslint.validate": ["javascript", "typescript", "typescriptreact"],
+
+  // ── TypeScript ────────────────────────────────────────────────────────
+  // Points VS Code at the workspace TypeScript build (web_frontend).
+  // If you also need TS support for other sub-packages, install typescript
+  // locally there and update this path accordingly.
+  "typescript.tsdk": "web_frontend/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  // ── File exclusions ───────────────────────────────────────────────────
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/.dart_tool": true,
+    "**/.pub-cache": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/dist": true,
+    "**/.pub-cache": true
+  },
+
+  // ── Docker ────────────────────────────────────────────────────────────
+  "docker.defaultRegistryPath": "",
+
+  // ── Flutter / Dart ────────────────────────────────────────────────────
+  "dart.flutterSdkPath": null,
+  "dart.lineLength": 100
+}
