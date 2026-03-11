@@ -44,6 +44,25 @@ services:
       timeout: 5s
       retries: 5
 
+  # Web 前端服务（React + Vite dev server）
+  frontend:
+    image: node:20-alpine
+    container_name: bitcoin_frontend_dev
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      VITE_API_TARGET: http://backend:8888
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./web_frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - bitcoin_network
+    command: sh -c "npm install --legacy-peer-deps && npm run dev"
+
   # Node.js 后端服务
   backend:
     build:

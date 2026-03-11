@@ -94,8 +94,8 @@ class AdPointsService {
       let referralReward = null;
       const totalViews = await this.getTotalViewCount(userId, connection);
       
-      if (totalViews === this.REFERRAL_REQUIRED_ADS) {
-        // 刚好达到5次，触发邀请奖励
+      if (totalViews >= this.REFERRAL_REQUIRED_ADS) {
+        // 达到或超过5次，触发邀请奖励（handleReferralReward内部已做去重检查）
         referralReward = await this.handleReferralReward(userId, connection);
       }
 
@@ -365,10 +365,10 @@ class AdPointsService {
    * 处理单个好友邀请奖励（当被邀请人完成5次广告观看时自动触发）
    */
   static async handleReferralReward(refereeUserId, connection) {
-    try {
-      // 引入 InvitationPointsService（避免循环依赖，在方法内部引入）
-      const InvitationPointsService = require('./invitationPointsService');
+    // 引入 InvitationPointsService（避免循环依赖，在方法内部引入）
+    const InvitationPointsService = require('./invitationPointsService');
 
+    try {
       // 查找邀请人
       const [relationshipRows] = await connection.query(
         'SELECT referrer_user_id FROM invitation_relationship WHERE user_id = ?',
@@ -381,7 +381,7 @@ class AdPointsService {
 
       const referrerId = relationshipRows[0].referrer_user_id;
 
-      // 检查是否已奖励过
+      // 检查是否已奖励过（以 points_transaction 为准，防止重复发放）
       const [existingRows] = await connection.query(
         `SELECT id FROM points_transaction 
          WHERE user_id = ? 
@@ -394,7 +394,7 @@ class AdPointsService {
         return null; // 已奖励
       }
 
-      // 发放奖励
+      // 发放奖励（在独立事务中提交）
       await PointsService.addPoints(
         referrerId,
         InvitationPointsService.FIRST_FRIEND_REWARD,
@@ -403,14 +403,18 @@ class AdPointsService {
         refereeUserId
       );
 
-      // 记录里程碑
-      await connection.query(
-        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)
-         VALUES (?, '1_FRIEND', 1, 1, ?)`,
-        [referrerId, InvitationPointsService.FIRST_FRIEND_REWARD]
-      );
-
       console.log(`✅ 自动触发：用户 ${referrerId} 获得邀请奖励 ${InvitationPointsService.FIRST_FRIEND_REWARD} 积分（被邀请人 ${refereeUserId} 完成5次广告）`);
+
+      // 记录里程碑（非关键操作，失败不影响积分已发放）
+      try {
+        await connection.query(
+          `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)
+           VALUES (?, '1_FRIEND', 1, 1, ?)`,
+          [referrerId, InvitationPointsService.FIRST_FRIEND_REWARD]
+        );
+      } catch (milestoneError) {
+        console.warn(`⚠️ referral_milestone 记录写入失败（积分已发放，可忽略）: referrerId=${referrerId}, refereeUserId=${refereeUserId}, error=${milestoneError.message}`);
+      }
 
       return {
         referrerId,
@@ -420,7 +424,8 @@ class AdPointsService {
       };
 
     } catch (error) {
-      console.error('处理邀请奖励失败:', error);
+      // 积分发放失败：记录完整上下文，下次广告观看时（>=5次）将自动重试
+      console.error(`❌ 邀请奖励发放失败 [refereeUserId=${refereeUserId}]: ${error.message}`, error);
       return null;
     }
   }

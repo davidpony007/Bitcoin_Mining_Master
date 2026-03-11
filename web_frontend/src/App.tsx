@@ -14,6 +14,7 @@ import Points from './pages/Points';
 import Reports from './pages/Reports';
 import DataCenter from './pages/DataCenter';
 import Settings from './pages/Settings';
+import Withdrawal from './pages/Withdrawal';
 
 const App: React.FC = () => {
   return (
@@ -29,6 +30,7 @@ const App: React.FC = () => {
         <Route path="analytics" element={<Analytics />} />
         <Route path="ads" element={<Ads />} />
         <Route path="orders" element={<Orders />} />
+        <Route path="withdrawals" element={<Withdrawal />} />
         <Route path="geography" element={<Geography />} />
         <Route path="checkin" element={<CheckIn />} />
         <Route path="mining" element={<Mining />} />

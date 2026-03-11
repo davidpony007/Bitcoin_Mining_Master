@@ -10,6 +10,73 @@ const { Sequelize } = require('sequelize');
 const sequelize = require('../config/database');
 
 /**
+ * GET /api/withdrawal/admin/list
+ * 管理员获取全部提现记录（支持状态筛选 + 关键词搜索）
+ *
+ * Query 参数:
+ * - status : 'pending' | 'success' | 'rejected' | 'all'（默认 all）
+ * - search : 关键词，匹配 email / wallet_address / user_id
+ * - limit  : 每页数量（默认 20）
+ * - offset : 偏移量（默认 0）
+ */
+router.get('/admin/list', async (req, res) => {
+  try {
+    const { status, search, limit = 20, offset = 0 } = req.query;
+
+    const where = {};
+
+    if (status && status !== 'all') {
+      where.withdrawal_status = status;
+    }
+
+    if (search && search.trim()) {
+      where[Sequelize.Op.or] = [
+        { email:          { [Sequelize.Op.like]: `%${search.trim()}%` } },
+        { wallet_address: { [Sequelize.Op.like]: `%${search.trim()}%` } },
+        { user_id:        { [Sequelize.Op.like]: `%${search.trim()}%` } },
+      ];
+    }
+
+    const { count, rows } = await WithdrawalRecord.findAndCountAll({
+      where,
+      limit:  parseInt(limit),
+      offset: parseInt(offset),
+      order:  [['id', 'DESC']],
+    });
+
+    const withdrawals = rows.map(r => ({
+      id:             r.id,
+      userId:         r.user_id,
+      email:          r.email,
+      walletAddress:  r.wallet_address,
+      amount:         parseFloat(r.withdrawal_request_amount),
+      networkFee:     parseFloat(r.network_fee),
+      receivedAmount: parseFloat(r.received_amount),
+      status:         r.withdrawal_status,
+      googleAccount:  r.google_account,
+      appleId:        r.apple_id,
+      createdAt:      r.created_at,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        total: count,
+        withdrawals,
+        pagination: {
+          limit:   parseInt(limit),
+          offset:  parseInt(offset),
+          hasMore: parseInt(offset) + parseInt(limit) < count,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('❌ 管理员查询提现列表失败:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch withdrawal list', error: error.message });
+  }
+});
+
+/**
  * POST /api/withdrawal/request
  * 用户提交提现申请
  * 

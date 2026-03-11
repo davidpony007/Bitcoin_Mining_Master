@@ -13,6 +13,7 @@ import {
   TrophyOutlined,
   FileTextOutlined,
   SettingOutlined,
+  WalletOutlined,
 } from '@ant-design/icons';
 import './styles.css';
 
@@ -47,6 +48,11 @@ const Sidebar: React.FC = () => {
       key: '/orders',
       icon: <ShoppingOutlined />,
       label: '订单管理',
+    },
+    {
+      key: '/withdrawals',
+      icon: <WalletOutlined />,
+      label: '提现详情',
     },
     {
       key: '/geography',
