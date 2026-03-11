@@ -52,7 +52,9 @@ Thumbs.db
 
 # ===== IDE =====
 .idea/
-.vscode/
+.vscode/*
+!.vscode/mcp.json
+!.vscode/extensions.json
 *.swp
 *.swo
 

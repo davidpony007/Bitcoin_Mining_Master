@@ -18,17 +18,22 @@
   ],
   "item": [
     {
-      "name": "1. Health Check",
+      "name": "1-Health_Check",
       "item": [
         {
-          "name": "健康检查",
+          "name": "health_check",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/health",
-              "host": ["{{base_url}}"],
-              "path": ["api", "health"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
             },
             "description": "检查服务器和数据库连接状态"
           },
@@ -58,17 +63,23 @@
       ]
     },
     {
-      "name": "2. Public APIs (无需认证)",
+      "name": "2-Public_APIs",
       "item": [
         {
-          "name": "获取公告",
+          "name": "get_announcement",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/public/announcement",
-              "host": ["{{base_url}}"],
-              "path": ["api", "public", "announcement"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "announcement"
+              ]
             },
             "description": "获取平台公告信息"
           },
@@ -93,14 +104,20 @@
           ]
         },
         {
-          "name": "获取系统状态",
+          "name": "get_system_status",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/public/status",
-              "host": ["{{base_url}}"],
-              "path": ["api", "public", "status"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "status"
+              ]
             },
             "description": "获取系统运行状态"
           },
@@ -128,10 +145,10 @@
       ]
     },
     {
-      "name": "3. Authentication (认证)",
+      "name": "3-Authentication",
       "item": [
         {
-          "name": "用户登录",
+          "name": "user_login",
           "request": {
             "method": "POST",
             "header": [
@@ -146,8 +163,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "login"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
             },
             "description": "用户登录获取 JWT Token"
           },
@@ -174,14 +197,20 @@
           ]
         },
         {
-          "name": "用户登出",
+          "name": "user_logout",
           "request": {
             "method": "POST",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/auth/logout",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "logout"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
             },
             "description": "用户登出"
           },
@@ -208,10 +237,10 @@
       ]
     },
     {
-      "name": "4. User Management (用户管理)",
+      "name": "4-User_Management",
       "item": [
         {
-          "name": "注册新用户",
+          "name": "register_new_user",
           "request": {
             "method": "POST",
             "header": [
@@ -226,8 +255,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/users/register",
-              "host": ["{{base_url}}"],
-              "path": ["api", "users", "register"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "register"
+              ]
             },
             "description": "注册新用户"
           },
@@ -252,7 +287,7 @@
           ]
         },
         {
-          "name": "获取用户列表 (需要认证)",
+          "name": "get_user_list_authenticated",
           "request": {
             "method": "GET",
             "header": [
@@ -263,8 +298,13 @@
             ],
             "url": {
               "raw": "{{base_url}}/api/users",
-              "host": ["{{base_url}}"],
-              "path": ["api", "users"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
             },
             "description": "获取所有用户列表（需要 JWT 认证）"
           },
@@ -289,14 +329,19 @@
           ]
         },
         {
-          "name": "未认证访问用户列表 (应失败)",
+          "name": "get_user_list_unauthenticated",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/users",
-              "host": ["{{base_url}}"],
-              "path": ["api", "users"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ]
             },
             "description": "测试未认证访问受保护接口"
           },
@@ -318,17 +363,23 @@
       ]
     },
     {
-      "name": "5. Rate Limiting Test (限流测试)",
+      "name": "5-Rate_Limiting_Test",
       "item": [
         {
-          "name": "快速连续请求 (测试限流)",
+          "name": "rapid_requests_rate_limit_test",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/public/status",
-              "host": ["{{base_url}}"],
-              "path": ["api", "public", "status"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "public",
+                "status"
+              ]
             },
             "description": "快速连续发送多个请求，测试限流机制"
           },
@@ -358,17 +409,22 @@
       ]
     },
     {
-      "name": "6. Error Handling (错误处理)",
+      "name": "6-Error_Handling",
       "item": [
         {
-          "name": "404 - 路由不存在",
+          "name": "error_404_route_not_found",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
               "raw": "{{base_url}}/api/nonexistent",
-              "host": ["{{base_url}}"],
-              "path": ["api", "nonexistent"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "nonexistent"
+              ]
             },
             "description": "测试不存在的路由"
           },
@@ -393,7 +449,7 @@
           ]
         },
         {
-          "name": "400 - 请求体缺失",
+          "name": "error_400_missing_request_body",
           "request": {
             "method": "POST",
             "header": [
@@ -408,8 +464,14 @@
             },
             "url": {
               "raw": "{{base_url}}/api/auth/login",
-              "host": ["{{base_url}}"],
-              "path": ["api", "auth", "login"]
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
             },
             "description": "测试缺少必填字段的请求"
           },

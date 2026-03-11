@@ -1,531 +1,531 @@
 {
-	"info": {
-		"_postman_id": "bmm-user-creation-v2-2025",
-		"name": "Bitcoin Mining Master - 用户创建测试 (2025)",
-		"description": "📝 **Bitcoin Mining Master 用户创建 API 完整测试集合**\n\n✅ **功能：**\n- 创建真实用户数据到云端 MySQL 数据库\n- 动态生成唯一 user_id (基于时间戳)\n- 支持完整信息、最小信息、Android 用户等多种场景\n- 自动验证响应状态和数据结构\n\n🔗 **连接架构：**\n```\nPostman → 本地 Node (localhost:8888) → 云端 MySQL (47.79.232.189)\n```\n\n📊 **数据库表：**\n- 数据库：bitcoin_mining_master\n- 表名：user_information\n- 字段：user_id, invitation_code, email, android_id, gaid, register_ip, country, user_creation_time\n\n📅 **创建时间：** 2025-12-04\n\n👤 **使用说明：**\n1. 确保本地 PM2 服务已启动\n2. 选择环境：Bitcoin Mining - Local\n3. 运行推荐测试：\"1️⃣ 创建用户 - 动态时间戳（推荐）\"\n4. 在云端 MySQL 中验证数据",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "1️⃣ 创建用户 - 动态时间戳 (推荐) ⭐",
-			"event": [
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"// 生成基于当前时间戳的唯一 user_id",
-							"const timestamp = Date.now();",
-							"pm.environment.set('timestamp', timestamp);",
-							"",
-							"// 生成随机邮箱",
-							"const randomEmail = `user_${timestamp}@test.com`;",
-							"pm.environment.set('randomEmail', randomEmail);",
-							"",
-							"console.log('🆔 生成的 user_id:', `U${timestamp}`);",
-							"console.log('📧 生成的邮箱:', randomEmail);"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"// 验证响应状态码",
-							"pm.test('✅ 状态码为 201 Created', function () {",
-							"    pm.response.to.have.status(201);",
-							"});",
-							"",
-							"// 验证响应体结构",
-							"pm.test('✅ 响应包含 success 字段', function () {",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData).to.have.property('success');",
-							"    pm.expect(jsonData.success).to.be.true;",
-							"});",
-							"",
-							"pm.test('✅ 响应包含用户数据', function () {",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData).to.have.property('data');",
-							"    pm.expect(jsonData.data).to.have.property('user_id');",
-							"});",
-							"",
-							"// 输出创建的用户信息",
-							"const jsonData = pm.response.json();",
-							"console.log('✅ 用户创建成功！');",
-							"console.log('📊 用户数据:', JSON.stringify(jsonData.data, null, 2));"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"user_id\": \"U{{timestamp}}\",\n  \"email\": \"{{randomEmail}}\",\n  \"country\": \"CN\",\n  \"register_ip\": \"192.168.1.100\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "**推荐使用！**\n\n✅ 每次运行都会生成唯一的 user_id 和邮箱\n✅ 可以重复运行，不会出现重复错误\n✅ 自动验证响应\n\n**字段说明：**\n- `user_id`: 动态生成 (格式: U + 13位时间戳)\n- `email`: 动态生成 (格式: user_时间戳@test.com)\n- `country`: 中国 (CN)\n- `register_ip`: 测试IP地址"
-			},
-			"response": []
-		},
-		{
-			"name": "2️⃣ 创建用户 - 完整信息",
-			"event": [
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"// 生成唯一标识",
-							"const timestamp = Date.now();",
-							"pm.environment.set('timestamp', timestamp);",
-							"",
-							"// 生成邀请码 (13位)",
-							"const inviteCode = 'INV' + String(timestamp).slice(-10);",
-							"pm.environment.set('inviteCode', inviteCode);",
-							"",
-							"console.log('🎫 邀请码:', inviteCode);"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test('✅ 用户创建成功', function () {",
-							"    pm.response.to.have.status(201);",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData.success).to.be.true;",
-							"    console.log('✅ 完整信息用户创建成功:', jsonData.data);",
-							"});"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"user_id\": \"U{{timestamp}}\",\n  \"invitation_code\": \"{{inviteCode}}\",\n  \"email\": \"fullinfo_{{timestamp}}@example.com\",\n  \"android_id\": \"android_{{timestamp}}\",\n  \"gaid\": \"{{timestamp}}-0000-0000-0000-000000000000\",\n  \"register_ip\": \"203.208.60.1\",\n  \"country\": \"US\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "创建包含所有可选字段的用户\n\n**包含字段：**\n- user_id (必填)\n- invitation_code (邀请码)\n- email\n- android_id (Android 设备ID)\n- gaid (Google Advertising ID)\n- register_ip (注册IP)\n- country (国家代码)"
-			},
-			"response": []
-		},
-		{
-			"name": "3️⃣ 创建用户 - 最小信息",
-			"event": [
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"const timestamp = Date.now();",
-							"pm.environment.set('timestamp', timestamp);",
-							"console.log('🆔 最小信息用户ID:', `MIN${timestamp}`);"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test('✅ 最小信息用户创建成功', function () {",
-							"    pm.response.to.have.status(201);",
-							"    console.log('✅ 只需 user_id 即可创建用户');",
-							"});"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"user_id\": \"MIN{{timestamp}}\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "只使用必填字段创建用户\n\n**字段：**\n- user_id (必填，唯一标识)\n\n其他字段将设置为 NULL 或默认值"
-			},
-			"response": []
-		},
-		{
-			"name": "4️⃣ 创建用户 - Android 用户",
-			"event": [
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"const timestamp = Date.now();",
-							"pm.environment.set('timestamp', timestamp);",
-							"",
-							"// 模拟 Android 设备ID (32位)",
-							"const androidId = 'a' + String(timestamp).padStart(31, '0').slice(-31);",
-							"pm.environment.set('androidId', androidId);",
-							"",
-							"// 模拟 GAID (36位 UUID 格式)",
-							"const gaid = `${timestamp.toString(16)}-a1b2-c3d4-e5f6-${String(timestamp).slice(-12)}`;",
-							"pm.environment.set('gaid', gaid);",
-							"",
-							"console.log('📱 Android ID:', androidId);",
-							"console.log('🔑 GAID:', gaid);"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test('✅ Android 用户创建成功', function () {",
-							"    pm.response.to.have.status(201);",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData.data).to.have.property('android_id');",
-							"    pm.expect(jsonData.data).to.have.property('gaid');",
-							"    console.log('📱 Android 用户信息:', jsonData.data);",
-							"});"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"user_id\": \"AND{{timestamp}}\",\n  \"email\": \"android_{{timestamp}}@gmail.com\",\n  \"android_id\": \"{{androidId}}\",\n  \"gaid\": \"{{gaid}}\",\n  \"register_ip\": \"1.2.3.4\",\n  \"country\": \"CN\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "创建 Android 平台用户\n\n**特点：**\n- 包含 android_id (Android 设备唯一标识)\n- 包含 gaid (Google Advertising ID)\n- 用于追踪 Android 用户行为"
-			},
-			"response": []
-		},
-		{
-			"name": "5️⃣ 创建用户 - 带邀请码",
-			"event": [
-				{
-					"listen": "prerequest",
-					"script": {
-						"exec": [
-							"const timestamp = Date.now();",
-							"pm.environment.set('timestamp', timestamp);",
-							"",
-							"// 生成邀请码 (13位: INV + 10位数字)",
-							"const inviteCode = 'INV' + String(Math.floor(Math.random() * 10000000000)).padStart(10, '0');",
-							"pm.environment.set('inviteCode', inviteCode);",
-							"",
-							"console.log('🎁 邀请码:', inviteCode);"
-						],
-						"type": "text/javascript"
-					}
-				},
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test('✅ 带邀请码用户创建成功', function () {",
-							"    pm.response.to.have.status(201);",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData.data.invitation_code).to.not.be.null;",
-							"    console.log('🎁 邀请码已保存:', jsonData.data.invitation_code);",
-							"});"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"user_id\": \"INV{{timestamp}}\",\n  \"invitation_code\": \"{{inviteCode}}\",\n  \"email\": \"invite_{{timestamp}}@example.com\",\n  \"country\": \"CN\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "创建带邀请码的用户\n\n**用途：**\n- 测试邀请系统\n- invitation_code 用于追踪用户来源\n- 可用于返佣系统"
-			},
-			"response": []
-		},
-		{
-			"name": "❌ 错误测试 - 缺少必填字段",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test('✅ 正确返回 400 错误', function () {",
-							"    pm.response.to.have.status(400);",
-							"});",
-							"",
-							"pm.test('✅ 错误信息正确', function () {",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData).to.have.property('error');",
-							"    pm.expect(jsonData.details).to.include('user_id');",
-							"    console.log('⚠️ 预期错误:', jsonData.details);",
-							"});"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"email\": \"test@example.com\",\n  \"country\": \"CN\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "**错误场景测试**\n\n缺少必填字段 `user_id`\n\n**预期结果：**\n- 状态码：400 Bad Request\n- 错误信息：\"user_id 是必填字段\""
-			},
-			"response": []
-		},
-		{
-			"name": "❌ 错误测试 - 重复 user_id",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"// 第一次调用应该成功（201）或失败（500，如果已存在）",
-							"if (pm.response.code === 201) {",
-							"    console.log('✅ 用户首次创建成功');",
-							"} else if (pm.response.code === 500) {",
-							"    pm.test('✅ 正确返回重复错误', function () {",
-							"        const jsonData = pm.response.json();",
-							"        pm.expect(jsonData.details).to.satisfy(msg => ",
-							"            msg.includes('Duplicate') || msg.includes('unique')  || msg.includes('重复')",
-							"        );",
-							"        console.log('⚠️ 预期的重复错误:', jsonData.details);",
-							"    });",
-							"}"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"user_id\": \"DUPLICATE_TEST_001\",\n  \"email\": \"duplicate@test.com\",\n  \"country\": \"CN\"\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "{{base_url}}/api/users",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"users"
-					]
-				},
-				"description": "**错误场景测试**\n\n使用固定的 user_id 重复创建\n\n**使用方法：**\n1. 第一次运行：应该成功 (201)\n2. 第二次运行：应该失败 (500，Duplicate entry)\n\n**预期结果：**\n- 状态码：500\n- 错误信息：包含 \"Duplicate\" 或 \"unique\""
-			},
-			"response": []
-		},
-		{
-			"name": "🏥 健康检查",
-			"event": [
-				{
-					"listen": "test",
-					"script": {
-						"exec": [
-							"pm.test('✅ API 服务正常', function () {",
-							"    pm.response.to.have.status(200);",
-							"});",
-							"",
-							"pm.test('✅ 数据库连接正常', function () {",
-							"    const jsonData = pm.response.json();",
-							"    pm.expect(jsonData.status).to.eql('ok');",
-							"    pm.expect(jsonData.db).to.eql('connected');",
-							"    console.log('🏥 服务健康状态:', jsonData);",
-							"});"
-						],
-						"type": "text/javascript"
-					}
-				}
-			],
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{base_url}}/api/health",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"api",
-						"health"
-					]
-				},
-				"description": "**健康检查接口**\n\n在运行用户创建测试之前，建议先运行此接口确认：\n- ✅ API 服务正常运行\n- ✅ 数据库连接正常\n\n**响应示例：**\n```json\n{\n  \"status\": \"ok\",\n  \"db\": \"connected\",\n  \"timestamp\": 1733317200000\n}\n```"
-			},
-			"response": []
-		}
-	],
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					"// Collection 级别的前置脚本",
-					"console.log('🚀 开始执行 Bitcoin Mining Master 用户创建测试');",
-					"console.log('📡 目标服务器:', pm.environment.get('base_url'));"
-				]
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					"// Collection 级别的测试脚本",
-					"console.log('✅ 请求完成，响应时间:', pm.response.responseTime, 'ms');"
-				]
-			}
-		}
-	],
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "http://localhost:8888",
-			"type": "string"
-		}
-	]
+  "info": {
+    "_postman_id": "bmm-user-creation-v2-2025",
+    "name": "Bitcoin Mining Master - User Creation Tests 2025",
+    "description": "📝 **Bitcoin Mining Master 用户创建 API 完整测试集合**\n\n✅ **功能：**\n- 创建真实用户数据到云端 MySQL 数据库\n- 动态生成唯一 user_id (基于时间戳)\n- 支持完整信息、最小信息、Android 用户等多种场景\n- 自动验证响应状态和数据结构\n\n🔗 **连接架构：**\n```\nPostman → 本地 Node (localhost:8888) → 云端 MySQL (47.79.232.189)\n```\n\n📊 **数据库表：**\n- 数据库：bitcoin_mining_master\n- 表名：user_information\n- 字段：user_id, invitation_code, email, android_id, gaid, register_ip, country, user_creation_time\n\n📅 **创建时间：** 2025-12-04\n\n👤 **使用说明：**\n1. 确保本地 PM2 服务已启动\n2. 选择环境：Bitcoin Mining - Local\n3. 运行推荐测试：\"1️⃣ 创建用户 - 动态时间戳（推荐）\"\n4. 在云端 MySQL 中验证数据",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "create_user_dynamic_timestamp_recommended",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// 生成基于当前时间戳的唯一 user_id",
+              "const timestamp = Date.now();",
+              "pm.environment.set('timestamp', timestamp);",
+              "",
+              "// 生成随机邮箱",
+              "const randomEmail = `user_${timestamp}@test.com`;",
+              "pm.environment.set('randomEmail', randomEmail);",
+              "",
+              "console.log('🆔 生成的 user_id:', `U${timestamp}`);",
+              "console.log('📧 生成的邮箱:', randomEmail);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// 验证响应状态码",
+              "pm.test('✅ 状态码为 201 Created', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "// 验证响应体结构",
+              "pm.test('✅ 响应包含 success 字段', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('success');",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "});",
+              "",
+              "pm.test('✅ 响应包含用户数据', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('data');",
+              "    pm.expect(jsonData.data).to.have.property('user_id');",
+              "});",
+              "",
+              "// 输出创建的用户信息",
+              "const jsonData = pm.response.json();",
+              "console.log('✅ 用户创建成功！');",
+              "console.log('📊 用户数据:', JSON.stringify(jsonData.data, null, 2));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U{{timestamp}}\",\n  \"email\": \"{{randomEmail}}\",\n  \"country\": \"CN\",\n  \"register_ip\": \"192.168.1.100\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "**推荐使用！**\n\n✅ 每次运行都会生成唯一的 user_id 和邮箱\n✅ 可以重复运行，不会出现重复错误\n✅ 自动验证响应\n\n**字段说明：**\n- `user_id`: 动态生成 (格式: U + 13位时间戳)\n- `email`: 动态生成 (格式: user_时间戳@test.com)\n- `country`: 中国 (CN)\n- `register_ip`: 测试IP地址"
+      },
+      "response": []
+    },
+    {
+      "name": "create_user_full_info",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// 生成唯一标识",
+              "const timestamp = Date.now();",
+              "pm.environment.set('timestamp', timestamp);",
+              "",
+              "// 生成邀请码 (13位)",
+              "const inviteCode = 'INV' + String(timestamp).slice(-10);",
+              "pm.environment.set('inviteCode', inviteCode);",
+              "",
+              "console.log('🎫 邀请码:', inviteCode);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('✅ 用户创建成功', function () {",
+              "    pm.response.to.have.status(201);",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.success).to.be.true;",
+              "    console.log('✅ 完整信息用户创建成功:', jsonData.data);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"U{{timestamp}}\",\n  \"invitation_code\": \"{{inviteCode}}\",\n  \"email\": \"fullinfo_{{timestamp}}@example.com\",\n  \"android_id\": \"android_{{timestamp}}\",\n  \"gaid\": \"{{timestamp}}-0000-0000-0000-000000000000\",\n  \"register_ip\": \"203.208.60.1\",\n  \"country\": \"US\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "创建包含所有可选字段的用户\n\n**包含字段：**\n- user_id (必填)\n- invitation_code (邀请码)\n- email\n- android_id (Android 设备ID)\n- gaid (Google Advertising ID)\n- register_ip (注册IP)\n- country (国家代码)"
+      },
+      "response": []
+    },
+    {
+      "name": "create_user_minimal_info",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const timestamp = Date.now();",
+              "pm.environment.set('timestamp', timestamp);",
+              "console.log('🆔 最小信息用户ID:', `MIN${timestamp}`);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('✅ 最小信息用户创建成功', function () {",
+              "    pm.response.to.have.status(201);",
+              "    console.log('✅ 只需 user_id 即可创建用户');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"MIN{{timestamp}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "只使用必填字段创建用户\n\n**字段：**\n- user_id (必填，唯一标识)\n\n其他字段将设置为 NULL 或默认值"
+      },
+      "response": []
+    },
+    {
+      "name": "create_user_android",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const timestamp = Date.now();",
+              "pm.environment.set('timestamp', timestamp);",
+              "",
+              "// 模拟 Android 设备ID (32位)",
+              "const androidId = 'a' + String(timestamp).padStart(31, '0').slice(-31);",
+              "pm.environment.set('androidId', androidId);",
+              "",
+              "// 模拟 GAID (36位 UUID 格式)",
+              "const gaid = `${timestamp.toString(16)}-a1b2-c3d4-e5f6-${String(timestamp).slice(-12)}`;",
+              "pm.environment.set('gaid', gaid);",
+              "",
+              "console.log('📱 Android ID:', androidId);",
+              "console.log('🔑 GAID:', gaid);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('✅ Android 用户创建成功', function () {",
+              "    pm.response.to.have.status(201);",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.data).to.have.property('android_id');",
+              "    pm.expect(jsonData.data).to.have.property('gaid');",
+              "    console.log('📱 Android 用户信息:', jsonData.data);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"AND{{timestamp}}\",\n  \"email\": \"android_{{timestamp}}@gmail.com\",\n  \"android_id\": \"{{androidId}}\",\n  \"gaid\": \"{{gaid}}\",\n  \"register_ip\": \"1.2.3.4\",\n  \"country\": \"CN\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "创建 Android 平台用户\n\n**特点：**\n- 包含 android_id (Android 设备唯一标识)\n- 包含 gaid (Google Advertising ID)\n- 用于追踪 Android 用户行为"
+      },
+      "response": []
+    },
+    {
+      "name": "create_user_with_invitation_code",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const timestamp = Date.now();",
+              "pm.environment.set('timestamp', timestamp);",
+              "",
+              "// 生成邀请码 (13位: INV + 10位数字)",
+              "const inviteCode = 'INV' + String(Math.floor(Math.random() * 10000000000)).padStart(10, '0');",
+              "pm.environment.set('inviteCode', inviteCode);",
+              "",
+              "console.log('🎁 邀请码:', inviteCode);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('✅ 带邀请码用户创建成功', function () {",
+              "    pm.response.to.have.status(201);",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.data.invitation_code).to.not.be.null;",
+              "    console.log('🎁 邀请码已保存:', jsonData.data.invitation_code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"INV{{timestamp}}\",\n  \"invitation_code\": \"{{inviteCode}}\",\n  \"email\": \"invite_{{timestamp}}@example.com\",\n  \"country\": \"CN\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "创建带邀请码的用户\n\n**用途：**\n- 测试邀请系统\n- invitation_code 用于追踪用户来源\n- 可用于返佣系统"
+      },
+      "response": []
+    },
+    {
+      "name": "error_test_missing_required_fields",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('✅ 正确返回 400 错误', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('✅ 错误信息正确', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "    pm.expect(jsonData.details).to.include('user_id');",
+              "    console.log('⚠️ 预期错误:', jsonData.details);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"test@example.com\",\n  \"country\": \"CN\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "**错误场景测试**\n\n缺少必填字段 `user_id`\n\n**预期结果：**\n- 状态码：400 Bad Request\n- 错误信息：\"user_id 是必填字段\""
+      },
+      "response": []
+    },
+    {
+      "name": "error_test_duplicate_user_id",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// 第一次调用应该成功（201）或失败（500，如果已存在）",
+              "if (pm.response.code === 201) {",
+              "    console.log('✅ 用户首次创建成功');",
+              "} else if (pm.response.code === 500) {",
+              "    pm.test('✅ 正确返回重复错误', function () {",
+              "        const jsonData = pm.response.json();",
+              "        pm.expect(jsonData.details).to.satisfy(msg => ",
+              "            msg.includes('Duplicate') || msg.includes('unique')  || msg.includes('重复')",
+              "        );",
+              "        console.log('⚠️ 预期的重复错误:', jsonData.details);",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"DUPLICATE_TEST_001\",\n  \"email\": \"duplicate@test.com\",\n  \"country\": \"CN\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "users"
+          ]
+        },
+        "description": "**错误场景测试**\n\n使用固定的 user_id 重复创建\n\n**使用方法：**\n1. 第一次运行：应该成功 (201)\n2. 第二次运行：应该失败 (500，Duplicate entry)\n\n**预期结果：**\n- 状态码：500\n- 错误信息：包含 \"Duplicate\" 或 \"unique\""
+      },
+      "response": []
+    },
+    {
+      "name": "health_check",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('✅ API 服务正常', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('✅ 数据库连接正常', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql('ok');",
+              "    pm.expect(jsonData.db).to.eql('connected');",
+              "    console.log('🏥 服务健康状态:', jsonData);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "health"
+          ]
+        },
+        "description": "**健康检查接口**\n\n在运行用户创建测试之前，建议先运行此接口确认：\n- ✅ API 服务正常运行\n- ✅ 数据库连接正常\n\n**响应示例：**\n```json\n{\n  \"status\": \"ok\",\n  \"db\": \"connected\",\n  \"timestamp\": 1733317200000\n}\n```"
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection 级别的前置脚本",
+          "console.log('🚀 开始执行 Bitcoin Mining Master 用户创建测试');",
+          "console.log('📡 目标服务器:', pm.environment.get('base_url'));"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection 级别的测试脚本",
+          "console.log('✅ 请求完成，响应时间:', pm.response.responseTime, 'ms');"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8888",
+      "type": "string"
+    }
+  ]
 }
