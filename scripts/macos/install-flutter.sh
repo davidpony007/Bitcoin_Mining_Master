@@ -15,6 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Flutter 版本（固定版本以确保与项目依赖兼容，如需升级请同步更新 mobile_client/pubspec.yaml）
+# 注意：如果你已安装了更新的版本（如 3.41.4），此脚本不会覆盖它，会直接跳过下载
 FLUTTER_VERSION="3.19.6"
 FLUTTER_CHANNEL="stable"
 INSTALL_DIR="$HOME"
@@ -125,6 +126,16 @@ else
     echo -e "${BLUE}[4/5]${NC} 跳过解压"
     echo ""
 fi
+
+# ── 4b. 修复 Git HTTP/2 错误（中国网络常见问题）───────────────
+# 避免 "curl 16 Error in the HTTP2 framing layer" 导致 flutter fetch --tags 失败
+# 注意：以下为全局 git 配置，会影响当前用户的所有 git 仓库操作
+echo -e "${BLUE}[4b]${NC} 配置 Git 使用 HTTP/1.1（防止 curl 16 错误）..."
+git config --global http.version HTTP/1.1
+git config --global http.postBuffer 524288000
+echo -e "  ${GREEN}✅ git http.version = HTTP/1.1，http.postBuffer = 500MB${NC}"
+echo -e "  ${YELLOW}（注：此为全局配置，影响本机所有 git 仓库）${NC}"
+echo ""
 
 # ── 5. 配置环境变量 ────────────────────────────────────────────
 echo -e "${BLUE}[5/5]${NC} 配置环境变量..."
