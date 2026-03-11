@@ -1,0 +1,37 @@
+# GitHub Copilot Coding Agent — 环境初始化配置
+#
+# 本文件配置 Copilot Agent 在开始执行任务前自动完成的准备步骤。
+# 参考文档：https://docs.github.com/copilot/customizing-copilot/
+#           customizing-the-development-environment-for-copilot-coding-agent
+
+steps:
+  # ── 后端依赖 ────────────────────────────────────────────────────
+  - name: Install backend Node.js dependencies
+    run: |
+      if [ -f backend/package.json ]; then
+        cd backend && npm install --legacy-peer-deps
+      fi
+
+  # ── 前端依赖 ────────────────────────────────────────────────────
+  - name: Install frontend Node.js dependencies
+    run: |
+      if [ -f web_frontend/package.json ]; then
+        cd web_frontend && npm install --legacy-peer-deps
+      fi
+
+  # ── Flutter 环境（中国大陆镜像加速）────────────────────────────
+  - name: Configure Flutter China mirrors
+    run: |
+      FLUTTER_VARS='export FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn\nexport PUB_HOSTED_URL=https://pub.flutter-io.cn'
+      # 根据当前 shell 类型写入对应配置文件
+      if [ -n "$ZSH_VERSION" ] || [ "$(basename "${SHELL:-}")" = "zsh" ]; then
+        printf '%b\n' "$FLUTTER_VARS" >> "$HOME/.zshrc"
+      else
+        printf '%b\n' "$FLUTTER_VARS" >> "$HOME/.bashrc"
+      fi
+
+  # ── 修复 git HTTP/2 网络兼容性问题 ─────────────────────────────
+  - name: Fix git HTTP/2 framing layer error
+    run: |
+      git config --global http.version HTTP/1.1
+      git config --global http.postBuffer 524288000
