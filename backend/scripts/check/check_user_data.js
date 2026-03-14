@@ -24,7 +24,7 @@ const userId = 'U2026011910532463989';
       'user_status', 
       'user_points',
       'free_contract_records',
-      'check_in_record',
+      'user_check_in',
       'ad_view_record',
       'bitcoin_transaction_records',
       'cumulative_check_in_reward',
@@ -66,7 +66,7 @@ const userId = 'U2026011910532463989';
 
     console.log('\n【步骤 2】检查空表的总记录数\n');
 
-    const emptyTables = ['check_in_record', 'ad_view_record', 'bitcoin_transaction_records', 
+    const emptyTables = ['user_check_in', 'ad_view_record', 'bitcoin_transaction_records', 
                          'cumulative_check_in_reward', 'mining_contracts'];
     
     for (const table of emptyTables) {
@@ -97,7 +97,7 @@ const userId = 'U2026011910532463989';
     const path = require('path');
     
     const servicesToCheck = [
-      { name: 'checkInPointsService.js', tables: ['check_in_record', 'cumulative_check_in_reward'] },
+      { name: 'checkInPointsService.js', tables: ['user_check_in', 'cumulative_check_in_reward'] },
       { name: 'adPointsService.js', tables: ['ad_view_record'] },
       { name: 'contractRewardService.js', tables: ['bitcoin_transaction_records', 'mining_contracts'] }
     ];

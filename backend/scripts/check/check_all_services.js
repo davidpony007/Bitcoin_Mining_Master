@@ -58,7 +58,7 @@ async function checkAll() {
     const [users] = await conn.query('SELECT COUNT(*) as count FROM user_information');
     console.log('   用户数量: ' + users[0].count);
     
-    const [checkins] = await conn.query('SELECT COUNT(*) as count FROM check_in_record');
+    const [checkins] = await conn.query('SELECT COUNT(*) as count FROM user_check_in');
     console.log('   签到记录: ' + checkins[0].count);
     
     console.log('   ✅ 数据库查询正常\n');

@@ -223,9 +223,9 @@ router.post('/extend-contract', async (req, res) => {
         
         const [result] = await connection.query(
           `INSERT INTO free_contract_records 
-           (user_id, free_contract_type, hashrate, free_contract_creation_time, 
+           (user_id, free_contract_type, hashrate, mining_status, free_contract_creation_time, 
             free_contract_end_time)
-           VALUES (?, 'Free Ad Reward', 0.000000000000139, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR))`,
+           VALUES (?, 'Free Ad Reward', 0.000000000000139, 'mining', NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR))`,
           [user_id, totalHours]
         );
         
@@ -311,16 +311,16 @@ router.post('/extend-contract', async (req, res) => {
         );
 
         if (existingRecords.length > 0) {
-          // 更新现有记录
+          // 更新现有记录：view_count+1，points_earned+1（每日上限20分）
           await adConnection.query(
-            'UPDATE ad_view_record SET view_count = view_count + 1, updated_at = NOW() WHERE user_id = ? AND view_date = ? AND ad_type = ?',
+            'UPDATE ad_view_record SET view_count = view_count + 1, points_earned = LEAST(points_earned + 1, 20), updated_at = NOW() WHERE user_id = ? AND view_date = ? AND ad_type = ?',
             [user_id, today, adType]
           );
         } else {
-          // 创建新记录
+          // 创建新记录：第一次观看，points_earned=1
           await adConnection.query(
             'INSERT INTO ad_view_record (user_id, ad_type, view_date, view_count, points_earned, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
-            [user_id, adType, today, 1, 0]
+            [user_id, adType, today, 1, 1]
           );
         }
         
@@ -351,6 +351,78 @@ router.post('/extend-contract', async (req, res) => {
         console.error('❌ 增加积分失败:', pointsError);
         console.error('错误详情:', pointsError.message, pointsError.stack);
         // 不影响主流程，仅记录错误
+      }
+
+      // 📌 检查邀请人两类奖励（需要邀请关系时统一查一次）
+      try {
+        const referralConn = await pool.getConnection();
+        try {
+          // 查找邀请人
+          const [relRows] = await referralConn.query(
+            'SELECT referrer_user_id FROM invitation_relationship WHERE user_id = ?',
+            [user_id]
+          );
+          if (relRows.length > 0 && relRows[0].referrer_user_id) {
+            const referrerId = relRows[0].referrer_user_id;
+
+            // 统计被邀请人的总广告观看次数（所有 ad_type 累计）
+            const [viewRows] = await referralConn.query(
+              'SELECT SUM(view_count) as total_views FROM ad_view_record WHERE user_id = ?',
+              [user_id]
+            );
+            const totalViews = parseInt(viewRows[0].total_views || 0);
+
+            // ① REFERRAL_1：被邀请人累计满5次广告 → 邀请人得6积分（仅1次）
+            if (totalViews >= 5) {
+              const [existRows] = await referralConn.query(
+                'SELECT id FROM points_transaction WHERE user_id = ? AND related_user_id = ? AND points_type = ?',
+                [referrerId, user_id, 'REFERRAL_1']
+              );
+              if (existRows.length === 0) {
+                await PointsService.addPoints(
+                  referrerId,
+                  6,
+                  'REFERRAL_1',
+                  `成功邀请好友 ${user_id}（完成5次广告观看）`,
+                  user_id
+                );
+                console.log(`✅ 邀请人 ${referrerId} 获得邀请奖励 6 积分（被邀请人 ${user_id} 完成5次广告）`);
+                try {
+                  await referralConn.query(
+                    `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned)
+                     VALUES (?, '1_FRIEND', 1, 1, 6)`,
+                    [referrerId]
+                  );
+                } catch (_) { /* 非关键，忽略 */ }
+              }
+            }
+
+            // ② SUBORDINATE_AD_VIEW：被邀请人每累计满10次广告 → 邀请人得1积分
+            const newMilestones = Math.floor(totalViews / 10);
+            if (newMilestones > 0) {
+              const [alreadyRows] = await referralConn.query(
+                'SELECT COUNT(*) as cnt FROM points_transaction WHERE user_id = ? AND related_user_id = ? AND points_type = ?',
+                [referrerId, user_id, 'SUBORDINATE_AD_VIEW']
+              );
+              const alreadyRewarded = parseInt(alreadyRows[0].cnt || 0);
+              const toReward = newMilestones - alreadyRewarded;
+              if (toReward > 0) {
+                await PointsService.addPoints(
+                  referrerId,
+                  toReward,
+                  'SUBORDINATE_AD_VIEW',
+                  `下级用户 ${user_id} 广告观看里程碑奖励（累计${totalViews}次）`,
+                  user_id
+                );
+                console.log(`✅ 邀请人 ${referrerId} 获得下级广告里程碑奖励 ${toReward} 积分（被邀请人 ${user_id} 累计${totalViews}次广告）`);
+              }
+            }
+          }
+        } finally {
+          referralConn.release();
+        }
+      } catch (referralError) {
+        console.error('❌ 邀请奖励检查失败（不影响主流程）:', referralError.message);
       }
 
       const now = new Date();

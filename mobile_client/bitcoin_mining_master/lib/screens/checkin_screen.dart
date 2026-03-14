@@ -7,7 +7,6 @@ import '../services/storage_service.dart';
 import '../services/admob_service.dart';
 import '../services/user_repository.dart';
 import '../services/api_service.dart';
-import 'ad_reward_screen.dart';
 
 /// 签到页面
 class CheckInScreen extends StatefulWidget {

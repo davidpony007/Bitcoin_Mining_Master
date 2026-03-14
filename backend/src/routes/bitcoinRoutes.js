@@ -4,6 +4,8 @@
 const express = require('express');
 const router = express.Router();
 const bitcoinPriceService = require('../services/bitcoinPriceService');
+const authenticateToken = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/role');
 
 /**
  * GET /api/bitcoin/price
@@ -34,9 +36,9 @@ router.get('/price', async (req, res) => {
 
 /**
  * POST /api/bitcoin/refresh
- * 手动刷新比特币价格（自动从API获取）
+ * 手动刷新比特币价格（自动从API获取）— 仅管理员
  */
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const price = await bitcoinPriceService.refreshPrice();
     
@@ -63,10 +65,10 @@ router.post('/refresh', async (req, res) => {
 
 /**
  * POST /api/bitcoin/set-price
- * 手动设置比特币价格（用于网络受限环境）
+ * 手动设置比特币价格（用于网络受限环境）— 仅管理员
  * Body: { price: 105200.50 }
  */
-router.post('/set-price', async (req, res) => {
+router.post('/set-price', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { price } = req.body;
     

@@ -4,6 +4,8 @@ import '../services/google_play_billing_service.dart';
 import '../services/storage_service.dart';
 
 class PurchasePage extends StatefulWidget {
+  const PurchasePage({super.key});
+
   @override
   _PurchasePageState createState() => _PurchasePageState();
 }

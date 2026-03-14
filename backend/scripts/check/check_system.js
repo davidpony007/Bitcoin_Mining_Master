@@ -10,7 +10,7 @@ console.log('');
     await sequelize.authenticate();
     console.log('✅ 数据库连接成功');
     
-    const tables = ['user_information', 'free_contract_records', 'check_in_record', 'points_transaction_record'];
+    const tables = ['user_information', 'free_contract_records', 'user_check_in', 'points_transaction_record'];
     
     console.log('');
     console.log('数据库表检查:');

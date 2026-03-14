@@ -74,7 +74,7 @@ async function verifyReset(userId) {
 
     // 6. 查询签到记录
     const checkIns = await sequelize.query(
-      `SELECT COUNT(*) as count FROM check_in_record WHERE user_id = :userId`,
+      `SELECT COUNT(*) as count FROM user_check_in WHERE user_id = :userId`,
       { replacements: { userId }, type: QueryTypes.SELECT }
     );
     console.log('6️⃣  签到记录:');

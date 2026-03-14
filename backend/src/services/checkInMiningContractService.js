@@ -49,7 +49,7 @@ class CheckInMiningContractService {
             const ipCountry = geo.country.toUpperCase();
             const CountryMiningConfig = require('../models/countryMiningConfig');
             const countryConfig = await CountryMiningConfig.findOne({
-              where: { country_code: ipCountry },
+              where: { country_code: ipCountry, is_active: true },
               raw: true
             });
             const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;

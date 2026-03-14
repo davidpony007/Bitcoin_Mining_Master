@@ -26,7 +26,7 @@ async function verifyTables() {
       'user_points',
       'points_transaction',
       'ad_view_record',
-      'check_in_record',
+      'user_check_in',
       'consecutive_check_in_reward',
       'referral_milestone'
     ];
@@ -107,7 +107,7 @@ async function verifyTables() {
     console.log('  ✓ 用户积分存储（user_points）');
     console.log('  ✓ 积分变动记录（points_transaction）');
     console.log('  ✓ 广告观看统计（ad_view_record）');
-    console.log('  ✓ 每日签到记录（check_in_record）');
+    console.log('  ✓ 每日签到记录（user_check_in）');
     console.log('  ✓ 连续签到奖励（consecutive_check_in_reward）');
     console.log('  ✓ 邀请里程碑奖励（referral_milestone）');
 

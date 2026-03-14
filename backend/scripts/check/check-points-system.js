@@ -39,7 +39,7 @@ async function checkPointsSystem() {
     const requiredTables = {
       'user_points': '用户积分表（存储每个用户的当前积分）',
       'points_transaction': '积分交易记录表（记录所有积分变动）',
-      'check_in_record': '签到记录表（每日签到记录）',
+      'user_check_in': '签到记录表（每日签到记录）',
       'consecutive_check_in_reward': '连续签到奖励记录表',
       'ad_view_record': '广告观看记录表',
       'level_config': '等级配置表',
@@ -103,12 +103,12 @@ async function checkPointsSystem() {
       },
       {
         name: '完成每日签到增加4积分',
-        tables: ['check_in_record', 'user_points', 'points_transaction'],
+        tables: ['user_check_in', 'user_points', 'points_transaction'],
         status: 'unknown'
       },
       {
         name: '连续签到3/7/15/30天奖励',
-        tables: ['check_in_record', 'consecutive_check_in_reward', 'check_in_reward_config'],
+        tables: ['user_check_in', 'consecutive_check_in_reward', 'check_in_reward_config'],
         status: tableNames.includes('check_in_reward_config') ? 'partial' : 'missing'
       },
       {
@@ -152,7 +152,7 @@ async function checkPointsSystem() {
     console.log('1. user_points - 存储用户当前积分');
     console.log('2. points_transaction - 记录所有积分变动（获得/消耗）');
     console.log('3. ad_view_record - 广告观看记录（含每日限制）');
-    console.log('4. check_in_record - 每日签到记录');
+    console.log('4. user_check_in - 每日签到记录');
     console.log('5. consecutive_check_in_reward - 连续签到奖励领取记录');
     console.log('\n需要实现的后端接口：');
     console.log('1. POST /api/points/ad-view - 观看广告增加积分');

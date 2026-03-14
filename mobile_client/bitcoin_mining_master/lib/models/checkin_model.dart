@@ -19,28 +19,40 @@ class CheckInStatus {
 
   factory CheckInStatus.fromJson(Map<String, dynamic> json) {
     // 支持多种字段名：cumulativeDays(新API), total_days, consecutive_days
-    final totalDays = json['cumulativeDays'] ?? 
-                     json['cumulative_days'] ?? 
-                     json['total_days'] ?? 
-                     json['consecutive_days'] ?? 
-                     0;
-    
+    // 使用 (x as num).toInt() 防止后端返回 double 导致 TypeError
+    final rawDays = json['cumulativeDays'] ??
+                    json['cumulative_days'] ??
+                    json['total_days'] ??
+                    json['consecutive_days'] ??
+                    0;
+    final totalDays = (rawDays as num).toInt();
+
     // 支持多种字段名：hasCheckedInToday(新API), checked_in_today
-    final checkedInToday = json['hasCheckedInToday'] ?? 
-                          json['has_checked_in_today'] ?? 
-                          json['checked_in_today'] ?? 
-                          false;
-    
-    print('📦 [CheckInStatus.fromJson] totalDays=$totalDays, checkedInToday=$checkedInToday, json=$json');
-    
+    // 使用 == true 避免 dynamic 转 bool 类型错误
+    final rawChecked = json['hasCheckedInToday'] ??
+                       json['has_checked_in_today'] ??
+                       json['checked_in_today'] ??
+                       false;
+    final checkedInToday = rawChecked == true;
+
+    // 后端 nextMilestone 可能返回 int（如 3/7/15/30），统一转为 String
+    final rawMilestone = json['next_milestone'] ?? json['nextMilestone'];
+    final nextMilestone = rawMilestone?.toString();
+
+    // daysUntilMilestone 安全转 int
+    final rawDaysUntil = json['days_until_milestone'] ?? json['daysUntilMilestone'];
+    final daysUntilMilestone = rawDaysUntil != null ? (rawDaysUntil as num).toInt() : null;
+
+    print('📦 [CheckInStatus.fromJson] totalDays=$totalDays, checkedInToday=$checkedInToday, nextMilestone=$nextMilestone, json=$json');
+
     return CheckInStatus(
       checkedInToday: checkedInToday,
       totalDays: totalDays,
       lastCheckInDate: json['last_check_in_date'] != null
           ? DateTime.parse(json['last_check_in_date'])
           : null,
-      nextMilestone: json['next_milestone'] ?? json['nextMilestone'],
-      daysUntilMilestone: json['days_until_milestone'] ?? json['daysUntilMilestone'],
+      nextMilestone: nextMilestone,
+      daysUntilMilestone: daysUntilMilestone,
     );
   }
 }

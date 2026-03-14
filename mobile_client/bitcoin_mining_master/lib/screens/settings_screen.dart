@@ -1063,10 +1063,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   void _handleGoogleSignIn() async {
     try {
       // 先尝试静默登录
-      dynamic account = await _googleSignIn?.signInSilently();
+      dynamic account = await _googleSignIn.signInSilently();
 
       // 如果静默登录失败，弹出登录界面
-      account ??= await _googleSignIn?.signIn();
+      account ??= await _googleSignIn.signIn();
 
       if (account != null) {
         // 获取认证信息

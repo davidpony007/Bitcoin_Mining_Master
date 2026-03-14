@@ -10,11 +10,15 @@ class ApiService {
   late final Dio _dio;
 
   ApiService() {
+    // iOS 上 VPN 会延迟 HTTP 回包，接收超时用 60s；Android / 其他平台用 30s
+    final int effectiveReceiveTimeout =
+        !kIsWeb && Platform.isIOS ? 60 : ApiConstants.receiveTimeout;
+
     _dio = Dio(
       BaseOptions(
         baseUrl: ApiConstants.baseUrl,
         connectTimeout: Duration(seconds: ApiConstants.connectTimeout),
-        receiveTimeout: Duration(seconds: ApiConstants.receiveTimeout),
+        receiveTimeout: Duration(seconds: effectiveReceiveTimeout),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -598,6 +602,10 @@ class ApiService {
   }
 
   /// 错误处理
+  // 静态防抖：多个并发请求同时失败时（如从后台恢复），只弹一次 toast
+  // 声明为 public 以供 user_provider.dart 共用同一个防抖时间戳
+  static DateTime? lastNetworkErrorToastTime;
+
   Exception _handleError(DioException error) {
     final bool isNetworkError =
         error.type == DioExceptionType.connectionTimeout ||
@@ -605,18 +613,31 @@ class ApiService {
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError;
 
+    // receive timeout：连接成功但无响应——通常由 VPN 拦截 HTTP 回包导致
+    final bool isReceiveTimeout = error.type == DioExceptionType.receiveTimeout;
+
     if (isNetworkError) {
-      Fluttertoast.showToast(
-        msg: 'Network connection error, please try again!',
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.CENTER,
-      );
+      final now = DateTime.now();
+      final lastShown = lastNetworkErrorToastTime;
+      // 5 秒内只弹一次，避免多个并发请求同时失败时重复弹出
+      if (lastShown == null || now.difference(lastShown).inSeconds >= 5) {
+        lastNetworkErrorToastTime = now;
+        final msg = isReceiveTimeout
+            ? 'Connection timed out. If you have a VPN enabled, please disable it and try again.'
+            : 'Network connection error, please try again!';
+        Fluttertoast.showToast(
+          msg: msg,
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.CENTER,
+        );
+      }
     }
 
     switch (error.type) {
+      case DioExceptionType.receiveTimeout:
+        return Exception('Connection timed out. If you have a VPN enabled, please disable it and try again.');
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
-      case DioExceptionType.receiveTimeout:
         return Exception('Network connection error, please try again!');
       case DioExceptionType.badResponse:
         return Exception('Server error: ${error.response?.statusCode}');
@@ -676,9 +697,9 @@ class ApiService {
     required String userId,
   }) async {
     try {
-      print('📡 [API Service] 调用签到API: /mining-contracts/checkin, userId=$userId');
+      print('📡 [API Service] 调用签到API: /check-in/daily, userId=$userId');
       final response = await _dio.post(
-        '/mining-contracts/checkin',
+        '/check-in/daily',
         data: {
           'user_id': userId,
         },
@@ -686,16 +707,21 @@ class ApiService {
       print('✅ [API Service] 签到API响应: ${response.data}');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
-      // 检查是否是"今日已签到"的情况
+      // 检查是否是"今日已签到"的情况（服务端返回 HTTP 400）
       if (e.response?.statusCode == 400 && e.response?.data != null) {
         final responseData = e.response!.data;
-        if (responseData is Map && responseData['alreadyCheckedIn'] == true) {
+        // 兼容顶层 alreadyCheckedIn 和嵌套在 data 字段内的情况
+        final alreadyCheckedIn = (responseData is Map) &&
+            (responseData['alreadyCheckedIn'] == true ||
+                (responseData['data'] is Map &&
+                    responseData['data']['alreadyCheckedIn'] == true));
+        if (alreadyCheckedIn) {
           print('ℹ️ [API Service] 检测到今日已签到，返回特殊标记');
-          // 返回特殊标记，让调用方知道已经签到过了
           return {
             'success': true,
             'alreadyCheckedIn': true,
-            'message': responseData['message'] ?? 'Already checked in today'
+            'message': (responseData is Map ? responseData['message'] : null) ??
+                'Already checked in today'
           };
         }
       }

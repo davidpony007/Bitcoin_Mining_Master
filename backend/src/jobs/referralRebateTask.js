@@ -1,13 +1,14 @@
 /**
  * 下级返利定时任务
  * 每2小时计算并发放下级返利
- * 规则：统计下级用户的全部挖矿收益（bitcoin_transaction_records.mining_reward），
+ * 规则：仅统计下级用户的 Free Ad Reward（广告挖矿）收益，
  *       乘以20%发放给上级。用 invitation_rebate 最新时间戳去重，防止重复发放。
+ *       付费合约挖矿（mining_reward）和每日签到（Daily Check-in Reward）不计入返利。
  * 执行时间：比余额结算晚5分钟，确保余额已更新
  */
 
 const cron = require('node-cron');
-const pool = require('../config/database');
+const pool = require('../config/database_native');
 
 class ReferralRebateTask {
   /**
@@ -98,7 +99,8 @@ class ReferralRebateTask {
         return 0;
       }
       
-      // 2. 基于 bitcoin_transaction_records.mining_reward 计算未发放的下级收益
+      // 2. 基于 bitcoin_transaction_records 计算未发放的下级收益
+      //    仅 Free Ad Reward（广告挖矿）计入返利
       //    以 invitation_rebate 最新时间戳为游标，避免重复发放
       let totalSubordinateMiningRevenue = 0;
       const subordinateDetails = [];
@@ -115,12 +117,12 @@ class ReferralRebateTask {
           ? new Date(lastRebateRow.last_time)
           : new Date(0);
 
-        // 累计该下级在 lastRebateTime 之后产生的所有 mining_reward
+        // 仅累计该下级在 lastRebateTime 之后产生的 Free Ad Reward 收益
         const [[rewardRow]] = await connection.query(
           `SELECT COALESCE(SUM(transaction_amount), 0) AS total
            FROM bitcoin_transaction_records
            WHERE user_id = ?
-             AND transaction_type = 'mining_reward'
+             AND transaction_type = 'Free Ad Reward'
              AND transaction_status = 'success'
              AND transaction_creation_time > ?`,
           [sub.user_id, lastRebateTime]
@@ -169,20 +171,23 @@ class ReferralRebateTask {
           total_invitation_rebate = total_invitation_rebate + ?
         WHERE user_id = ?
       `, [rebateAmount, rebateAmount, rebateAmount, referrerId]);
-      
-      const newBalance = parseFloat(referrerStatus[0].current_bitcoin_balance) + rebateAmount;
-      
-      // 6. 记录每个下级的返利明细到 invitation_rebate 表
+
+      // 6. 记录每个下级的返利明细到 invitation_rebate 表，
+      //    同时向 bitcoin_transaction_records 写入每条独立记录（按下级分开）
+      let runningBalance = parseFloat(referrerStatus[0].current_bitcoin_balance);
+
       for (const sub of subordinateDetails) {
         const subRebate = sub.revenue * 0.20;
-        
+        runningBalance += subRebate;
+
         // 获取下级用户的邀请码
         const [subInfo] = await connection.query(
           'SELECT invitation_code FROM user_information WHERE user_id = ?',
           [sub.userId]
         );
         const subInvitationCode = subInfo[0]?.invitation_code || '';
-        
+
+        // invitation_rebate 明细记录
         await connection.query(`
           INSERT INTO invitation_rebate (
             user_id,
@@ -193,25 +198,20 @@ class ReferralRebateTask {
             rebate_creation_time
           ) VALUES (?, ?, ?, ?, ?, NOW())
         `, [referrerId, invitationCode, sub.userId, subInvitationCode, subRebate]);
+
+        // bitcoin_transaction_records 每条下级独立一行，description 明确显示下级用户ID
+        await connection.query(`
+          INSERT INTO bitcoin_transaction_records (
+            user_id,
+            transaction_type,
+            transaction_amount,
+            balance_after,
+            description,
+            transaction_status,
+            transaction_creation_time
+          ) VALUES (?, 'subordinate rebate', ?, ?, ?, 'success', NOW())
+        `, [referrerId, subRebate, runningBalance, `From: ${sub.userId}`]);
       }
-      
-      // 7. 记录返利发放日志到交易记录表
-      await connection.query(`
-        INSERT INTO bitcoin_transaction_records (
-          user_id,
-          transaction_type,
-          transaction_amount,
-          balance_after,
-          description,
-          transaction_status,
-          transaction_creation_time
-        ) VALUES (?, 'subordinate rebate', ?, ?, ?, 'success', NOW())
-      `, [
-        referrerId,
-        rebateAmount,
-        newBalance,
-        `Referral rebate: ${subordinates.length} subordinate(s), mining revenue ${totalSubordinateMiningRevenue.toFixed(18)} BTC × 20%`
-      ]);
       
       await connection.commit();
       

@@ -405,6 +405,13 @@ class AdPointsService {
 
       console.log(`✅ 自动触发：用户 ${referrerId} 获得邀请奖励 ${InvitationPointsService.FIRST_FRIEND_REWARD} 积分（被邀请人 ${refereeUserId} 完成5次广告）`);
 
+      // 检查并自动触发10人里程碑奖励
+      try {
+        await InvitationPointsService.handleTenFriendsMilestone(referrerId);
+      } catch (milestoneError) {
+        console.warn(`⚠️ 10人里程碑检查失败（6积分已发放，可忽略）: ${milestoneError.message}`);
+      }
+
       // 记录里程碑（非关键操作，失败不影响积分已发放）
       try {
         await connection.query(

@@ -13,8 +13,8 @@ async function checkTables() {
   });
 
   try {
-    console.log('=== check_in_record 表结构 ===');
-    const [fields1] = await connection.query('DESCRIBE check_in_record');
+    console.log('=== user_check_in 表结构 ===');
+    const [fields1] = await connection.query('DESCRIBE user_check_in');
     console.table(fields1);
 
     console.log('\n=== check_in_reward_config 表结构 ===');
@@ -32,8 +32,8 @@ async function checkTables() {
     console.log('\n=== 检查用户 U2026011910532463989 在各表中的数据 ===');
     const userId = 'U2026011910532463989';
     
-    const [checkIn] = await connection.query('SELECT * FROM check_in_record WHERE user_id = ?', [userId]);
-    console.log(`\ncheck_in_record: ${checkIn.length} 条记录`);
+    const [checkIn] = await connection.query('SELECT * FROM user_check_in WHERE user_id = ?', [userId]);
+    console.log(`\nuser_check_in: ${checkIn.length} 条记录`);
     
     const [adView] = await connection.query('SELECT * FROM ad_view_record WHERE user_id = ?', [userId]);
     console.log(`ad_view_record: ${adView.length} 条记录`);

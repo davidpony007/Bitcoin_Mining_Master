@@ -89,7 +89,7 @@ class RealtimeBalanceService {
       let countryMultiplier = 1.0;
       try {
         const [userInfo] = await sequelize.query(
-          `SELECT country_multiplier FROM user_information WHERE id = ?`,
+          `SELECT country_multiplier FROM user_information WHERE user_id = ?`,
           { replacements: [userId], type: sequelize.QueryTypes.SELECT }
         );
         if (userInfo && userInfo.country_multiplier) {
@@ -174,7 +174,7 @@ class RealtimeBalanceService {
         const [userInfo] = await sequelize.query(`
           SELECT country_multiplier 
           FROM user_information 
-          WHERE id = ?
+          WHERE user_id = ?
         `, {
           replacements: [userId],
           type: sequelize.QueryTypes.SELECT

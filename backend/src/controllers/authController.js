@@ -310,7 +310,8 @@ exports.deviceLogin = async (req, res) => {
     }
 
     // 4. 生成JWT Token（用于访问需要认证的接口）
-    const secret = process.env.JWT_SECRET || 'dev_secret_change_me';
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error('JWT_SECRET 环境变量未设置，无法签发Token');
     const token = jwt.sign({ user_id: user.user_id }, secret, { expiresIn: '30d' });
 
     // 5. Return user information
@@ -338,7 +339,8 @@ exports.deviceLogin = async (req, res) => {
         });
         
         if (user) {
-          const secret = process.env.JWT_SECRET || 'dev_secret_change_me';
+          const secret = process.env.JWT_SECRET;
+          if (!secret) throw new Error('JWT_SECRET 环境变量未设置，无法签发Token');
           const token = jwt.sign({ user_id: user.user_id }, secret, { expiresIn: '30d' });
           
           return res.json({

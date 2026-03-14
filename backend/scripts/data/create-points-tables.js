@@ -90,25 +90,7 @@ async function createPointsTables() {
     `);
     console.log('✅ ad_view_record 表创建成功\n');
 
-    // 4. 创建 check_in_record 表
-    console.log('📋 创建表: check_in_record');
-    await sequelize.query(`
-      CREATE TABLE IF NOT EXISTS check_in_record (
-        id INT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
-        user_id VARCHAR(30) NOT NULL COMMENT '用户ID',
-        check_in_date DATE NOT NULL COMMENT '签到日期',
-        consecutive_days INT DEFAULT 1 COMMENT '连续签到天数',
-        points_earned INT DEFAULT 4 COMMENT '获得积分（基础4积分）',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-        UNIQUE KEY unique_user_date (user_id, check_in_date),
-        INDEX idx_user_id (user_id),
-        INDEX idx_check_in_date (check_in_date),
-        INDEX idx_consecutive_days (consecutive_days)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='每日签到记录表 - 记录用户每日签到和连续天数'
-    `);
-    console.log('✅ check_in_record 表创建成功\n');
-
-    // 5. 创建 consecutive_check_in_reward 表
+    // 4. 创建 consecutive_check_in_reward 表
     console.log('📋 创建表: consecutive_check_in_reward');
     await sequelize.query(`
       CREATE TABLE IF NOT EXISTS consecutive_check_in_reward (
@@ -152,7 +134,7 @@ async function createPointsTables() {
         'user_points',
         'points_transaction',
         'ad_view_record',
-        'check_in_record',
+        'user_check_in',
         'consecutive_check_in_reward',
         'referral_milestone'
       )

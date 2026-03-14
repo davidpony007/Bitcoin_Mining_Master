@@ -39,13 +39,13 @@ services:
 
   bitcoin_backend_dev:
     build:
-      context: .
+      context: ./backend
       dockerfile: Dockerfile.dev
     container_name: bitcoin_backend_dev
     ports:
       - "8888:8888"
     volumes:
-      - .:/app
+      - ./backend:/app
       - /app/node_modules
     environment:
       PORT: 8888

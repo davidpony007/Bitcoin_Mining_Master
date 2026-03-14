@@ -975,7 +975,7 @@ $downloadUrl
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                double.tryParse(_totalRebate)?.toStringAsFixed(15) ?? '0.000000000000000',
+                double.tryParse(_totalRebate)?.toStringAsFixed(18) ?? '0.000000000000000000',
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -1403,6 +1403,7 @@ $downloadUrl
                             : null,
                       ),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Container(
                             width: 32,
@@ -1422,6 +1423,7 @@ $downloadUrl
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                // user_id 独占第一行，确保完整显示
                                 Text(
                                   subUserId,
                                   style: TextStyle(
@@ -1429,11 +1431,10 @@ $downloadUrl
                                     fontSize: 12,
                                     fontWeight: FontWeight.w500,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                if (formattedTime.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
+                                const SizedBox(height: 4),
+                                // 时间独占第二行
+                                if (formattedTime.isNotEmpty) ...[  
                                   Text(
                                     formattedTime,
                                     style: TextStyle(
@@ -1441,16 +1442,18 @@ $downloadUrl
                                       fontSize: 11,
                                     ),
                                   ),
+                                  const SizedBox(height: 4),
                                 ],
+                                // 金额独占第三行，避免溢出
+                                Text(
+                                  '+${amount.toStringAsFixed(18)} BTC',
+                                  style: const TextStyle(
+                                    color: Colors.orange,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ],
-                            ),
-                          ),
-                          Text(
-                            '+${amount.toStringAsFixed(14)} BTC',
-                            style: const TextStyle(
-                              color: Colors.orange,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],

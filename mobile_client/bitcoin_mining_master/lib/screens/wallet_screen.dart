@@ -426,6 +426,7 @@ class _WalletScreenState extends State<WalletScreen>
     return Padding(
       padding: EdgeInsets.fromLTRB(16, isFirst ? 14 : 12, 16, isLast ? 14 : 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Icon
           Container(
@@ -435,57 +436,86 @@ class _WalletScreenState extends State<WalletScreen>
               color: iconBgColor,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              icon,
-              color: iconColor,
-              size: 20,
-            ),
+            child: Icon(icon, color: iconColor, size: 20),
           ),
           const SizedBox(width: 12),
-          // Details
+          // Details: 全宽多行布局
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  tx.typeLabel,
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+            child: tx.type == 'subordinate rebate'
+                // subordinate rebate: 4行（标签/From:userId/时间戳/BTC）
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tx.typeLabel,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (tx.description != null &&
+                          tx.description!.startsWith('From: ')) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'From: ${tx.description!.substring(6)}',
+                          style: const TextStyle(
+                            color: Color(0xFF64B5F6),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDate(tx.createdAt),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)} BTC',
+                        style: TextStyle(
+                          color: isPositive ? AppColors.primary : Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  )
+                // 其他类型: 3行（标签/时间戳/BTC）
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tx.typeLabel,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDate(tx.createdAt),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)} BTC',
+                        style: TextStyle(
+                          color: isPositive ? AppColors.primary : Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatDate(tx.createdAt),
-                  style: TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Amount
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)}',
-                style: TextStyle(
-                  color: isPositive ? AppColors.primary : Colors.red,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Text(
-                'BTC',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 10,
-                ),
-              ),
-            ],
           ),
         ],
       ),

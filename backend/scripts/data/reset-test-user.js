@@ -95,7 +95,7 @@ async function resetTestUser(userId) {
     // 8. 清空签到记录
     console.log('\n8️⃣  清空签到记录...');
     const checkInsResult = await sequelize.query(
-      `DELETE FROM check_in_record WHERE user_id = :userId`,
+      `DELETE FROM user_check_in WHERE user_id = :userId`,
       { replacements: { userId }, type: QueryTypes.DELETE }
     );
     console.log(`   ✅ 已删除签到记录`);

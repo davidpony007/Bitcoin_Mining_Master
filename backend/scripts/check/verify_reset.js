@@ -29,7 +29,7 @@ const userId = 'U2026011910532463989';
     console.log('\n✅ 各表记录数（应该都是0）:');
     
     const tables = [
-      'check_in_record',
+      'user_check_in',
       'cumulative_check_in_reward',
       'ad_view_record',
       'mining_contracts',

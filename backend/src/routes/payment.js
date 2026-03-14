@@ -11,7 +11,7 @@ const googlePlayVerifyService = require('../services/googlePlayVerifyService');
 const PaidContractService = require('../services/paidContractService');
 const SubscriptionService = require('../services/subscriptionService');
 const subscriptionConfig = require('../config/subscriptionConfig');
-const authenticateToken = require('../middleware/authenticateToken');
+const authenticateToken = require('../middleware/auth');
 
 // 应用包名（需要与Android项目中的applicationId一致）
 const PACKAGE_NAME = 'com.cloudminingtool.bitcoin_mining_master'; // 使用你的实际包名

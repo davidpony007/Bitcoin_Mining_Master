@@ -8,6 +8,8 @@
  */
 
 const UserInformation = require('../models/userInformation');
+const CountryMiningConfig = require('../models/countryMiningConfig');
+const redisClient = require('../config/redis');
 const LevelService = require('./levelService');
 
 class MultiplierService {
@@ -102,13 +104,25 @@ class MultiplierService {
     try {
       // 验证倍率范围
       const validMultiplier = Math.max(0.01, Math.min(99.99, parseFloat(multiplier)));
+      const code = country.toUpperCase();
 
+      // 1. 更新 user_information（直接读取路径，realtimeBalanceService 使用的字段）
       const [affectedCount] = await UserInformation.update(
         { country_multiplier: validMultiplier },
-        { where: { country_code: country } }
+        { where: { country_code: code } }
       );
 
-      console.log(`已更新 ${country} 的 ${affectedCount} 个用户倍率为 ${validMultiplier}x`);
+      // 2. 同步 country_mining_config（levelService 通过 CountryMiningService.getMiningMultiplier 读取的表）
+      await CountryMiningConfig.update(
+        { mining_multiplier: validMultiplier, updated_at: new Date() },
+        { where: { country_code: code } }
+      );
+
+      // 3. 清除 Redis 缓存，避免 countryMiningService 读到旧值
+      const cacheKey = `country:mining:${code}`;
+      await redisClient.del(cacheKey);
+
+      console.log(`已更新 ${code} 的 ${affectedCount} 个用户倍率为 ${validMultiplier}x，并同步 country_mining_config`);
       return affectedCount;
     } catch (error) {
       console.error('批量更新国家倍率失败:', error);

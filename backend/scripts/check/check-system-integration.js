@@ -75,7 +75,7 @@ console.log('');
     const tables = [
       'user_information',
       'free_contract_records',
-      'check_in_record',
+      'user_check_in',
       'check_in_reward_config',
       'points_transaction_record'
     ];
@@ -134,7 +134,7 @@ console.log('');
       const [records] = await sequelize.query(`
         SELECT COUNT(*) as total_checkins,
                COUNT(DISTINCT user_id) as unique_users
-        FROM check_in_record
+        FROM user_check_in
       `);
       console.log('   📅 签到记录:');
       console.log('      总签到次数: ' + records[0].total_checkins);
@@ -199,8 +199,8 @@ console.log('');
     console.log('   Flutter: PointsApiService.performCheckIn()');
     console.log('   ↓ POST /api/checkin {user_id}');
     console.log('   Backend: checkInRoutes.js → CheckInPointsService.performCheckIn()');
-    console.log('   ↓ INSERT INTO check_in_record, UPDATE user_information');
-    console.log('   MySQL: check_in_record + user_information.user_points');
+    console.log('   ↓ INSERT INTO user_check_in, UPDATE user_information');
+    console.log('   MySQL: user_check_in + user_information.user_points');
     console.log('');
     
     console.log('3️⃣  电池系统（合约）：');
@@ -237,7 +237,7 @@ console.log('');
     try {
       const [orphaned] = await sequelize.query(`
         SELECT COUNT(DISTINCT cr.user_id) as count
-        FROM check_in_record cr
+        FROM user_check_in cr
         LEFT JOIN points_transaction_record ptr 
           ON cr.user_id = ptr.user_id 
           AND ptr.transaction_type = 'DAILY_CHECKIN'

@@ -19,6 +19,9 @@ class BalanceSyncTask {
       const startTime = new Date();
       
       try {
+        // 0. 将已过期的免费合约状态更新为 completed
+        await this.markExpiredContractsCompleted();
+
         // 1. 获取所有有活跃合约的用户
         const users = await this.getActiveUsers();
         console.log(`📊 找到 ${users.length} 个活跃用户需要结算`);
@@ -63,6 +66,37 @@ class BalanceSyncTask {
     console.log('⏰ 2小时收益结算定时任务已启动 (每2小时整点执行)');
   }
   
+  /**
+   * 将已过期的免费挖矿合约状态更新为 completed，并计算实际收益写入 free_contract_revenue
+   * 收益公式：base_hashrate × level_multiplier × country_multiplier × daily_bonus × duration(秒)
+   * 每次定时结算前调用，确保 mining_status 和 free_contract_revenue 字段与实际一致
+   */
+  static async markExpiredContractsCompleted() {
+    try {
+      const [result] = await pool.query(`
+        UPDATE free_contract_records f
+        INNER JOIN user_information u ON f.user_id = u.user_id
+        LEFT JOIN level_config l ON u.user_level = l.level
+        SET
+          f.mining_status = 'completed',
+          f.free_contract_revenue =
+            COALESCE(f.base_hashrate, f.hashrate)
+            * COALESCE(l.speed_multiplier, 1.0)
+            * COALESCE(u.country_multiplier, 1.0)
+            * IF(f.has_daily_bonus = 1, 1.36, 1.0)
+            * TIMESTAMPDIFF(SECOND, f.free_contract_creation_time, f.free_contract_end_time)
+        WHERE f.free_contract_end_time <= NOW()
+          AND (f.mining_status = 'mining' OR f.mining_status IS NULL)
+      `);
+      if (result.affectedRows > 0) {
+        console.log(`⏹️  [定时任务] 已将 ${result.affectedRows} 条过期合约更新为 completed 并写入收益`);
+      }
+    } catch (err) {
+      console.error('❌ [定时任务] 更新过期合约状态失败:', err.message);
+      // 不抛出异常，不影响主结算流程
+    }
+  }
+
   /**
    * 获取所有有活跃合约的用户
    */

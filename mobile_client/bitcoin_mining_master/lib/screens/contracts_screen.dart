@@ -32,9 +32,9 @@ class ContractsScreenState extends State<ContractsScreen>
   int _dailyCheckInRemainingSeconds = 0;
   int _adRewardRemainingSeconds = 0;
   int _inviteFriendRemainingSeconds = 0;
-  double _inviteFriendHashrate = 0;
+  final double _inviteFriendHashrate = 0;
   int _bindReferrerRemainingSeconds = 0;
-  double _bindReferrerHashrate = 0;
+  final double _bindReferrerHashrate = 0;
   int _userLevel = 1; // 用户矿工等级
   Timer? _contractTimer;
   Timer? _refreshTimer;

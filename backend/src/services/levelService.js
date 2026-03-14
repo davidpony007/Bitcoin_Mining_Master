@@ -197,7 +197,7 @@ class LevelService {
   static async addPoints(userId, points, reason, reasonType, relatedUserId = null, relatedRecordId = null) {
     try {
       // 调用存储过程
-      const [result] = await db.query(
+      const [result] = await pool.query(
         'CALL sp_add_user_points(?, ?, ?, ?, ?, ?)',
         [userId, points, reason, reasonType, relatedUserId, relatedRecordId]
       );
@@ -261,7 +261,7 @@ class LevelService {
         const CountryMiningService = require('./countryMiningService');
         
         // 从数据库获取用户国家
-        const [userInfo] = await db.query(
+        const [userInfo] = await pool.query(
           'SELECT country_code FROM user_information WHERE user_id = ?',
           [userId]
         );
@@ -308,14 +308,14 @@ class LevelService {
       const offset = (page - 1) * limit;
 
       // 获取总数
-      const [countResult] = await db.query(
+      const [countResult] = await pool.query(
         'SELECT COUNT(*) as total FROM points_transaction WHERE user_id = ?',
         [userId]
       );
       const total = countResult[0].total;
 
       // 获取分页数据
-      const [transactions] = await db.query(
+      const [transactions] = await pool.query(
         `SELECT 
           id,
           points_change,
@@ -372,7 +372,7 @@ class LevelService {
    */
   static async getLevelLeaderboard(limit = 100) {
     try {
-      const [rows] = await db.query(
+      const [rows] = await pool.query(
         `SELECT 
           user_id,
           user_level,

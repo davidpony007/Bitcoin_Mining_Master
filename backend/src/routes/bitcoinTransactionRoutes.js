@@ -209,10 +209,10 @@ router.get('/summary', auth, async (req, res) => {
  */
 function getTypeLabel(type) {
   const labels = {
-    'Free Ad Reward':               'Ad Reward',
-    'Daily Check-in Reward':        'Daily Check-in',
-    'Invite Friend Reward':         'Invitation Reward',
-    'Bind Referrer Reward':         'Referral Reward',
+    'Free Ad Reward':               'Free Ad Reward',
+    'Daily Check-in Reward':        'Daily Check-in Reward',
+    'Invite Friend Reward':         'Invite Friend Reward',
+    'Bind Referrer Reward':         'Bind Referrer Reward',
     'contract_4.99':                'Contract ($4.99)',
     'contract_6.99':                'Contract ($6.99)',
     'contract_9.99':                'Contract ($9.99)',

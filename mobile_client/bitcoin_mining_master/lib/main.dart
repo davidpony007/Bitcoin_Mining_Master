@@ -28,12 +28,16 @@ void main() async {
   //   }
   // }
   
-  // 初始化本地存储服务
-  await StorageService().init();
-  
-  // 初始化AdMob SDK
-  await AdMobService.initialize();
-  
+  // 初始化本地存储服务（3秒超时，避免iOS上挂起）
+  try {
+    await StorageService().init().timeout(const Duration(seconds: 3));
+  } catch (_) {
+    // 超时或失败时仍继续启动，StorageService 内部有 null 安全处理
+  }
+
+  // 先启动UI，AdMob 在后台异步初始化（不阻塞启动流程）
+  AdMobService.initialize().catchError((_) {});
+
   runApp(const MyApp());
 }
 

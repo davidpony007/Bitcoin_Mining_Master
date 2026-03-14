@@ -2,7 +2,7 @@
 // 合约奖励计算和发放服务
 // 每2小时UTC整点计算一次，统计所有类型合约产生的收益
 
-const pool = require('../config/database').pool;
+const pool = require('../config/database_native');
 const LevelService = require('./levelService');
 
 class ContractRewardService {
@@ -192,16 +192,12 @@ class ContractRewardService {
           id,
           hashrate,
           contract_creation_time,
-          contract_end_time,
-          mining_status
+          contract_end_time
         FROM mining_contracts
         WHERE user_id = ?
-          AND contract_type LIKE 'contract_%'
-          AND (
-            (mining_status = 'mining' AND contract_end_time > ?)
-            OR (mining_status = 'completed' AND contract_end_time >= ? AND contract_end_time <= ?)
-          )
-      `, [userId, startTime, startTime, endTime]);
+          AND contract_type = 'paid contract'
+          AND contract_end_time > ?
+      `, [userId, startTime]);
 
       let totalRevenue = 0;
 
@@ -232,16 +228,24 @@ class ContractRewardService {
   /**
    * 发放收益到用户账户
    */
-  static async distributeReward(userId, amount, details) {
+  static async distributeReward(userId, amount, txType) {
     if (amount <= 0) return false;
 
     try {
-      // 更新用户余额
+      // 更新用户余额（bitcoin 余额存放在 user_status 表中）
       await pool.query(`
-        UPDATE user_information
-        SET bitcoin_balance = bitcoin_balance + ?
+        UPDATE user_status
+        SET current_bitcoin_balance = current_bitcoin_balance + ?,
+            bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?
         WHERE user_id = ?
-      `, [amount, userId]);
+      `, [amount, amount, userId]);
+
+      // 查询更新后的余额用于记录
+      const [[balanceRow]] = await pool.query(
+        'SELECT current_bitcoin_balance FROM user_status WHERE user_id = ?',
+        [userId]
+      );
+      const balanceAfter = balanceRow ? parseFloat(balanceRow.current_bitcoin_balance) : null;
 
       // 记录交易
       await pool.query(`
@@ -249,12 +253,13 @@ class ContractRewardService {
           user_id,
           transaction_type,
           transaction_amount,
+          balance_after,
           transaction_status,
           transaction_creation_time
-        ) VALUES (?, 'mining_reward', ?, 'success', NOW())
-      `, [userId, amount]);
+        ) VALUES (?, ?, ?, ?, 'success', NOW())
+      `, [userId, txType, amount, balanceAfter]);
 
-      console.log(`✅ 用户 ${userId} 收益发放成功: ${amount} BTC`);
+      console.log(`✅ 用户 ${userId} 收益发放成功: ${amount} BTC [${txType}]`);
       return true;
     } catch (error) {
       console.error(`❌ 用户 ${userId} 收益发放失败:`, error);
@@ -301,13 +306,26 @@ class ContractRewardService {
         console.log(`  详情:`, result.details);
 
         if (result.totalRevenue > 0) {
-          const distributed = await this.distributeReward(
-            userId, 
-            result.totalRevenue, 
-            result.details
-          );
-          
-          if (distributed) {
+          let successCount_user = 0;
+
+          // 按合约类型分别写入交易记录（rebate 任务需要区分类型）
+          if (result.details.adFreeContracts > 0) {
+            if (await this.distributeReward(userId, result.details.adFreeContracts, 'Free Ad Reward')) successCount_user++;
+          }
+          if (result.details.dailySignInContracts > 0) {
+            if (await this.distributeReward(userId, result.details.dailySignInContracts, 'Daily Check-in Reward')) successCount_user++;
+          }
+          if (result.details.invitationContracts > 0) {
+            if (await this.distributeReward(userId, result.details.invitationContracts, 'Invite Friend Reward')) successCount_user++;
+          }
+          if (result.details.bindReferrerContracts > 0) {
+            if (await this.distributeReward(userId, result.details.bindReferrerContracts, 'Bind Referrer Reward')) successCount_user++;
+          }
+          if (result.details.paidContracts > 0) {
+            if (await this.distributeReward(userId, result.details.paidContracts, 'mining_reward')) successCount_user++;
+          }
+
+          if (successCount_user > 0) {
             successCount++;
             totalDistributed += result.totalRevenue;
           }

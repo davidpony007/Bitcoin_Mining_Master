@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 /// 订阅管理页面
 /// 用户可以查看活跃订阅、管理订阅状态、取消订阅等
 class SubscriptionManagementPage extends StatefulWidget {
+  const SubscriptionManagementPage({super.key});
+
   @override
   _SubscriptionManagementPageState createState() => _SubscriptionManagementPageState();
 }

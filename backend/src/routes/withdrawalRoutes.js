@@ -8,6 +8,8 @@ const router = express.Router();
 const { WithdrawalRecord, UserStatus, UserInformation, BitcoinTransactionRecord } = require('../models');
 const { Sequelize } = require('sequelize');
 const sequelize = require('../config/database');
+const authenticateToken = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/role');
 
 /**
  * GET /api/withdrawal/admin/list
@@ -19,7 +21,7 @@ const sequelize = require('../config/database');
  * - limit  : 每页数量（默认 20）
  * - offset : 偏移量（默认 0）
  */
-router.get('/admin/list', async (req, res) => {
+router.get('/admin/list', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { status, search, limit = 20, offset = 0 } = req.query;
 
@@ -87,7 +89,7 @@ router.get('/admin/list', async (req, res) => {
  * 4. 记录比特币交易记录
  * 5. 更新累计提现金额
  */
-router.post('/request', async (req, res) => {
+router.post('/request', authenticateToken, async (req, res) => {
   const transaction = await sequelize.transaction();
   
   try {
@@ -362,7 +364,7 @@ router.get('/:id', async (req, res) => {
  * PUT /api/withdrawal/approve/:id
  * 批准提现申请
  */
-router.put('/approve/:id', async (req, res) => {
+router.put('/approve/:id', authenticateToken, requireAdmin, async (req, res) => {
   const transaction = await sequelize.transaction();
   
   try {
@@ -447,7 +449,7 @@ router.put('/approve/:id', async (req, res) => {
  * PUT /api/withdrawal/reject/:id
  * 拒绝提现申请并退还余额
  */
-router.put('/reject/:id', async (req, res) => {
+router.put('/reject/:id', authenticateToken, requireAdmin, async (req, res) => {
   const transaction = await sequelize.transaction();
   
   try {

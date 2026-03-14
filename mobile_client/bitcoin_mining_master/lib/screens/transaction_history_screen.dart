@@ -242,6 +242,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 图标
           Container(
@@ -256,84 +257,112 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
           const SizedBox(width: 12),
           // 详情
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      tx.typeLabel,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (isPending) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(4),
+            child: tx.type == 'subordinate rebate'
+                // subordinate rebate: 4行全宽布局，避免 user_id / 金额截断
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+
+                      // 第1行：标签类别
+                      Text(
+                        tx.typeLabel,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                         ),
-                        child: const Text(
-                          'Pending',
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontSize: 10,
+                      ),
+                      // 第2行：From: user_id (完整显示)
+                      if (tx.description != null &&
+                          tx.description!.startsWith('From: ')) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'From: ${tx.description!.substring(6)}',
+                          style: const TextStyle(
+                            color: Color(0xFF64B5F6),
+                            fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+                      ],
+                      // 第3行：时间戳
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDate(tx.createdAt),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      // 第4行：BTC 数额
+                      const SizedBox(height: 4),
+                      Text(
+                        '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)} BTC',
+                        style: TextStyle(
+                          color: isPositive ? AppColors.primary : Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
-                  ],
-                ),
-                if (tx.description != null && tx.description!.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    tx.description!,
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  )
+                // Free Ad / Daily Check-in / Invite / Bind Referrer: 3行全宽布局
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 第1行：标签（+ Pending 角标）
+                      Row(
+                        children: [
+                          Text(
+                            tx.typeLabel,
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (isPending) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Pending',
+                                style: TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      // 第2行：时间戳
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatDate(tx.createdAt),
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      // 第3行：BTC 数额
+                      const SizedBox(height: 4),
+                      Text(
+                        '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)} BTC',
+                        style: TextStyle(
+                          color: isPositive ? AppColors.primary : Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-                const SizedBox(height: 4),
-                Text(
-                  _formatDate(tx.createdAt),
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // 金额
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)}',
-                style: TextStyle(
-                  color: isPositive ? AppColors.primary : Colors.red,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const Text(
-                'BTC',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 10,
-                ),
-              ),
-            ],
           ),
         ],
       ),

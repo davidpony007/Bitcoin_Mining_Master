@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   
   final TextEditingController _referrerCodeController = TextEditingController();
   bool _isLoading = false;
-  bool _showReferrerInput = false;
+  final bool _showReferrerInput = false;
 
   // iOS 广告追踪信息（在 initState 中通过 ATT 弹窗收集）
   String? _idfv;
@@ -94,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Apple 只在首次授权时返回 email 和 name，之后返回 null——尞属正常行为
       final String? appleEmail = credential.email;
-      final String? appleName = [
+      final String appleName = [
         credential.givenName ?? '',
         credential.familyName ?? '',
       ].where((s) => s.isNotEmpty).join(' ');
@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final response = await _apiService.appleLoginOrCreate(
         appleId:     appleId,
         appleAccount: appleEmail,
-        appleName:   appleName?.isEmpty == true ? null : appleName,
+        appleName:   appleName.isEmpty == true ? null : appleName,
         iosDeviceId: _idfv,
         idfa:        _idfa,
         attStatus:   _attStatus,

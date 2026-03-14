@@ -52,7 +52,7 @@ async function resetUserData() {
     console.log('\n📊 步骤2: 统计要删除的数据...');
     
     const [checkInCount] = await connection.query(
-      'SELECT COUNT(*) as count FROM check_in_record WHERE user_id = ?',
+      'SELECT COUNT(*) as count FROM user_check_in WHERE user_id = ?',
       [userId]
     );
     console.log(`   签到记录: ${checkInCount[0].count} 条`);
@@ -108,7 +108,7 @@ async function resetUserData() {
     console.log('🗑️  步骤4: 删除数据...');
     
     // 删除签到记录
-    await connection.query('DELETE FROM check_in_record WHERE user_id = ?', [userId]);
+    await connection.query('DELETE FROM user_check_in WHERE user_id = ?', [userId]);
     console.log('   ✅ 签到记录已清空');
     
     // 删除累计签到奖励

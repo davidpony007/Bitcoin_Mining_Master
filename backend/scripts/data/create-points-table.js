@@ -54,7 +54,7 @@ const fs = require('fs');
     console.log('');
     console.log('✅ 积分系统现已完整:');
     console.log('   • user_information (用户积分)');
-    console.log('   • check_in_record (签到记录)');
+    console.log('   • user_check_in (签到记录)');
     console.log('   • points_transaction_record (积分交易历史) [新建]');
     console.log('   • free_contract_records (合约/电池)');
     console.log('');

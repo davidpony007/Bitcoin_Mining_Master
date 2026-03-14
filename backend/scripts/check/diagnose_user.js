@@ -21,7 +21,7 @@ const userId = 'U2026011910532463989';
       'user_status',
       'user_points',
       'free_contract_records',
-      'check_in_record',
+      'user_check_in',
       'ad_view_record',
       'points_transaction',
       'cumulative_check_in_reward',
@@ -78,7 +78,7 @@ const userId = 'U2026011910532463989';
 
     console.log('\n【3】空表总记录数统计\n');
 
-    const emptyTables = ['check_in_record', 'ad_view_record', 'bitcoin_transaction_records', 
+    const emptyTables = ['user_check_in', 'ad_view_record', 'bitcoin_transaction_records', 
                          'cumulative_check_in_reward', 'mining_contracts'];
     
     for (const table of emptyTables) {
@@ -89,7 +89,7 @@ const userId = 'U2026011910532463989';
     console.log('\n【4】诊断结论\n');
 
     const hasUserData = results.user_information && results.user_information.length > 0;
-    const hasCheckIn = results.check_in_record && results.check_in_record.length > 0;
+    const hasCheckIn = results.user_check_in && results.user_check_in.length > 0;
     const hasAdView = results.ad_view_record && results.ad_view_record.length > 0;
     const hasPoints = results.points_transaction && results.points_transaction.length > 0;
 

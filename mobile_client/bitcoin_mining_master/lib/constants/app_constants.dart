@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:io' show Platform;
 
 /// API配置常量
 class ApiConstants {

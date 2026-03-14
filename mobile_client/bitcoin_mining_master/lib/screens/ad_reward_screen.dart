@@ -7,7 +7,6 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'dart:io' show Platform;
-import 'contracts_screen.dart';
 import 'checkin_screen.dart';
 
 /// 广告奖励页面 - Ad Reward Screen 

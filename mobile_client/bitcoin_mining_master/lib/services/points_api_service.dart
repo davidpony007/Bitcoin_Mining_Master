@@ -237,7 +237,7 @@ class PointsApiService {
       final userId = await _getUserId();
       final response = await _dio.post('/checkin/claim-milestone', data: {
         'user_id': userId,
-        'days': days,
+        'cumulative_days': days,
       });
       return response.data;
     } on DioException catch (e) {

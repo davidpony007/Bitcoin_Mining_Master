@@ -28,7 +28,7 @@ async function test() {
     // 测试3: 验证数据库中的记录
     console.log('\n3. 验证数据库记录...');
     const [records] = await db.query(
-      'SELECT * FROM check_in_record WHERE user_id = ? ORDER BY check_in_date DESC LIMIT 5',
+      'SELECT * FROM user_check_in WHERE user_id = ? ORDER BY check_in_date DESC LIMIT 5',
       [userId]
     );
     console.log(`数据库中有 ${records.length} 条签到记录:`);

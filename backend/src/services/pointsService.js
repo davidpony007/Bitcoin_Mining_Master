@@ -154,20 +154,22 @@ class PointsService {
         [userId, points, pointsType, newPoints, description, relatedUserId]
       );
 
-      // 5. 同步积分到user_points表（如果存在）
+      // 5. 同步积分到user_points表
+      //    total_points: 累计终身总积分（永不回退，用于数据分析）
+      //    available_points: 当前等级的进度积分（升级后从溢出值重新开始积攒）
       await connection.query(
         `INSERT INTO user_points (user_id, total_points, available_points) 
          VALUES (?, ?, ?) 
          ON DUPLICATE KEY UPDATE 
          total_points = total_points + ?,
-         available_points = available_points + ?,
+         available_points = ?,
          updated_at = NOW()`,
-        [userId, newPoints, newPoints, points, points]
+        [userId, points, newPoints, points, newPoints]
       );
 
       await connection.commit();
 
-      // 6. 更新 Redis 缓存
+      // 6. 更新 Redis 缓存（available = 当前等级进度，与 user_information.user_points 保持一致）
       if (redisClient.isReady()) {
         await redisClient.cacheUserPoints(userId, newPoints, newPoints);
         // 清除等级缓存，强制重新计算

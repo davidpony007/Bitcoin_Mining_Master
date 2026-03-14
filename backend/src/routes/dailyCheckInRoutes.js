@@ -86,16 +86,16 @@ router.post('/daily', async (req, res) => {
       );
 
       if (existingRecords.length > 0) {
-        // 更新现有记录
+        // 更新现有记录（正常不会重复签到，仅更新次数）
         await connection.query(
           'UPDATE ad_view_record SET view_count = view_count + 1, updated_at = NOW() WHERE user_id = ? AND view_date = ? AND ad_type = ?',
           [userId, today, adType]
         );
       } else {
-        // 创建新记录
+        // 创建新记录：每日签到奖励4分
         await connection.query(
           'INSERT INTO ad_view_record (user_id, ad_type, view_date, view_count, points_earned, created_at) VALUES (?, ?, ?, ?, ?, NOW())',
-          [userId, adType, today, 1, 0]
+          [userId, adType, today, 1, 4]
         );
       }
       

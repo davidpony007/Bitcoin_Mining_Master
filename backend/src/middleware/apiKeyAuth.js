@@ -5,10 +5,15 @@
 
 const crypto = require('crypto');
 
-// API密钥配置（生产环境应该从环境变量读取）
+// API密钥配置：必须通过环境变量设置，禁止硬编码默认值
+// 请在 .env 文件中配置: API_KEY_MOBILE=<强随机字符串>
+if (!process.env.API_KEY_MOBILE) {
+  console.error('❌ [apiKeyAuth] 环境变量 API_KEY_MOBILE 未设置！API Key认证将拒绝所有请求。');
+}
+
 const API_KEYS = {
-  // 移动应用密钥
-  'mobile_app': process.env.API_KEY_MOBILE || 'btc_mining_app_2026_secret_key_v1',
+  // 移动应用密钥（必须来自环境变量）
+  'mobile_app': process.env.API_KEY_MOBILE || '',
 };
 
 // 请求签名验证（可选，更安全）

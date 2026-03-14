@@ -155,10 +155,22 @@ class CountryMiningService {
       const cacheKey = `country:mining:${code}`;
       await redisClient.del(cacheKey);
 
+      // 同步 user_information 中该国家所有用户的 country_multiplier
+      // realtimeBalanceService 直接读 user_information.country_multiplier，必须保持一致
+      const [, syncedUsers] = await CountryMiningConfig.sequelize.query(
+        `UPDATE user_information SET country_multiplier = ? WHERE country_code = ?`,
+        {
+          replacements: [multiplier, code],
+          type: CountryMiningConfig.sequelize.QueryTypes.UPDATE
+        }
+      );
+      console.log(`🔄 [国家倍率同步] ${code}: 倍率更新为 ${multiplier}x，已同步 ${syncedUsers ?? 0} 个用户`);
+
       return {
         success: true,
         countryCode: code,
         newMultiplier: multiplier,
+        syncedUsers: syncedUsers ?? 0,
         message: '更新成功'
       };
 
@@ -238,6 +250,29 @@ class CountryMiningService {
       const cacheKey = `country:mining:${code}`;
       await redisClient.del(cacheKey);
 
+      // 同步 user_information.country_multiplier
+      // 禁用国家 → 该国用户倍率重置为 1.0；重新启用 → 恢复配置倍率
+      if (!isActive) {
+        await CountryMiningConfig.sequelize.query(
+          `UPDATE user_information SET country_multiplier = 1.00 WHERE country_code = ?`,
+          { replacements: [code], type: CountryMiningConfig.sequelize.QueryTypes.UPDATE }
+        );
+        console.log(`🔄 [国家状态同步] ${code}: 已禁用，所有用户倍率重置为 1.0`);
+      } else {
+        const config = await CountryMiningConfig.findOne({
+          where: { country_code: code },
+          attributes: ['mining_multiplier']
+        });
+        if (config) {
+          const restoreMultiplier = parseFloat(config.mining_multiplier);
+          await CountryMiningConfig.sequelize.query(
+            `UPDATE user_information SET country_multiplier = ? WHERE country_code = ?`,
+            { replacements: [restoreMultiplier, code], type: CountryMiningConfig.sequelize.QueryTypes.UPDATE }
+          );
+          console.log(`🔄 [国家状态同步] ${code}: 已启用，所有用户倍率恢复为 ${restoreMultiplier}x`);
+        }
+      }
+
       return {
         success: true,
         countryCode: code,
@@ -272,6 +307,18 @@ class CountryMiningService {
         mining_multiplier: miningMultiplier || 1.00,
         is_active: true
       });
+
+      // 同步 user_information：为已有该国家代码但尚未获得正确倍率的用户赋值
+      const finalMultiplier = parseFloat(miningMultiplier) || 1.00;
+      if (finalMultiplier !== 1.00) {
+        await CountryMiningConfig.sequelize.query(
+          `UPDATE user_information SET country_multiplier = ? WHERE country_code = ?`,
+          {
+            replacements: [finalMultiplier, newConfig.country_code],
+            type: CountryMiningConfig.sequelize.QueryTypes.UPDATE
+          }
+        );
+      }
 
       return {
         success: true,

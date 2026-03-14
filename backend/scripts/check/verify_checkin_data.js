@@ -13,7 +13,7 @@ const db = require('../src/config/database_native');
     
     // 查询签到记录
     const [records] = await db.query(
-      'SELECT check_in_date, points_earned FROM check_in_record WHERE user_id = ? ORDER BY check_in_date DESC LIMIT 3', 
+      'SELECT check_in_date, points_earned FROM user_check_in WHERE user_id = ? ORDER BY check_in_date DESC LIMIT 3', 
       ['U2026011910532463989']
     );
     console.log('✅ 最近签到记录:', records);

@@ -112,6 +112,7 @@ class UserProvider with ChangeNotifier {
       _offlineDebounce?.cancel();
       _offlineDebounce = Timer(const Duration(seconds: 3), () {
         _setError('Network connection lost, using offline mode');
+        // 防抖：3 秒内已由 ApiService 弹过同一条提示则不重复弹
         Fluttertoast.showToast(
           msg: 'Network connection error, please try again!',
           toastLength: Toast.LENGTH_SHORT,
@@ -183,7 +184,7 @@ class UserProvider with ChangeNotifier {
             DateTime.now().difference(prevFetchTime).inMilliseconds / 1000.0;
         if (elapsedSec >= 3.0) {
           _miningSpeedPerSecond = (newBalance - prevBalance) / elapsedSec;
-          print('🔍 Provider: 速率推导: (${newBalance} - ${prevBalance}) / ${elapsedSec}s = $_miningSpeedPerSecond BTC/秒');
+          print('🔍 Provider: 速率推导: ($newBalance - $prevBalance) / ${elapsedSec}s = $_miningSpeedPerSecond BTC/秒');
         }
         // elapsedSec < 3s（属于 800ms 重试期间）：不更新速率，保持 0 或上次值
       } else {

@@ -60,6 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _miningTimer;
   Timer? _uiRefreshTimer; // 100ms 轻量UI刷新，让余额数字平滑递增
   int _syncCounter = 9; // 提升为类字段，便于激活挖矿后立即触发同步
+  DateTime? _pausedAt; // 记录进入后台的时刻，用于恢复时补算elapsed时间
   late AnimationController _breathingController;
 
   @override
@@ -105,11 +106,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted) return;
     await context.read<UserProvider>().fetchBitcoinBalance();
     // 若速率仍为0（后端缓存路径还未清除），每 800ms 重试，最多 8 次（≈6.4秒）
-    for (int _r = 0;
-        _r < 8 &&
+    for (int r = 0;
+        r < 8 &&
             mounted &&
             context.read<UserProvider>().miningSpeedPerSecond == 0;
-        _r++) {
+        r++) {
       await Future.delayed(const Duration(milliseconds: 800));
       if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
     }
@@ -123,15 +124,74 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // 当应用从后台恢复到前台时，立即刷新数据
-    if (state == AppLifecycleState.resumed) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      // 记录进入后台的时刻
+      _pausedAt = DateTime.now();
+      print('📱 Dashboard: 应用进入后台，记录时间: $_pausedAt');
+    } else if (state == AppLifecycleState.resumed) {
       print('📱 Dashboard: 应用恢复前台，立即刷新数据');
+      // 先用本地时间估算后台期间流逝的秒数，快速修正电池显示
+      if (_pausedAt != null) {
+        final elapsedSeconds = DateTime.now().difference(_pausedAt!).inSeconds;
+        print('📱 Dashboard: 后台持续 ${elapsedSeconds}s，补算电池时间');
+        if (elapsedSeconds > 0) {
+          _applyElapsedTimeToBatteries(elapsedSeconds);
+        }
+        _pausedAt = null;
+      }
+      // 再从服务器同步真实状态（会完全覆盖本地估算）
       _loadContractAndUpdateBatteries();
       _loadPointsData();
       _loadUserLevel();
       // 恢复前台后立即从后端同步基准余额，消除后台期间的时间漂移
       context.read<UserProvider>().fetchBitcoinBalance();
     }
+  }
+
+  /// 补算后台期间流逝的时间，快速修正电池显示（服务器同步完成前的临时修正）
+  void _applyElapsedTimeToBatteries(int elapsedSeconds) {
+    if (!mounted) return;
+    setState(() {
+      int remaining = elapsedSeconds;
+      // 从正在挖矿的电池开始消耗
+      for (int i = 0; i < _batteries.length && remaining > 0; i++) {
+        if (_batteries[i].isMining && _batteries[i].remainingSeconds > 0) {
+          if (_batteries[i].remainingSeconds <= remaining) {
+            remaining -= _batteries[i].remainingSeconds;
+            _batteries[i].remainingSeconds = 0;
+            _batteries[i].level = 0;
+            _batteries[i].isMining = false;
+          } else {
+            _batteries[i].remainingSeconds -= remaining;
+            _batteries[i].level =
+                (_batteries[i].remainingSeconds / 900).ceil().clamp(0, 4);
+            remaining = 0;
+          }
+        }
+      }
+      // 满电池依次消耗
+      for (int i = 0; i < _batteries.length && remaining > 0; i++) {
+        if (!_batteries[i].isMining && _batteries[i].level > 0) {
+          final batterySeconds = _batteries[i].remainingSeconds > 0
+              ? _batteries[i].remainingSeconds
+              : 3600;
+          if (batterySeconds <= remaining) {
+            remaining -= batterySeconds;
+            _batteries[i].remainingSeconds = 0;
+            _batteries[i].level = 0;
+            _batteries[i].isMining = false;
+          } else {
+            _batteries[i].remainingSeconds = batterySeconds - remaining;
+            _batteries[i].level =
+                (_batteries[i].remainingSeconds / 900).ceil().clamp(0, 4);
+            remaining = 0;
+          }
+        }
+      }
+      _sortBatteries();
+    });
   }
 
   void _initializeBatteries() {
@@ -200,11 +260,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           // 立即刷新所有数据（包括余额和挖矿速率，确保计数器立即启动）
           await context.read<UserProvider>().fetchBitcoinBalance();
           // 若速率仍为0（后端缓存残留），循环重试，确保 0.1s UI 平滑递增立即启动
-          for (int _retry = 0;
-              _retry < 5 &&
+          for (int retry = 0;
+              retry < 5 &&
                   mounted &&
                   context.read<UserProvider>().miningSpeedPerSecond == 0;
-              _retry++) {
+              retry++) {
             await Future.delayed(const Duration(milliseconds: 800));
             if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
           }
@@ -365,11 +425,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           // 立即刷新所有数据（包括余额和挖矿速率，确保计数器立即启动）
           await context.read<UserProvider>().fetchBitcoinBalance();
           // 若速率仍为0，循环重试，确保 0.1s UI 平滑递增立即启动
-          for (int _retry = 0;
-              _retry < 5 &&
+          for (int retry = 0;
+              retry < 5 &&
                   mounted &&
                   context.read<UserProvider>().miningSpeedPerSecond == 0;
-              _retry++) {
+              retry++) {
             await Future.delayed(const Duration(milliseconds: 800));
             if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
           }
@@ -577,17 +637,24 @@ class _DashboardScreenState extends State<DashboardScreen>
       // 📌 只读取adReward合约来更新电池（不包含dailyCheckIn）
       if (data != null && data['adReward'] != null) {
         final isActive = data['adReward']['isActive'] == true;
-        final remainingSeconds = data['adReward']['remainingSeconds'] ?? 0;
+        final remainingSeconds =
+            (data['adReward']['remainingSeconds'] ?? 0) as num;
 
         print(
           '📊 Dashboard: 合约状态 - isActive: $isActive, remainingSeconds: $remainingSeconds',
         );
 
-        if (isActive && remainingSeconds > 0 && mounted) {
+        if (mounted) {
           setState(() {
-            _updateBatteriesFromRemainingTime(remainingSeconds);
+            if (isActive && remainingSeconds > 0) {
+              _updateBatteriesFromRemainingTime(remainingSeconds.toInt());
+              print('✅ Dashboard: 电池状态已更新');
+            } else {
+              // 合约已过期或无合约，清空所有电池
+              print('🔋 Dashboard: 合约未激活或已过期，清空所有电池');
+              _clearAllBatteries();
+            }
           });
-          print('✅ Dashboard: 电池状态已更新');
         }
       }
     } catch (e) {
@@ -663,6 +730,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _addBatteries(int count) {
     // 观看广告后，重新从API加载最新的合约剩余时间
     _loadContractAndUpdateBatteries();
+  }
+
+  /// 清空所有电池（合约过期时调用）
+  void _clearAllBatteries() {
+    for (var battery in _batteries) {
+      battery.level = 0;
+      battery.isMining = false;
+      battery.totalSeconds = 0;
+      battery.remainingSeconds = 0;
+    }
+    print('🔋 Dashboard: 所有电池已清空（合约已过期）');
   }
 
   // 电池排序：满电电池在前（从左往右填充），空电池在中间，正在挖矿的电池排在最右边

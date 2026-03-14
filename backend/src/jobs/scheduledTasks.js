@@ -4,7 +4,7 @@
 
 const cron = require('node-cron');
 const redisClient = require('../config/redis');
-const pool = require('../config/database').pool;
+const pool = require('../config/database_native'); // 使用原生MySQL连接池（Sequelize实例没有.pool属性）
 const PointsService = require('../services/pointsService');
 const InvitationPointsService = require('../services/invitationPointsService');
 const ContractRewardService = require('../services/contractRewardService');
