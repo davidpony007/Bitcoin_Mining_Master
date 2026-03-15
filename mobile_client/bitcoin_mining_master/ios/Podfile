@@ -51,6 +51,21 @@ post_install do |installer|
     end
   end
 
+  # 直接写入 xcconfig（覆盖 Flutter xcodebuild 可能的重置）
+  pods_support_dir_xcconfig = File.join(File.dirname(__FILE__), 'Pods', 'Target Support Files')
+  ['GoogleSignIn'].each do |pod_name|
+    pod_xcconfig_dir = File.join(pods_support_dir_xcconfig, pod_name)
+    next unless Dir.exist?(pod_xcconfig_dir)
+    Dir.glob(File.join(pod_xcconfig_dir, '*.xcconfig')).each do |xcconfig_path|
+      content = File.read(xcconfig_path)
+      flag = 'CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES'
+      unless content.include?(flag)
+        File.open(xcconfig_path, 'a') { |f| f.puts "\n#{flag}" }
+        puts "✓ Patched #{File.basename(xcconfig_path)} with non-modular flag"
+      end
+    end
+  end
+
   pods_dir = File.join(File.dirname(__FILE__), 'Pods')
   pods_support_dir = File.join(pods_dir, 'Target Support Files')
   cache_base = File.expand_path('~/Library/Caches/CocoaPods/Pods/Release')
@@ -272,6 +287,22 @@ post_install do |installer|
     File.write(xcconfig_path, content)
   end
   puts "✓ Patched all xcconfigs with GTMSessionFetcher header paths"
+
+  # ============================================================
+  # Step 5.6: Patch GIDGoogleUser.h — replace non-modular #import with
+  # forward declaration (fixes Xcode 26+ hard error in framework modules)
+  # ============================================================
+  gid_user_header = File.join(File.dirname(__FILE__), 'Pods', 'GoogleSignIn',
+    'GoogleSignIn', 'Sources', 'Public', 'GoogleSignIn', 'GIDGoogleUser.h')
+  if File.exist?(gid_user_header)
+    content = File.read(gid_user_header)
+    old_import = '#import <GTMSessionFetcher/GTMSessionFetcher.h>'
+    new_decl   = '@protocol GTMFetcherAuthorizationProtocol;'
+    if content.include?(old_import)
+      File.write(gid_user_header, content.gsub(old_import, new_decl))
+      puts "✓ Patched GIDGoogleUser.h with @protocol forward declaration"
+    end
+  end
 
   # ============================================================
   # Step 6: GoogleService-Info.plist copy script
