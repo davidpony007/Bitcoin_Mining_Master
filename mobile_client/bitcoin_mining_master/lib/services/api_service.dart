@@ -759,4 +759,25 @@ class ApiService {
       rethrow;
     }
   }
+
+  /// 检查App版本更新
+  /// [platform] 'android' 或 'ios'
+  /// [currentVersion] 当前版本号，如 '1.0.1'
+  Future<Map<String, dynamic>> checkAppVersion({
+    required String platform,
+    required String currentVersion,
+  }) async {
+    try {
+      final response = await _dio.get(
+        ApiConstants.appConfig,
+        queryParameters: {
+          'platform': platform,
+          'current_version': currentVersion,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
 }

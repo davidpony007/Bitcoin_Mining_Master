@@ -72,7 +72,10 @@ class ApiConstants {
 
   // 支付相关
   static const String paymentVerify = '/payment/verify-purchase'; // 验证IAP收据并发放合约
-  
+
+  // App版本配置
+  static const String appConfig = '/app/config'; // App版本检查（公开接口）
+
   // 请求超时时间（秒）
   static const int connectTimeout = 30;
   static const int receiveTimeout = 30;
@@ -81,8 +84,7 @@ class ApiConstants {
 /// 应用常量
 class AppConstants {
   static const String appName = 'Bitcoin Mining Master';
-  static const String appVersion = '1.0.0';
-  
+
   // SharedPreferences keys
   static const String keyUserId = 'user_id';
   static const String keyInvitationCode = 'invitation_code';

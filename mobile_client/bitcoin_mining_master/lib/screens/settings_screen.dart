@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'web_view_screen.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
@@ -50,6 +51,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   String _utcTime = '';
   Timer? _timeTimer;
 
+  // 版本信息
+  String _appVersion = '';
+  String _buildNumber = '';
+  bool _hasUpdate = false;
+  bool _isForceUpdate = false;
+  String _updateMessage = '';
+  String? _storeUrl;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     _loadUserData(); // 先加载userId，再加载昵称
     _loadUserLevel();
     _startUtcTimeUpdater();
+    _loadAppVersion(); // 加载版本信息并检查更新
   }
 
   @override
@@ -91,6 +101,96 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
     });
+  }
+
+  /// 加载本地版本号并向后端检查是否有更新
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion   = info.version;
+          _buildNumber  = info.buildNumber;
+        });
+      }
+
+      final platform = Platform.isIOS ? 'ios' : 'android';
+      final result = await _apiService.checkAppVersion(
+        platform: platform,
+        currentVersion: info.version,
+      );
+
+      if (!mounted) return;
+      final data = result['data'] as Map<String, dynamic>?;
+      if (data == null) return;
+
+      final hasUpdate   = data['has_update'] == true;
+      final forceUpdate = data['force_update'] == true;
+      final message     = (data['update_message'] as String?) ?? '';
+      final storeUrl    = data['store_url'] as String?;
+
+      if (hasUpdate) {
+        setState(() {
+          _hasUpdate    = true;
+          _isForceUpdate = forceUpdate;
+          _updateMessage = message;
+          _storeUrl      = storeUrl;
+        });
+        // 强制更新立即弹窗，可选更新延迟展示
+        if (forceUpdate) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showUpdateDialog();
+          });
+        }
+      }
+    } catch (_) {
+      // 版本检查失败不影响正常使用，静默忽略
+    }
+  }
+
+  /// 显示版本更新弹窗
+  void _showUpdateDialog() {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: !_isForceUpdate,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: Text(
+          _isForceUpdate ? 'Update Required' : 'New Version Available',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          _updateMessage.isNotEmpty
+              ? _updateMessage
+              : 'A new version is available. Please update to continue.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          if (!_isForceUpdate)
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Later', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              final url = _storeUrl;
+              if (url != null && url.isNotEmpty) {
+                final uri = Uri.parse(url);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              }
+            },
+            child: Text(
+              'Update Now',
+              style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 加载用户数据（先加载userId，再加载对应的昵称）
@@ -712,9 +812,68 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             _buildDeleteAccountButton(),
 
             const SizedBox(height: 32),
+
+            // App Version Info
+            _buildVersionInfo(),
+
+            const SizedBox(height: 32),
           ],
         ),
       ),
+    );
+  }
+
+  /// 版本号信息 Widget（页面最底部）
+  Widget _buildVersionInfo() {
+    return Column(
+      children: [
+        // 分隔线
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Divider(color: AppColors.divider, thickness: 0.5),
+        ),
+        const SizedBox(height: 12),
+        // 版本文字
+        Text(
+          _appVersion.isNotEmpty
+              ? 'Version $_appVersion ($_buildNumber)'
+              : 'Version --',
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+          ),
+        ),
+        if (_hasUpdate) ...[
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: _showUpdateDialog,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.system_update, size: 14, color: AppColors.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    _isForceUpdate ? 'Update Required' : 'Update Available',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
+      ],
     );
   }
 
