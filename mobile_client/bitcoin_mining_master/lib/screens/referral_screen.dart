@@ -455,9 +455,6 @@ $downloadUrl
               response['data']?['referrer_invitation_code'] as String?;
         });
         
-        // 创建免费广告合约
-        await _createAdContract(userId);
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(response['message'] ?? 'Referrer added successfully!'),
