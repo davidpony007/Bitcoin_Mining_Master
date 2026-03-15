@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:io' show Platform;
+import 'package:package_info_plus/package_info_plus.dart';
 import '../constants/app_constants.dart';
 import '../models/user_model.dart';
 
@@ -62,6 +63,17 @@ class ApiService {
     String? country,
     String? email,
   }) async {
+    // 获取当前 App 版本信息，登录时同步到服务端
+    String? appVersion;
+    int? appBuildNumber;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appVersion = info.version;
+      appBuildNumber = int.tryParse(info.buildNumber);
+    } catch (_) {
+      // 获取失败不阻断登录
+    }
+
     final payload = {
       'android_id': deviceId,
       if (referrerInvitationCode != null)
@@ -69,6 +81,8 @@ class ApiService {
       if (gaid != null) 'gaid': gaid,
       if (country != null) 'country': country,
       if (email != null) 'email': email,
+      if (appVersion != null) 'app_version': appVersion,
+      if (appBuildNumber != null) 'app_build_number': appBuildNumber,
     };
 
     try {

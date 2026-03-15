@@ -42,7 +42,9 @@ exports.deviceLogin = async (req, res) => {
       referrer_invitation_code,
       gaid,
       country,
-      email
+      email,
+      app_version,
+      app_build_number
     } = req.body;
 
     // 验证必填字段
@@ -150,7 +152,9 @@ exports.deviceLogin = async (req, res) => {
         country_code: detectedCountry || null,
         country_name_cn: countryNameCn,
         country_multiplier: countryMultiplier,
-        miner_level_multiplier: 1.00
+        miner_level_multiplier: 1.00,
+        app_version: app_version || null,
+        app_build_number: app_build_number || null
       }
     });
 
@@ -297,12 +301,24 @@ exports.deviceLogin = async (req, res) => {
           if (gaid && gaid.trim() !== '') {
             updateData.gaid = gaid.trim();
           }
+
+          // 更新客户端版本信息（每次登录上报）
+          if (app_version) updateData.app_version = app_version;
+          if (app_build_number != null) updateData.app_build_number = app_build_number;
           
           await UserInformation.update(
             updateData,
             { where: { user_id: user.user_id } }
           );
           console.log(`   ✅ [Device Login] 已更新现有用户国家信息: ${countryNameCn}, 倍率: ${countryMultiplier}`);
+        } else {
+          // 即便国家未变，也要更新版本信息
+          const versionData = {};
+          if (app_version) versionData.app_version = app_version;
+          if (app_build_number != null) versionData.app_build_number = app_build_number;
+          if (Object.keys(versionData).length > 0) {
+            await UserInformation.update(versionData, { where: { user_id: user.user_id } });
+          }
         }
       } catch (updateErr) {
         console.error('更新登录时间和国家信息失败:', updateErr);

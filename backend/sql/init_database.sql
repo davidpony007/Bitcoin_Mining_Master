@@ -20,9 +20,11 @@ CREATE TABLE IF NOT EXISTS `user_information` (
   `nickname` VARCHAR(50) DEFAULT NULL COMMENT '用户昵称',
   `device_id` VARCHAR(255) DEFAULT NULL COMMENT 'Android设备ID（支持长指纹）',
   `gaid` VARCHAR(36) DEFAULT NULL COMMENT 'Google Advertising ID',
-  `idfa` VARCHAR(36) DEFAULT NULL COMMENT 'iOS广告追踪标识符',
+  `idfa` VARCHAR(36) DEFAULT NULL COMMENT 'iOS广告追踪标识符（IDFA）',
   `att_status` TINYINT(1) DEFAULT NULL COMMENT 'iOS ATT授权状态: 0=未询问 1=受限 2=拒绝 3=已授权',
   `att_consent_updated_at` DATETIME DEFAULT NULL COMMENT 'ATT状态最后更新时间',
+  `app_version` VARCHAR(20) DEFAULT NULL COMMENT '用户当前安装的App版本号，如 1.0.1；每次登录时由客户端上报更新',
+  `app_build_number` INT DEFAULT NULL COMMENT '用户当前安装的App构建号，如 3；对应 pubspec +N；每次登录时由客户端上报更新',
   `register_ip` VARCHAR(45) DEFAULT NULL COMMENT '注册时的IP地址（支持IPv6）',
   `country_code` VARCHAR(32) DEFAULT NULL COMMENT '用户所在国家代码',
   `country_name_cn` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '国家中文名称',
@@ -370,18 +372,18 @@ INSERT IGNORE INTO `country_mining_config` (`country_code`, `country_name`, `cou
 -- 15. app_config App版本配置表
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `app_config` (
-  `id`              INT NOT NULL AUTO_INCREMENT,
-  `platform`        ENUM('ios','android','all') NOT NULL COMMENT '平台',
-  `latest_version`  VARCHAR(20) NOT NULL COMMENT '最新版本号，如 1.2.0',
-  `min_version`     VARCHAR(20) NOT NULL COMMENT '最低兼容版本（低于此版本强制更新）',
-  `build_number`    INT NOT NULL DEFAULT 1 COMMENT '构建号，对应 pubspec 的 +N',
-  `update_message`  VARCHAR(500) DEFAULT NULL COMMENT '更新说明（展示给用户）',
-  `force_update`    TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否强制更新: 1=强制 0=可跳过',
-  `store_url`       VARCHAR(500) DEFAULT NULL COMMENT '商店链接',
-  `updated_at`      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id`              INT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `platform`        ENUM('ios','android','all') NOT NULL COMMENT '目标平台: ios=苹果 android=安卓 all=全平台',
+  `latest_version`  VARCHAR(20) NOT NULL COMMENT '当前最新版本号，如 1.2.0',
+  `min_version`     VARCHAR(20) NOT NULL COMMENT '最低兼容版本号；客户端低于此版本将强制更新，如 1.0.0',
+  `build_number`    INT NOT NULL DEFAULT 1 COMMENT '构建号，对应 pubspec.yaml 中的 +N（如 version: 1.0.1+3 则值为 3）',
+  `update_message`  VARCHAR(500) DEFAULT NULL COMMENT '版本更新说明文字，将展示给用户（如：修复已知问题，优化挖矿速度）',
+  `force_update`    TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否强制更新: 1=强制（用户无法跳过）0=可选（用户可稍后更新）',
+  `store_url`       VARCHAR(500) DEFAULT NULL COMMENT '应用商店链接，点击更新时跳转（App Store / Google Play URL）',
+  `updated_at`      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录最后修改时间，自动更新',
   PRIMARY KEY (`id`),
   KEY `idx_platform` (`platform`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App版本配置表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='App版本配置表：控制客户端版本检查、强制更新和商店跳转';
 
 -- 插入初始版本配置
 INSERT IGNORE INTO `app_config` (`id`, `platform`, `latest_version`, `min_version`, `build_number`, `update_message`, `force_update`, `store_url`) VALUES
