@@ -51,13 +51,16 @@ router.get('/admin/list', authenticateToken, requireAdmin, async (req, res) => {
       userId:         r.user_id,
       email:          r.email,
       walletAddress:  r.wallet_address,
+      binanceUid:     r.binance_uid  || null,
       amount:         parseFloat(r.withdrawal_request_amount),
       networkFee:     parseFloat(r.network_fee),
       receivedAmount: parseFloat(r.received_amount),
       status:         r.withdrawal_status,
-      googleAccount:  r.google_account,
-      appleId:        r.apple_id,
+      rejectReason:   r.reject_reason || null,
+      googleAccount:  r.google_account  || null,
+      appleId:        r.apple_id        || null,
       createdAt:      r.created_at,
+      updatedAt:      r.updated_at      || null,
     }));
 
     res.json({
@@ -335,16 +338,20 @@ router.get('/:id', async (req, res) => {
     res.json({
       success: true,
       data: {
-        id: withdrawal.id,
-        userId: withdrawal.user_id,
-        email: withdrawal.email,
-        walletAddress: withdrawal.wallet_address,
-        amount: parseFloat(withdrawal.withdrawal_request_amount),
-        networkFee: parseFloat(withdrawal.network_fee),
+        id:             withdrawal.id,
+        userId:         withdrawal.user_id,
+        email:          withdrawal.email,
+        walletAddress:  withdrawal.wallet_address,
+        binanceUid:     withdrawal.binance_uid    || null,
+        amount:         parseFloat(withdrawal.withdrawal_request_amount),
+        networkFee:     parseFloat(withdrawal.network_fee),
         receivedAmount: parseFloat(withdrawal.received_amount),
-        status: withdrawal.withdrawal_status,
-        createdAt: withdrawal.createdAt || null,
-        updatedAt: withdrawal.updatedAt || null
+        status:         withdrawal.withdrawal_status,
+        rejectReason:   withdrawal.reject_reason  || null,
+        googleAccount:  withdrawal.google_account || null,
+        appleId:        withdrawal.apple_id       || null,
+        createdAt:      withdrawal.created_at     || null,
+        updatedAt:      withdrawal.updated_at     || null,
       }
     });
 
@@ -389,9 +396,10 @@ router.put('/approve/:id', authenticateToken, requireAdmin, async (req, res) => 
       });
     }
 
-    // 更新提现状态为成功
+    // 更新提现状态为成功（含更新时间）
     await withdrawal.update({
-      withdrawal_status: 'success'
+      withdrawal_status: 'success',
+      updated_at:        new Date(),
     }, { transaction });
 
     // 更新用户的累计提现金额
@@ -474,9 +482,11 @@ router.put('/reject/:id', authenticateToken, requireAdmin, async (req, res) => {
       });
     }
 
-    // 更新提现状态为已拒绝
+    // 更新提现状态为已拒绝（含拒绝原因和更新时间）
     await withdrawal.update({
-      withdrawal_status: 'rejected'
+      withdrawal_status: 'rejected',
+      reject_reason:     reason || '管理员拒绝',
+      updated_at:        new Date(),
     }, { transaction });
 
     // 退还余额给用户
@@ -537,6 +547,40 @@ router.put('/reject/:id', authenticateToken, requireAdmin, async (req, res) => {
       message: 'Failed to reject withdrawal',
       error: error.message
     });
+  }
+});
+
+/**
+ * GET /api/withdrawal/admin/stats
+ * 管理员获取提现统计数据
+ */
+router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await sequelize.query(
+      `SELECT
+         COUNT(*)                                            AS total,
+         SUM(withdrawal_status = 'pending')                 AS pending,
+         SUM(withdrawal_status = 'success')                 AS success,
+         SUM(withdrawal_status = 'rejected')                AS rejected,
+         COALESCE(SUM(withdrawal_request_amount), 0)        AS totalAmount,
+         COALESCE(SUM(CASE WHEN withdrawal_status='success' THEN received_amount ELSE 0 END), 0) AS paidAmount
+       FROM withdrawal_records`
+    );
+    const s = rows[0];
+    res.json({
+      success: true,
+      data: {
+        total:       Number(s.total),
+        pending:     Number(s.pending),
+        success:     Number(s.success),
+        rejected:    Number(s.rejected),
+        totalAmount: parseFloat(s.totalAmount),
+        paidAmount:  parseFloat(s.paidAmount),
+      },
+    });
+  } catch (error) {
+    console.error('❌ 提现统计查询失败:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch stats', error: error.message });
   }
 });
 

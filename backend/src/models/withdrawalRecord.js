@@ -58,11 +58,29 @@ const WithdrawalRecord = sequelize.define('withdrawal_records', {
     defaultValue: null,
     comment: 'Apple用户唯一ID(sub)，用于用户去重标识'
   },
+  binance_uid: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Binance UID，6-12位数字'
+  },
+  reject_reason: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    defaultValue: null,
+    comment: '拒绝原因（管理员填写）'
+  },
   created_at: {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW,
     comment: '创建时间'
+  },
+  updated_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+    comment: '更新时间（审批操作时自动更新）'
   }
 }, {
   timestamps: false,
