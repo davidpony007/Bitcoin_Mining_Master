@@ -23,4 +23,8 @@ export const withdrawalAPI = {
   /** 查看单条提现详情 */
   detail: (id: number) =>
     request.get(`/api/withdrawal/${id}`),
+
+  /** 获取提现统计汇总 */
+  stats: () =>
+    request.get('/api/withdrawal/admin/stats'),
 };

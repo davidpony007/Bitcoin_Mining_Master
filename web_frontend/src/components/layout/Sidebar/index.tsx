@@ -52,7 +52,7 @@ const Sidebar: React.FC = () => {
     {
       key: '/withdrawals',
       icon: <WalletOutlined />,
-      label: '提现详情',
+      label: '提现管理',
     },
     {
       key: '/geography',
