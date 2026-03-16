@@ -24,8 +24,8 @@ class ApiConstants {
   // - 建议使用HTTPS确保安全
   // ========================
   
-  // 生产环境URL - 云服务器地址（通过Nginx代理，无需端口号）
-  static const String _productionUrl = 'http://47.79.232.189/api';
+  // 生产环境URL - 域名 + HTTPS（通过Nginx代理，无需端口号）
+  static const String _productionUrl = 'https://smartearningtool.top/api';
   
   // 开发环境URL - 使用adb reverse端口转发
   static const String _developmentUrl = 'http://localhost:8888/api';
