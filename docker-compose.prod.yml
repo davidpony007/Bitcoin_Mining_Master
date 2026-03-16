@@ -94,7 +94,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/ping"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -122,7 +122,7 @@ services:
       backend:
         condition: service_healthy
       web_frontend:
-        condition: service_healthy
+        condition: service_started
     networks:
       - bitcoin_network
     healthcheck:
