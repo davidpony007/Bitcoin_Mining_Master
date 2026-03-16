@@ -97,3 +97,6 @@ analysis_output.log
 
 # ===== PM2 logs =====
 pm2-*.log
+
+# ===== npm cache =====
+.npm-cache/
