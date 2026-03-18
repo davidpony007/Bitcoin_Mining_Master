@@ -178,6 +178,13 @@ class ApiService {
     String? country,
     String? system,
   }) async {
+    String? appVersion;
+    int? appBuildNumber;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appVersion = info.version;
+      appBuildNumber = int.tryParse(info.buildNumber);
+    } catch (_) {}
     try {
       final requestData = {
         'google_id': googleId,
@@ -187,6 +194,8 @@ class ApiService {
         'gaid': gaid,
         'country': country,
         if (system != null) 'system': system,
+        if (appVersion != null) 'app_version': appVersion,
+        if (appBuildNumber != null) 'app_build_number': appBuildNumber,
       };
       
       print('📤 [API] 发送Google登录请求到后端:');
@@ -224,6 +233,13 @@ class ApiService {
     int? attStatus,
     String? country,
   }) async {
+    String? appVersion;
+    int? appBuildNumber;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      appVersion = info.version;
+      appBuildNumber = int.tryParse(info.buildNumber);
+    } catch (_) {}
     try {
       final requestData = {
         'apple_id':      appleId,
@@ -233,6 +249,8 @@ class ApiService {
         'idfa':          idfa,
         'att_status':    attStatus,
         'country':       country,
+        if (appVersion != null) 'app_version': appVersion,
+        if (appBuildNumber != null) 'app_build_number': appBuildNumber,
       };
       print('📤 [API] 发送 Apple 登录请求到后端: $requestData');
       final response = await _dio.post(

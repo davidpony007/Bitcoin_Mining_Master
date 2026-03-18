@@ -507,7 +507,7 @@ exports.googleLoginOrCreate = async (req, res) => {
     // 添加原始请求体日志
     console.log('🔍 [RAW] req.body:', JSON.stringify(req.body, null, 2));
     
-const { google_id, google_account, google_name, gaid, country, system } = req.body;
+const { google_id, google_account, google_name, gaid, country, system, app_version, app_build_number } = req.body;
     // 兼容 Flutter 发送的 device_id（iOS/Android 通用）和旧字段名 android_id
     const android_id = req.body.android_id || req.body.device_id || null;
 
@@ -609,6 +609,12 @@ const { google_id, google_account, google_name, gaid, country, system } = req.bo
         }
       }
       
+      if (!user.system) {
+        updateData.system = system || (android_id && android_id.trim().startsWith('IOS_') ? 'iOS' : 'Android');
+      }
+      if (app_version) updateData.app_version = app_version;
+      if (app_build_number != null) updateData.app_build_number = app_build_number;
+
       if (Object.keys(updateData).length > 0) {
         await user.update(updateData);
       }
@@ -660,8 +666,16 @@ const { google_id, google_account, google_name, gaid, country, system } = req.bo
         country_code: detectedCountry ? detectedCountry.trim() : null,
         country_name_cn: countryNameCn,
         country_multiplier: countryMultiplier,
-          miner_level_multiplier: 1.00,
-          system: system || (finalAndroidId && finalAndroidId.startsWith('IOS_') ? 'iOS' : 'Android')
+        miner_level_multiplier: 1.00,
+        system: system || (finalAndroidId && finalAndroidId.startsWith('IOS_') ? 'iOS' : 'Android'),
+        app_version: app_version || null,
+        app_build_number: app_build_number || null,
+      });
+      isNewUser = true;
+      try {
+        const UserStatus = require('../models/userStatus');
+        await UserStatus.create({
+          user_id: user.user_id,
           total_invitation_rebate: 0,
           total_withdrawal_amount: 0,
           last_login_time: new Date(),
@@ -1689,7 +1703,7 @@ exports.emailLogin = async (req, res) => {
  */
 exports.appleLoginOrCreate = async (req, res) => {
   try {
-    const { apple_id, apple_account, apple_name, ios_device_id, idfv, idfa, att_status, country } = req.body;
+    const { apple_id, apple_account, apple_name, ios_device_id, idfv, idfa, att_status, country, app_version, app_build_number } = req.body;
 
     console.log('🍎 [Apple Login/Create] Received request:');
     console.log('   - apple_id:', apple_id);
@@ -1778,6 +1792,10 @@ exports.appleLoginOrCreate = async (req, res) => {
           }
         } catch (_) {}
       }
+      if (!user.system) updateData.system = 'iOS';
+      if (app_version) updateData.app_version = app_version;
+      if (app_build_number != null) updateData.app_build_number = app_build_number;
+
       if (Object.keys(updateData).length > 0) await user.update(updateData);
 
     } else {
@@ -1816,6 +1834,8 @@ exports.appleLoginOrCreate = async (req, res) => {
         country: detectedCountry ? detectedCountry.trim() : null,
         country_multiplier: countryMultiplier,
         system: 'iOS',
+        app_version: app_version || null,
+        app_build_number: app_build_number || null,
       });
       isNewUser = true;
       console.log(`   ✅ Apple 新用户创建成功: ${user.user_id}`);
