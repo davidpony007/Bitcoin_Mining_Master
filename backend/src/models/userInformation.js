@@ -139,6 +139,12 @@ const UserInformation = sequelize.define('user_information', {
     defaultValue: 0,
     comment: '累计广告观看次数'
   },
+  system: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    defaultValue: null,
+    comment: '客户端平台标识: Android 或 iOS'
+  },
   user_creation_time: { 
     type: DataTypes.DATE, 
     allowNull: false, 

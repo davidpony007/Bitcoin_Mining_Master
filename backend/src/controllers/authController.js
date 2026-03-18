@@ -137,24 +137,28 @@ exports.deviceLogin = async (req, res) => {
     // 🔧 使用 findOrCreate 原子操作（防止并发重复创建）
     const { user_id, invitation_code } = generateUserIds();
     
-    const [user, created] = await UserInformation.findOrCreate({
-      where: { 
-        android_id: android_id.trim() 
-      },
-      defaults: {
-        user_id,
-        invitation_code,
-        email: email || null,
-        google_account: null,
-        android_id: android_id.trim(),
-        gaid: gaid || null,
-        register_ip,
-        country_code: detectedCountry || null,
-        country_name_cn: countryNameCn,
-        country_multiplier: countryMultiplier,
-        miner_level_multiplier: 1.00,
-        app_version: app_version || null,
-        app_build_number: app_build_number || null
+// 根据 android_id 前缀判断平台（iOS 设备 ID 以 IOS_ 开头）
+      const detectedSystem = android_id.trim().startsWith('IOS_') ? 'iOS' : 'Android';
+
+      const [user, created] = await UserInformation.findOrCreate({
+        where: { 
+          android_id: android_id.trim() 
+        },
+        defaults: {
+          user_id,
+          invitation_code,
+          email: email || null,
+          google_account: null,
+          android_id: android_id.trim(),
+          gaid: gaid || null,
+          register_ip,
+          country_code: detectedCountry || null,
+          country_name_cn: countryNameCn,
+          country_multiplier: countryMultiplier,
+          miner_level_multiplier: 1.00,
+          app_version: app_version || null,
+          app_build_number: app_build_number || null,
+          system: detectedSystem
       }
     });
 
@@ -503,7 +507,7 @@ exports.googleLoginOrCreate = async (req, res) => {
     // 添加原始请求体日志
     console.log('🔍 [RAW] req.body:', JSON.stringify(req.body, null, 2));
     
-    const { google_id, google_account, google_name, gaid, country } = req.body;
+const { google_id, google_account, google_name, gaid, country, system } = req.body;
     // 兼容 Flutter 发送的 device_id（iOS/Android 通用）和旧字段名 android_id
     const android_id = req.body.android_id || req.body.device_id || null;
 
@@ -656,18 +660,8 @@ exports.googleLoginOrCreate = async (req, res) => {
         country_code: detectedCountry ? detectedCountry.trim() : null,
         country_name_cn: countryNameCn,
         country_multiplier: countryMultiplier,
-        miner_level_multiplier: 1.00
-      });
-
-      isNewUser = true;
-      console.log(`   ✅ 新用户创建成功: ${user.user_id}`);
-
-      // 初始化用户状态
-      try {
-        await UserStatus.create({
-          user_id: user.user_id,
-          bitcoin_accumulated_amount: 0,
-          current_bitcoin_balance: 0,
+          miner_level_multiplier: 1.00,
+          system: system || (finalAndroidId && finalAndroidId.startsWith('IOS_') ? 'iOS' : 'Android')
           total_invitation_rebate: 0,
           total_withdrawal_amount: 0,
           last_login_time: new Date(),
@@ -1821,6 +1815,7 @@ exports.appleLoginOrCreate = async (req, res) => {
         register_ip,
         country: detectedCountry ? detectedCountry.trim() : null,
         country_multiplier: countryMultiplier,
+        system: 'iOS',
       });
       isNewUser = true;
       console.log(`   ✅ Apple 新用户创建成功: ${user.user_id}`);

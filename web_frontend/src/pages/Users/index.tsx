@@ -16,6 +16,7 @@ interface UserRow {
   user_level: number;
   user_points: number;
   total_ad_views: number;
+  system: string | null;
   user_status: string | null;
   last_login_time: string | null;
   user_creation_time: string;
@@ -72,6 +73,10 @@ const Users: React.FC = () => {
     { title: '等级', dataIndex: 'user_level', key: 'user_level', width: 70 },
     { title: '积分', dataIndex: 'user_points', key: 'user_points', width: 80 },
     { title: '广告观看', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 90 },
+    {
+      title: '系统', dataIndex: 'system', key: 'system', width: 90,
+      render: (v: string) => v === 'iOS' ? <Tag color="blue">iOS</Tag> : v === 'Android' ? <Tag color="green">Android</Tag> : <Tag color="default">-</Tag>
+    },
     {
       title: '状态', dataIndex: 'user_status', key: 'user_status', width: 120,
       render: (v: string) => {

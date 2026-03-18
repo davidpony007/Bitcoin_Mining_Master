@@ -203,6 +203,7 @@ class _LoginScreenState extends State<LoginScreen> {
         deviceId: devicePayload['deviceId'],
         gaid: devicePayload['gaid'],
         country: devicePayload['country'],
+        system: Platform.isIOS ? 'iOS' : 'Android',
       );
 
       final responseData = response['data'];
@@ -413,9 +414,10 @@ class _LoginScreenState extends State<LoginScreen> {
         googleId: googleId,
         googleEmail: email,
         googleName: displayName ?? '',
-        androidId: androidId,
+        deviceId: androidId,
         gaid: gaid,
         country: country,
+        system: Platform.isIOS ? 'iOS' : 'Android',
       );
       print('🔍 Google登录/创建响应: $response');
 

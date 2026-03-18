@@ -176,6 +176,7 @@ class ApiService {
     String? deviceId,
     String? gaid,
     String? country,
+    String? system,
   }) async {
     try {
       final requestData = {
@@ -185,6 +186,7 @@ class ApiService {
         'device_id': deviceId,
         'gaid': gaid,
         'country': country,
+        if (system != null) 'system': system,
       };
       
       print('📤 [API] 发送Google登录请求到后端:');

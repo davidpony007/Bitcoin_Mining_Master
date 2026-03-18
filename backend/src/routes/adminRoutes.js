@@ -165,7 +165,7 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     );
     const [rows] = await conn.query(
       `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
-              ui.user_level, ui.user_points, ui.total_ad_views, ui.user_creation_time,
+              ui.user_level, ui.user_points, ui.total_ad_views, ui.system, ui.user_creation_time,
               us.user_status, us.last_login_time,
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount
        FROM user_information ui
