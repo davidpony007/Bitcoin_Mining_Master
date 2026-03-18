@@ -12,6 +12,9 @@ import Mining from './pages/Mining';
 import Points from './pages/Points';
 import Settings from './pages/Settings';
 import Withdrawal from './pages/Withdrawal';
+import DataCenter from './pages/DataCenter';
+import Dashboard from './pages/Dashboard';
+import Reports from './pages/Reports';
 
 const App: React.FC = () => {
   return (
@@ -21,19 +24,20 @@ const App: React.FC = () => {
       
       {/* 主应用 */}
       <Route path="/" element={<MainLayout />}>
-        <Route index element={<Navigate to="/analytics" replace />} />
-        <Route path="dashboard" element={<Navigate to="/analytics" replace />} />
-        <Route path="users" element={<Users />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="ads" element={<Ads />} />
-        <Route path="orders" element={<Orders />} />
-        <Route path="withdrawals" element={<Withdrawal />} />
-        <Route path="geography" element={<Geography />} />
-        <Route path="checkin" element={<CheckIn />} />
-        <Route path="mining" element={<Mining />} />
-        <Route path="points" element={<Points />} />
-        <Route path="datacenter" element={<Navigate to="/analytics" replace />} />
-        <Route path="settings" element={<Settings />} />
+        <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="users" element={<Users />} />
+          <Route path="analytics" element={<Analytics />} />
+          <Route path="ads" element={<Ads />} />
+          <Route path="orders" element={<Orders />} />
+          <Route path="withdrawals" element={<Withdrawal />} />
+          <Route path="geography" element={<Geography />} />
+          <Route path="checkin" element={<CheckIn />} />
+          <Route path="mining" element={<Mining />} />
+          <Route path="points" element={<Points />} />
+          <Route path="datacenter" element={<DataCenter />} />
+          <Route path="reports" element={<Reports />} />
+          <Route path="settings" element={<Settings />} />
       </Route>
       
       {/* 404 */}

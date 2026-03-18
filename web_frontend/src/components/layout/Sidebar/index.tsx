@@ -12,6 +12,9 @@ import {
   TrophyOutlined,
   SettingOutlined,
   WalletOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import './styles.css';
 
@@ -24,9 +27,19 @@ const Sidebar: React.FC = () => {
 
   const menuItems = [
     {
+      key: '/dashboard',
+      icon: <DashboardOutlined />,
+      label: '总览仪表盘',
+    },
+    {
       key: '/analytics',
       icon: <BarChartOutlined />,
       label: '数据分析',
+    },
+    {
+      key: '/datacenter',
+      icon: <DatabaseOutlined />,
+      label: '数据中心',
     },
     {
       key: '/withdrawals',
@@ -67,6 +80,11 @@ const Sidebar: React.FC = () => {
       key: '/points',
       icon: <TrophyOutlined />,
       label: '积分系统',
+    },
+    {
+      key: '/reports',
+      icon: <FileTextOutlined />,
+      label: '报表导出',
     },
     {
       key: '/settings',

@@ -240,7 +240,7 @@ router.post('/request', authenticateToken, async (req, res) => {
 
 /**
  * GET /api/withdrawal/history
- * 查询用户提现历史记录
+ * 查询用户提现历史记录（需登录，只能查看自己的记录）
  * 
  * Query参数:
  * - userId: 用户ID(必需)
@@ -248,7 +248,7 @@ router.post('/request', authenticateToken, async (req, res) => {
  * - limit: 每页记录数(默认20)
  * - offset: 偏移量(默认0)
  */
-router.get('/history', async (req, res) => {
+router.get('/history', authenticateToken, async (req, res) => {
   try {
     const { userId, status, limit = 20, offset = 0 } = req.query;
 
@@ -256,6 +256,14 @@ router.get('/history', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'userId is required'
+      });
+    }
+
+    // 确保只能查看自己的记录（管理员可查任意用户）
+    if (req.user.role !== 'admin' && String(req.user.id) !== String(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: cannot access other users\' withdrawal history'
       });
     }
 
@@ -314,17 +322,32 @@ router.get('/history', async (req, res) => {
 
 /**
  * GET /api/withdrawal/:id
- * 查询单个提现记录详情
+ * 查询单个提现记录详情（需登录，只能查看自己的记录）
  */
-router.get('/:id', async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId } = req.query; // 验证用户身份
+    const { userId } = req.query;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId is required'
+      });
+    }
+
+    // 确保只能查看自己的记录（管理员可查任意记录）
+    if (req.user.role !== 'admin' && String(req.user.id) !== String(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: cannot access other users\' withdrawal records'
+      });
+    }
 
     const withdrawal = await WithdrawalRecord.findOne({
       where: { 
         id: id,
-        ...(userId && { user_id: userId }) // 可选的用户验证
+        user_id: userId // 强制验证记录归属
       }
     });
 
@@ -606,10 +629,8 @@ router.post('/admin/bulk-reject', authenticateToken, requireAdmin, async (req, r
       // 退还余额
       const userStatus = await UserStatus.findOne({ where: { user_id: withdrawal.user_id }, transaction });
       if (userStatus) {
-        const newBalance = parseFloat(userStatus.bitcoin_balance || 0) + parseFloat(withdrawal.withdrawal_request_amount || 0);
-        await userStatus.update({ bitcoin_balance: newBalance }, { transaction });
-      }
-
+          const newBalance = parseFloat(userStatus.current_bitcoin_balance || 0) + parseFloat(withdrawal.withdrawal_request_amount || 0);
+          await userStatus.update({ current_bitcoin_balance: newBalance }, { transaction });
       await withdrawal.update({
         withdrawal_status: 'rejected',
         reject_reason: rejectReason,
