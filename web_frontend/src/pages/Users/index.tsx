@@ -38,16 +38,17 @@ const Users: React.FC = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('');
+  const [systemFilter, setSystemFilter] = useState<string>('');
   const [stats, setStats] = useState<any>({});
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
     setColWidths(prev => ({ ...prev, [key]: size.width }));
   };
 
-  const loadList = useCallback(async (p = page, s = search, st = status) => {
+  const loadList = useCallback(async (p = page, s = search, st = status, sys = systemFilter) => {
     try {
       setLoading(true);
-      const res = await usersApi.list({ page: p, limit: 20, search: s || undefined, status: st || undefined });
+      const res = await usersApi.list({ page: p, limit: 20, search: s || undefined, status: st || undefined, system: sys || undefined });
       if (res?.success) {
         setList(res.data.list);
         setTotal(res.data.total);
@@ -57,14 +58,14 @@ const Users: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, status]);
+  }, [page, search, status, systemFilter]);
 
   useEffect(() => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
     loadList(1, '', '');
   }, []);
 
-  const handleSearch = () => { setPage(1); loadList(1, search, status); };
+  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter); };
 
   const columns: ColumnsType<UserRow> = [
     { title: 'User ID', dataIndex: 'user_id', key: 'user_id', width: 160, ellipsis: true },
@@ -109,6 +110,12 @@ const Users: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card><Statistic title="本周新增" value={stats.newThisWeek ?? 0} prefix={<RiseOutlined />} suffix="人" valueStyle={{ color: '#722ed1' }} /></Card>
         </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title="iOS 用户" value={stats.iosCount ?? 0} suffix="人" valueStyle={{ color: '#1890ff' }} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title="Android 用户" value={stats.androidCount ?? 0} suffix="人" valueStyle={{ color: '#52c41a' }} /></Card>
+        </Col>
       </Row>
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>
@@ -120,7 +127,11 @@ const Users: React.FC = () => {
             onChange={e => setSearch(e.target.value)}
             onPressEnter={handleSearch}
           />
-          <Select placeholder="用户状态" style={{ width: 160 }} value={status || undefined} allowClear onChange={v => { setStatus(v || ''); setPage(1); loadList(1, search, v || ''); }}>
+          <Select placeholder="系统平台" style={{ width: 140 }} value={systemFilter || undefined} allowClear onChange={v => { setSystemFilter(v || ''); setPage(1); loadList(1, search, status, v || ''); }}>
+            <Option value="iOS">iOS</Option>
+            <Option value="Android">Android</Option>
+          </Select>
+          <Select placeholder="用户状态" style={{ width: 160 }} value={status || undefined} allowClear onChange={v => { setStatus(v || ''); setPage(1); loadList(1, search, v || '', systemFilter); }}>
             <Option value="active within 3 days">近3天活跃</Option>
             <Option value="no login within 7 days">7天未登录</Option>
             <Option value="normal">正常</Option>
@@ -134,7 +145,7 @@ const Users: React.FC = () => {
           dataSource={list}
           rowKey="user_id"
           loading={loading}
-          pagination={{ total, current: page, pageSize: 20, showSizeChanger: false, showQuickJumper: true, onChange: p => { setPage(p); loadList(p, search, status); } }}
+          pagination={{ total, current: page, pageSize: 20, showSizeChanger: false, showQuickJumper: true, onChange: p => { setPage(p); loadList(p, search, status, systemFilter); } }}
         />
       </Card>
     </div>

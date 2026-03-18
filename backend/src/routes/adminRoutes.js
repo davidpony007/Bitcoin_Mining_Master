@@ -154,18 +154,20 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     const offset = (page - 1) * limit;
     const search = req.query.search ? `%${req.query.search}%` : null;
     const status = req.query.status || null;
+    const system = req.query.system || null;
 
     let where = 'WHERE 1=1';
     const params = [];
     if (search) { where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ?)'; params.push(search, search, search); }
     if (status) { where += ' AND us.user_status = ?'; params.push(status); }
+    if (system) { where += ' AND ui.`system` = ?'; params.push(system); }
 
     const [[{ total }]] = await conn.query(
       `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
     );
     const [rows] = await conn.query(
       `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
-              ui.user_level, ui.user_points, ui.total_ad_views, ui.system, ui.user_creation_time,
+              ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.user_creation_time,
               us.user_status, us.last_login_time,
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount
        FROM user_information ui
@@ -194,7 +196,9 @@ router.get('/users/stats', authenticateToken, requireAdmin, async (req, res) => 
     const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_status WHERE user_status = 'active within 3 days'");
     const [[todayRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE DATE(user_creation_time) = CURDATE()');
     const [[weekRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
-    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt } });
+    const [[iosRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE `system` = 'iOS'");
+    const [[androidRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE `system` = 'Android'");
+    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt, iosCount: iosRow.cnt, androidCount: androidRow.cnt } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
