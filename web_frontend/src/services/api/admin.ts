@@ -17,7 +17,7 @@ export const dashboardApi = {
 
 export const usersApi = {
   /** 分页用户列表 */
-  list: (params: { page?: number; limit?: number; search?: string; status?: string; system?: string }) =>
+  list: (params: { page?: number; limit?: number; search?: string; status?: string; system?: string; acquisition?: string }) =>
     request.get('/admin/users/list', { params }),
   /** 用户统计概要 */
   stats: () => request.get('/admin/users/stats'),

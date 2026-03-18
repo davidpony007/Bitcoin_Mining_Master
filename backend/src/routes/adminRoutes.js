@@ -161,13 +161,18 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     if (search) { where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ?)'; params.push(search, search, search); }
     if (status) { where += ' AND us.user_status = ?'; params.push(status); }
     if (system) { where += ' AND ui.`system` = ?'; params.push(system); }
+    const acquisition = req.query.acquisition || null;
+    if (acquisition) {
+      if (acquisition === 'paid') { where += ' AND ui.acquisition_channel LIKE ?'; params.push('paid_%'); }
+      else { where += ' AND ui.acquisition_channel = ?'; params.push(acquisition); }
+    }
 
     const [[{ total }]] = await conn.query(
       `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
     );
     const [rows] = await conn.query(
       `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
-              ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.user_creation_time,
+              ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
               us.user_status, us.last_login_time,
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount
        FROM user_information ui
@@ -198,7 +203,10 @@ router.get('/users/stats', authenticateToken, requireAdmin, async (req, res) => 
     const [[weekRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
     const [[iosRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE `system` = 'iOS'");
     const [[androidRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE `system` = 'Android'");
-    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt, iosCount: iosRow.cnt, androidCount: androidRow.cnt } });
+    const [[invitedRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE acquisition_channel = 'invited'");
+    const [[organicRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE acquisition_channel = 'organic'");
+    const [[paidRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE acquisition_channel LIKE 'paid_%'");
+    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt, iosCount: iosRow.cnt, androidCount: androidRow.cnt, invitedCount: invitedRow.cnt, organicCount: organicRow.cnt, paidCount: paidRow.cnt } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {

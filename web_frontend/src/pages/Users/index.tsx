@@ -17,6 +17,7 @@ interface UserRow {
   user_points: number;
   total_ad_views: number;
   system: string | null;
+  acquisition_channel: string | null;
   user_status: string | null;
   last_login_time: string | null;
   user_creation_time: string;
@@ -39,16 +40,17 @@ const Users: React.FC = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('');
   const [systemFilter, setSystemFilter] = useState<string>('');
+  const [acquisitionFilter, setAcquisitionFilter] = useState<string>('');
   const [stats, setStats] = useState<any>({});
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
     setColWidths(prev => ({ ...prev, [key]: size.width }));
   };
 
-  const loadList = useCallback(async (p = page, s = search, st = status, sys = systemFilter) => {
+  const loadList = useCallback(async (p = page, s = search, st = status, sys = systemFilter, acq = acquisitionFilter) => {
     try {
       setLoading(true);
-      const res = await usersApi.list({ page: p, limit: 20, search: s || undefined, status: st || undefined, system: sys || undefined });
+      const res = await usersApi.list({ page: p, limit: 20, search: s || undefined, status: st || undefined, system: sys || undefined, acquisition: acq || undefined });
       if (res?.success) {
         setList(res.data.list);
         setTotal(res.data.total);
@@ -58,14 +60,14 @@ const Users: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, status, systemFilter]);
+  }, [page, search, status, systemFilter, acquisitionFilter]);
 
   useEffect(() => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
     loadList(1, '', '');
   }, []);
 
-  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter); };
+  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter); };
 
   const columns: ColumnsType<UserRow> = [
     { title: 'User ID', dataIndex: 'user_id', key: 'user_id', width: 160, ellipsis: true },
@@ -77,6 +79,15 @@ const Users: React.FC = () => {
     {
       title: '系统', dataIndex: 'system', key: 'system', width: 90,
       render: (v: string) => v === 'iOS' ? <Tag color="blue">iOS</Tag> : v === 'Android' ? <Tag color="green">Android</Tag> : <Tag color="default">-</Tag>
+    },
+    {
+      title: '来源渠道', dataIndex: 'acquisition_channel', key: 'acquisition_channel', width: 100,
+      render: (v: string | null) => {
+        if (v === 'invited') return <Tag color="purple">邀请</Tag>;
+        if (v && v.startsWith('paid_')) return <Tag color="gold">付费</Tag>;
+        if (v === 'organic') return <Tag color="cyan">自然</Tag>;
+        return <Tag color="default">-</Tag>;
+      }
     },
     {
       title: '状态', dataIndex: 'user_status', key: 'user_status', width: 120,
@@ -116,6 +127,15 @@ const Users: React.FC = () => {
         <Col xs={24} sm={12} lg={6}>
           <Card><Statistic title="Android 用户" value={stats.androidCount ?? 0} suffix="人" valueStyle={{ color: '#52c41a' }} /></Card>
         </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title="邀请用户" value={stats.invitedCount ?? 0} suffix="人" valueStyle={{ color: '#722ed1' }} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title="自然用户" value={stats.organicCount ?? 0} suffix="人" valueStyle={{ color: '#13c2c2' }} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title="付费用户" value={stats.paidCount ?? 0} suffix="人" valueStyle={{ color: '#faad14' }} /></Card>
+        </Col>
       </Row>
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>
@@ -127,11 +147,16 @@ const Users: React.FC = () => {
             onChange={e => setSearch(e.target.value)}
             onPressEnter={handleSearch}
           />
-          <Select placeholder="系统平台" style={{ width: 140 }} value={systemFilter || undefined} allowClear onChange={v => { setSystemFilter(v || ''); setPage(1); loadList(1, search, status, v || ''); }}>
+          <Select placeholder="系统平台" style={{ width: 140 }} value={systemFilter || undefined} allowClear onChange={v => { setSystemFilter(v || ''); setPage(1); loadList(1, search, status, v || '', acquisitionFilter); }}>
             <Option value="iOS">iOS</Option>
             <Option value="Android">Android</Option>
           </Select>
-          <Select placeholder="用户状态" style={{ width: 160 }} value={status || undefined} allowClear onChange={v => { setStatus(v || ''); setPage(1); loadList(1, search, v || '', systemFilter); }}>
+          <Select placeholder="来源渠道" style={{ width: 140 }} value={acquisitionFilter || undefined} allowClear onChange={v => { setAcquisitionFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, v || ''); }}>
+            <Option value="invited">邀请注册</Option>
+            <Option value="organic">自然安装</Option>
+            <Option value="paid">付费推广</Option>
+          </Select>
+          <Select placeholder="用户状态" style={{ width: 160 }} value={status || undefined} allowClear onChange={v => { setStatus(v || ''); setPage(1); loadList(1, search, v || '', systemFilter, acquisitionFilter); }}>
             <Option value="active within 3 days">近3天活跃</Option>
             <Option value="no login within 7 days">7天未登录</Option>
             <Option value="normal">正常</Option>
@@ -145,7 +170,7 @@ const Users: React.FC = () => {
           dataSource={list}
           rowKey="user_id"
           loading={loading}
-          pagination={{ total, current: page, pageSize: 20, showSizeChanger: false, showQuickJumper: true, onChange: p => { setPage(p); loadList(p, search, status, systemFilter); } }}
+          pagination={{ total, current: page, pageSize: 20, showSizeChanger: false, showQuickJumper: true, onChange: p => { setPage(p); loadList(p, search, status, systemFilter, acquisitionFilter); } }}
         />
       </Card>
     </div>

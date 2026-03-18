@@ -13,6 +13,25 @@ const jwt = require('jsonwebtoken');
 const geoip = require('geoip-lite');
 
 /**
+ * 判断用户来源渠道
+ * @param {string|null} referrerCode 推荐人邀请码
+ * @param {string|null} installReferrer Android Play Store 安装来源字符串 (utm_source=xxx&...)
+ * @returns {string} 'invited' | 'paid_xxx' | 'organic'
+ */
+function determineAcquisitionChannel(referrerCode, installReferrer) {
+  if (referrerCode && referrerCode.trim() !== '') return 'invited';
+  if (installReferrer && typeof installReferrer === 'string' && installReferrer.trim() !== '') {
+    try {
+      const p = new URLSearchParams(installReferrer);
+      const src = p.get('utm_source');
+      if (src) return `paid_${src.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40)}`;
+    } catch (_) {}
+    return 'paid_unknown';
+  }
+  return 'organic';
+}
+
+/**
  * 设备自动登录/注册
  * 用户首次打开APP时，通过android_id自动创建账号或登录
  * 
@@ -40,6 +59,7 @@ exports.deviceLogin = async (req, res) => {
     const {
       android_id,
       referrer_invitation_code,
+      install_referrer,
       gaid,
       country,
       email,
@@ -158,7 +178,8 @@ exports.deviceLogin = async (req, res) => {
           miner_level_multiplier: 1.00,
           app_version: app_version || null,
           app_build_number: app_build_number || null,
-          system: detectedSystem
+          system: detectedSystem,
+          acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer)
       }
     });
 
@@ -507,7 +528,7 @@ exports.googleLoginOrCreate = async (req, res) => {
     // 添加原始请求体日志
     console.log('🔍 [RAW] req.body:', JSON.stringify(req.body, null, 2));
     
-const { google_id, google_account, google_name, gaid, country, system, app_version, app_build_number } = req.body;
+const { google_id, google_account, google_name, gaid, country, system, app_version, app_build_number, referrer_invitation_code, install_referrer } = req.body;
     // 兼容 Flutter 发送的 device_id（iOS/Android 通用）和旧字段名 android_id
     const android_id = req.body.android_id || req.body.device_id || null;
 
@@ -670,6 +691,7 @@ const { google_id, google_account, google_name, gaid, country, system, app_versi
         system: system || (finalAndroidId && finalAndroidId.startsWith('IOS_') ? 'iOS' : 'Android'),
         app_version: app_version || null,
         app_build_number: app_build_number || null,
+        acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer),
       });
       isNewUser = true;
       try {
@@ -1414,7 +1436,7 @@ exports.activateAdFreeContract = async (req, res) => {
  */
 exports.emailRegister = async (req, res) => {
   try {
-    const { email, password, referrer_invitation_code } = req.body;
+    const { email, password, referrer_invitation_code, install_referrer } = req.body;
 
     // Validate required fields
     if (!email || !password) {
@@ -1492,7 +1514,8 @@ exports.emailRegister = async (req, res) => {
       invitation_code,
       email: email.toLowerCase(),
       password: hashedPassword,
-      register_ip
+      register_ip,
+      acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer),
     });
 
     console.log('✅ [Email Register] 用户创建成功:', user_id);
@@ -1703,7 +1726,7 @@ exports.emailLogin = async (req, res) => {
  */
 exports.appleLoginOrCreate = async (req, res) => {
   try {
-    const { apple_id, apple_account, apple_name, ios_device_id, idfv, idfa, att_status, country, app_version, app_build_number } = req.body;
+    const { apple_id, apple_account, apple_name, ios_device_id, idfv, idfa, att_status, country, app_version, app_build_number, referrer_invitation_code, install_referrer } = req.body;
 
     console.log('🍎 [Apple Login/Create] Received request:');
     console.log('   - apple_id:', apple_id);
@@ -1836,6 +1859,7 @@ exports.appleLoginOrCreate = async (req, res) => {
         system: 'iOS',
         app_version: app_version || null,
         app_build_number: app_build_number || null,
+        acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer),
       });
       isNewUser = true;
       console.log(`   ✅ Apple 新用户创建成功: ${user.user_id}`);

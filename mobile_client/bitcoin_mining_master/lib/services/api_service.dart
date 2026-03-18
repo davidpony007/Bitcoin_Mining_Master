@@ -59,6 +59,7 @@ class ApiService {
   Future<DeviceLoginResponse> deviceLogin({
     required String deviceId,
     String? referrerInvitationCode,
+    String? installReferrer, // Android Play Store install referrer (utm_source=xxx&...)
     String? gaid,
     String? country,
     String? email,
@@ -78,6 +79,7 @@ class ApiService {
       'android_id': deviceId,
       if (referrerInvitationCode != null)
         'referrer_invitation_code': referrerInvitationCode,
+      if (installReferrer != null) 'install_referrer': installReferrer,
       if (gaid != null) 'gaid': gaid,
       if (country != null) 'country': country,
       if (email != null) 'email': email,

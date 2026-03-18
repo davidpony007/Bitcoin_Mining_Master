@@ -145,6 +145,12 @@ const UserInformation = sequelize.define('user_information', {
     defaultValue: null,
     comment: '客户端平台标识: Android 或 iOS'
   },
+  acquisition_channel: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    defaultValue: null,
+    comment: '用户获取渠道: invited(邀请注册) | paid_xxx(付费推广) | organic(自然安装)'
+  },
   user_creation_time: { 
     type: DataTypes.DATE, 
     allowNull: false, 
