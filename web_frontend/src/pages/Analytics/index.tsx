@@ -1,285 +1,403 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, DatePicker, Select, Table, Space } from 'antd';
-import { ArrowUpOutlined, ArrowDownOutlined, UserOutlined, DollarOutlined, LineChartOutlined, FireOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Statistic, Select, Table, Space, Tabs, Button, DatePicker,
+         Typography } from 'antd';
+import {
+  UserOutlined, DollarOutlined, LineChartOutlined, FireOutlined,
+  BarChartOutlined, DatabaseOutlined, SearchOutlined, ExportOutlined,
+} from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import type { ColumnsType } from 'antd/es/table';
+import { Resizable } from 'react-resizable';
+import type { ResizeCallbackData } from 'react-resizable';
 import dayjs from 'dayjs';
+import 'react-resizable/css/styles.css';
+import { analyticsApi, dataCenterApi } from '@/services/api/admin';
 
-const { RangePicker } = DatePicker;
 const { Option } = Select;
+const { Text } = Typography;
 
-interface TrendData {
+// ─── 可调列宽组件 ────────────────────────────────────────────────
+const ResizableTitle = (
+  props: React.HTMLAttributes<any> & {
+    onResize: (e: React.SyntheticEvent<Element>, data: ResizeCallbackData) => void;
+    width: number;
+  }
+) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width} height={0}
+      handle={<span className="react-resizable-handle" onClick={(e) => e.stopPropagation()} />}
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} />
+    </Resizable>
+  );
+};
+
+// ─── 趋势分析 数据类型 ───────────────────────────────────────────
+interface TrendItem {
   date: string;
   users: number;
-  revenue: number;
   orders: number;
+  revenue: number;
+  checkins: number;
 }
 
-interface RankData {
-  rank: number;
+interface RankItem {
   country: string;
   users: number;
   revenue: number;
-  growth: number;
 }
 
-const Analytics: React.FC = () => {
-  const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month'>('week');
-  const [loading, setLoading] = useState(false);
+// ─── 每日汇总 数据类型 ───────────────────────────────────────────
+interface DailyRow {
+  date: string;
+  totalSpend: number;
+  googleSpend: number;
+  applovinSpend: number;
+  mintegralSpend: number;
+  adNewUsers: number;
+  newUsersM1: number;
+  newUsersM2: number;
+  newUsersM3: number;
+  totalNewUsers: number;
+  retentionRate: string | number;
+  retentionRatePct: string | number;
+  dau: number | string;
+  cpa: number;
+  adCpa: number;
+  subOrders: number;
+  subCost: number;
+  subRate: string;
+  salesAmount: number;
+  subRevenue: number;
+  arppu: number;
+  cancelCount: number;
+  cancelRate: string;
+  renewalCount: number;
+  renewalAmount: number;
+  renewalRevenue: number;
+  adCount: number;
+  adPerUser: number | string;
+  ecpm: number;
+  adRevenue: number;
+  playtimeRevenue: number;
+  totalRevenue: number;
+  btcSentAmount: number;
+  btcSentValue: number;
+  playtimeSentBtc: number;
+  playtimeSentValue: number;
+  btcAvgPrice: number | string;
+  withdrawalBtcAmount: number;
+  withdrawalBtcValue: number;
+  actualCost: number;
+  profitSent: number;
+  profitWithdraw: number;
+  roi: string;
+  roiWithdraw: string;
+}
+interface BtcSummary {
+  totalBtcBalance: number;
+  totalBtcBalanceUsd: string;
+  totalWithdrawn: number;
+  totalWithdrawnUsd: string;
+}
 
-  // 模拟数据
-  const trendData: TrendData[] = [
-    { date: '01-23', users: 1200, revenue: 45000, orders: 320 },
-    { date: '01-24', users: 1350, revenue: 48000, orders: 340 },
-    { date: '01-25', users: 1500, revenue: 52000, orders: 380 },
-    { date: '01-26', users: 1420, revenue: 49000, orders: 350 },
-    { date: '01-27', users: 1680, revenue: 58000, orders: 420 },
-    { date: '01-28', users: 1850, revenue: 62000, orders: 450 },
-    { date: '01-29', users: 2000, revenue: 68000, orders: 480 },
-  ];
+// ─── 趋势分析 Tab ────────────────────────────────────────────────
+const TrendTab: React.FC = () => {
+  const [timeRange, setTimeRange] = useState<number>(7);
+  const [trendData, setTrendData] = useState<TrendItem[]>([]);
+  const [rankData, setRankData] = useState<RankItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [rankColWidths, setRankColWidths] = useState<Record<string, number>>({});
+  const handleRankResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: ResizeCallbackData) => {
+    setRankColWidths(prev => ({ ...prev, [key]: size.width }));
+  };
 
-  const rankData: RankData[] = [
-    { rank: 1, country: '美国', users: 15420, revenue: 580000, growth: 12.5 },
-    { rank: 2, country: '中国', users: 12300, revenue: 450000, growth: 8.3 },
-    { rank: 3, country: '日本', users: 9800, revenue: 380000, growth: -2.1 },
-    { rank: 4, country: '英国', users: 8500, revenue: 320000, growth: 15.7 },
-    { rank: 5, country: '德国', users: 7200, revenue: 290000, growth: 6.2 },
-  ];
+  const fetchData = (days: number) => {
+    setLoading(true);
+    Promise.all([
+      analyticsApi.trend(days),
+      analyticsApi.countryRank(),
+    ]).then(([trendRes, rankRes]: any[]) => {
+      setTrendData(trendRes?.data || []);
+      setRankData(rankRes?.data || []);
+    }).catch(() => {}).finally(() => setLoading(false));
+  };
 
-  // 趋势图表配置
+  useEffect(() => { fetchData(timeRange); }, [timeRange]);
+
+  const totalUsers = trendData.reduce((s, d) => s + (Number(d.users) || 0), 0);
+  const totalOrders = trendData.reduce((s, d) => s + (Number(d.orders) || 0), 0);
+  const totalRevenue = trendData.reduce((s, d) => s + (Number(d.revenue) || 0), 0);
+  const totalCheckins = trendData.reduce((s, d) => s + (Number(d.checkins) || 0), 0);
+
   const getTrendOption = () => ({
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' }
-    },
-    legend: {
-      data: ['用户数', '收入', '订单数']
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: trendData.map(item => item.date)
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: '用户/订单',
-        position: 'left'
-      },
-      {
-        type: 'value',
-        name: '收入',
-        position: 'right'
-      }
-    ],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { data: ['新增用户', '订单数', '签到人次'] },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', boundaryGap: false, data: trendData.map(d => d.date) },
+    yAxis: { type: 'value' },
     series: [
-      {
-        name: '用户数',
-        type: 'line',
-        data: trendData.map(item => item.users),
-        smooth: true,
-        itemStyle: { color: '#1890ff' }
-      },
-      {
-        name: '收入',
-        type: 'line',
-        yAxisIndex: 1,
-        data: trendData.map(item => item.revenue),
-        smooth: true,
-        itemStyle: { color: '#52c41a' }
-      },
-      {
-        name: '订单数',
-        type: 'line',
-        data: trendData.map(item => item.orders),
-        smooth: true,
-        itemStyle: { color: '#faad14' }
-      }
+      { name: '新增用户', type: 'line', data: trendData.map(d => Number(d.users) || 0), smooth: true, itemStyle: { color: '#1890ff' } },
+      { name: '订单数', type: 'line', data: trendData.map(d => Number(d.orders) || 0), smooth: true, itemStyle: { color: '#52c41a' } },
+      { name: '签到人次', type: 'line', data: trendData.map(d => Number(d.checkins) || 0), smooth: true, itemStyle: { color: '#faad14' } },
     ]
   });
 
-  // 用户来源饼图
-  const getUserSourceOption = () => ({
-    tooltip: {
-      trigger: 'item',
-      formatter: '{a} <br/>{b}: {c} ({d}%)'
-    },
-    legend: {
-      orient: 'vertical',
-      left: 'left'
-    },
-    series: [
-      {
-        name: '用户来源',
-        type: 'pie',
-        radius: '50%',
-        data: [
-          { value: 3500, name: '自然流量' },
-          { value: 2800, name: '推广链接' },
-          { value: 2200, name: '社交媒体' },
-          { value: 1800, name: '搜索引擎' },
-          { value: 1200, name: '其他' }
-        ],
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: 'rgba(0, 0, 0, 0.5)'
-          }
-        }
-      }
-    ]
-  });
-
-  // 表格列定义
-  const columns: ColumnsType<RankData> = [
+  const rankCols: ColumnsType<RankItem> = [
     {
-      title: '排名',
-      dataIndex: 'rank',
-      key: 'rank',
-      width: 80,
-      render: (rank: number) => {
+      title: '排名', key: 'rank', width: rankColWidths['rank'] || 80,
+      render: (_: any, __: any, i: number) => {
         const colors = ['#ffd700', '#c0c0c0', '#cd7f32'];
-        return <span style={{ color: rank <= 3 ? colors[rank - 1] : undefined, fontWeight: 'bold' }}>
-          #{rank}
-        </span>;
-      }
+        return <span style={{ color: i < 3 ? colors[i] : undefined, fontWeight: 'bold' }}>#{i + 1}</span>;
+      },
+      onHeaderCell: () => ({ width: rankColWidths['rank'] || 80, onResize: handleRankResize('rank') }),
     },
     {
-      title: '国家/地区',
-      dataIndex: 'country',
-      key: 'country',
+      title: '国家/地区', dataIndex: 'country', key: 'country', width: rankColWidths['country'] || 150,
+      onHeaderCell: () => ({ width: rankColWidths['country'] || 150, onResize: handleRankResize('country') }),
     },
     {
-      title: '用户数',
-      dataIndex: 'users',
-      key: 'users',
-      render: (users: number) => users.toLocaleString()
+      title: '用户数', dataIndex: 'users', key: 'users', width: rankColWidths['users'] || 120,
+      render: (v: number) => (Number(v) || 0).toLocaleString(),
+      onHeaderCell: () => ({ width: rankColWidths['users'] || 120, onResize: handleRankResize('users') }),
     },
     {
-      title: '收入',
-      dataIndex: 'revenue',
-      key: 'revenue',
-      render: (revenue: number) => `$${revenue.toLocaleString()}`
+      title: '收入', dataIndex: 'revenue', key: 'revenue', width: rankColWidths['revenue'] || 120,
+      render: (v: number) => `$${(Number(v) || 0).toLocaleString()}`,
+      onHeaderCell: () => ({ width: rankColWidths['revenue'] || 120, onResize: handleRankResize('revenue') }),
+    },
+  ];
+
+  return (
+    <>
+      <Card style={{ marginBottom: 24 }}>
+        <Space size="large">
+          <span>时间范围：</span>
+          <Select value={timeRange} onChange={(v) => setTimeRange(v)} style={{ width: 120 }}>
+            <Option value={1}>今日</Option>
+            <Option value={7}>近 7 天</Option>
+            <Option value={30}>近 30 天</Option>
+          </Select>
+        </Space>
+      </Card>
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title={`新增用户（近${timeRange}天）`} value={totalUsers} prefix={<UserOutlined />} valueStyle={{ color: '#1890ff' }} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title={`订单数（近${timeRange}天）`} value={totalOrders} prefix={<LineChartOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title={`收入（近${timeRange}天）`} value={totalRevenue} prefix={<DollarOutlined />} precision={2} valueStyle={{ color: '#faad14' }} /></Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card><Statistic title={`签到人次（近${timeRange}天）`} value={totalCheckins} prefix={<FireOutlined />} valueStyle={{ color: '#722ed1' }} /></Card>
+        </Col>
+      </Row>
+
+      <Card title="数据趋势" style={{ marginBottom: 24 }}>
+        <ReactECharts option={getTrendOption()} style={{ height: 400 }} notMerge />
+      </Card>
+
+      <Card title="国家/地区排名（Top 20）" bordered={false}>
+        <Table
+          columns={rankCols}
+          components={{ header: { cell: ResizableTitle } }}
+          dataSource={rankData}
+          rowKey="country"
+          loading={loading}
+          pagination={false}
+        />
+      </Card>
+    </>
+  );
+};
+
+// ─── 每日汇总 Tab ────────────────────────────────────────────────
+const DailySummaryTab: React.FC = () => {
+  const [data, setData] = useState<DailyRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<BtcSummary | null>(null);
+  const [startDate, setStartDate] = useState<dayjs.Dayjs>(dayjs().subtract(6, 'day'));
+  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(dayjs().subtract(1, 'day'));
+  const [platform, setPlatform]   = useState('Android');
+  const [selectedRows, setSelectedRows] = useState<DailyRow[]>([]);
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const handleColResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: ResizeCallbackData) => {
+    setColWidths(prev => ({ ...prev, [key]: size.width }));
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res: any = await dataCenterApi.dailyReport(
+        startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), platform);
+      setData(res?.data || []);
+      setSummary(res?.summary || null);
+    } catch {}
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const exportCSV = () => {
+    const headers = ['日期','总消耗','Google','Axon','Mintegral','投放新增','邀请新增','自然量新增','总新增','次留数','次留率','DAU','CPA','投放CPA','首次订阅单数','首次订阅成本','首次订阅率','首次订阅金额','首次订阅实际收入','首次订阅用户平均订阅金额','取消订阅数','取消订阅率','续期数','续期金额','续期收入','广告数','人均广告数','ecpm','广告收入','总收入','送出BTC数量','送出价值','送币时单价','提现BTC数量','提现价值','成本(实际)','利润(送币后)','利润(提现后)','ROI(送币后)','ROI(提现后)'];
+    const rows = (selectedRows.length ? selectedRows : data).map(r =>
+      [r.date,r.totalSpend,r.googleSpend,r.applovinSpend,r.mintegralSpend,
+       r.adNewUsers,r.newUsersM1,r.newUsersM2,r.totalNewUsers,
+       r.retentionRate,r.retentionRatePct,r.dau,r.cpa,r.adCpa,r.subOrders,r.subCost,r.subRate,
+       r.salesAmount,r.subRevenue,r.arppu,r.cancelCount,r.cancelRate,r.renewalCount,r.renewalAmount,
+       r.renewalRevenue,r.adCount,r.adPerUser,r.ecpm,r.adRevenue,r.totalRevenue,
+       r.btcSentAmount,r.btcSentValue,r.btcAvgPrice,
+       r.withdrawalBtcAmount,r.withdrawalBtcValue,r.actualCost,r.profitSent,r.profitWithdraw,r.roi,r.roiWithdraw
+      ].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }));
+    a.download = `daily_report_${startDate.format('YYYYMMDD')}_${endDate.format('YYYYMMDD')}.csv`;
+    a.click();
+  };
+
+  const fmtN = (v: any) => (typeof v === 'number' ? v.toFixed(2) : v);
+
+  const baseColumns: ColumnsType<DailyRow> = [
+    { title: '日期',       dataIndex: 'date',          key: 'date',          fixed: 'left', width: 100,
+      render: (v: string) => <span style={{ fontWeight: v === '总计' ? 700 : undefined }}>{v}</span> },
+    { title: '总消耗',                   dataIndex: 'totalSpend',         key: 'totalSpend',         width: 88,  render: fmtN },
+    { title: 'Google',                  dataIndex: 'googleSpend',        key: 'googleSpend',        width: 88,  render: fmtN },
+    { title: 'Axon',                    dataIndex: 'applovinSpend',      key: 'applovinSpend',      width: 88,  render: fmtN },
+    { title: 'Mintegral',               dataIndex: 'mintegralSpend',     key: 'mintegralSpend',     width: 88,  render: fmtN },
+    { title: '投放新增',                 dataIndex: 'adNewUsers',         key: 'adNewUsers',         width: 80 },
+    { title: '邀请新增',                 dataIndex: 'newUsersM1',         key: 'newUsersM1',         width: 80 },
+    { title: '自然量新增',               dataIndex: 'newUsersM2',         key: 'newUsersM2',         width: 90 },
+    { title: '总新增',                   dataIndex: 'totalNewUsers',      key: 'totalNewUsers',      width: 70 },
+    { title: '次留数',                   dataIndex: 'retentionRate',      key: 'retentionRate',      width: 72 },
+    { title: '次留率',                   dataIndex: 'retentionRatePct',   key: 'retentionRatePct',   width: 72 },
+    { title: 'DAU',                     dataIndex: 'dau',                key: 'dau',                width: 70 },
+    { title: 'CPA',                     dataIndex: 'cpa',                key: 'cpa',                width: 70,  render: fmtN },
+    { title: '投放CPA',                  dataIndex: 'adCpa',              key: 'adCpa',              width: 80,  render: fmtN },
+    { title: '首次订阅单数',              dataIndex: 'subOrders',          key: 'subOrders',          width: 105 },
+    { title: '首次订阅成本',              dataIndex: 'subCost',            key: 'subCost',            width: 105, render: fmtN },
+    { title: '首次订阅率',               dataIndex: 'subRate',            key: 'subRate',            width: 90 },
+    { title: '首次订阅金额',              dataIndex: 'salesAmount',        key: 'salesAmount',        width: 105, render: fmtN },
+    { title: '首次订阅实际收入',           dataIndex: 'subRevenue',         key: 'subRevenue',         width: 120, render: fmtN },
+    { title: '首次订阅用户平均订阅金额',    dataIndex: 'arppu',              key: 'arppu',              width: 160, render: fmtN },
+    { title: '取消订阅数',               dataIndex: 'cancelCount',        key: 'cancelCount',        width: 90 },
+    { title: '取消订阅率',               dataIndex: 'cancelRate',         key: 'cancelRate',         width: 90 },
+    { title: '续期数',                   dataIndex: 'renewalCount',       key: 'renewalCount',       width: 70 },
+    { title: '续期金额',                 dataIndex: 'renewalAmount',      key: 'renewalAmount',      width: 80,  render: fmtN },
+    { title: '续期收入',                 dataIndex: 'renewalRevenue',     key: 'renewalRevenue',     width: 80,  render: fmtN },
+    { title: '广告数',                   dataIndex: 'adCount',            key: 'adCount',            width: 72 },
+    { title: '人均广告数',               dataIndex: 'adPerUser',          key: 'adPerUser',          width: 90,  render: fmtN },
+    { title: 'ecpm',                    dataIndex: 'ecpm',               key: 'ecpm',               width: 72,  render: fmtN },
+    { title: '广告收入',                 dataIndex: 'adRevenue',          key: 'adRevenue',          width: 80,  render: fmtN },
+    { title: '总收入',                   dataIndex: 'totalRevenue',       key: 'totalRevenue',       width: 80,  render: fmtN },
+    { title: '送出BTC数量',              dataIndex: 'btcSentAmount',      key: 'btcSentAmount',      width: 110, render: (v: any) => (typeof v === 'number' ? v.toFixed(8) : v) },
+    { title: '送出价值',                 dataIndex: 'btcSentValue',       key: 'btcSentValue',       width: 80,  render: fmtN },
+    { title: '送币时单价',               dataIndex: 'btcAvgPrice',        key: 'btcAvgPrice',        width: 90,  render: fmtN },
+    { title: '提现BTC数量',              dataIndex: 'withdrawalBtcAmount',key: 'withdrawalBtcAmount',width: 110, render: (v: any) => (typeof v === 'number' ? v.toFixed(8) : v) },
+    { title: '提现价值',                 dataIndex: 'withdrawalBtcValue', key: 'withdrawalBtcValue', width: 80,  render: fmtN },
+    { title: '成本(实际)',               dataIndex: 'actualCost',         key: 'actualCost',         width: 90,  render: fmtN },
+    { title: '利润(送币后)',              dataIndex: 'profitSent',         key: 'profitSent',         width: 100, render: fmtN },
+    { title: '利润(提现后)',              dataIndex: 'profitWithdraw',     key: 'profitWithdraw',     width: 100, render: fmtN },
+    { title: 'ROI(送币后)',              dataIndex: 'roi',                key: 'roi',                width: 90 },
+    { title: 'ROI(提现后)',              dataIndex: 'roiWithdraw',        key: 'roiWithdraw',        width: 90 },
+  ];
+
+  const columns = baseColumns.map(col => ({
+    ...col,
+    width: colWidths[col.key as string] ?? col.width,
+    onHeaderCell: (column: any) => ({
+      width: column.width,
+      onResize: handleColResize(col.key as string),
+    }),
+  }));
+
+  return (
+    <>
+      {/* 标题 + BTC 汇总 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>【每日统计（当日统计前一天的信息）】</span>
+        {summary && (
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
+            <span>
+              <Text type="secondary">用户总剩余BTC数量：</Text><Text strong>{summary.totalBtcBalance.toFixed(18)}</Text>
+              &nbsp;&nbsp;<Text type="secondary">用户总剩余BTC价值：</Text><Text strong>${summary.totalBtcBalanceUsd}</Text>
+            </span>
+            <span>
+              <Text type="secondary">用户总提现BTC数量：</Text><Text strong>{summary.totalWithdrawn.toFixed(18)}</Text>
+              &nbsp;&nbsp;<Text type="secondary">用户总提现BTC价值：</Text><Text strong>${summary.totalWithdrawnUsd}</Text>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 过滤栏 */}
+      <Card style={{ marginBottom: 10 }} bodyStyle={{ padding: '8px 16px' }}>
+        <Space wrap>
+          <span>搜索：</span>
+          <DatePicker value={startDate} onChange={d => d && setStartDate(d)} format="YYYYMMDD" style={{ width: 120 }} />
+          <DatePicker value={endDate}   onChange={d => d && setEndDate(d)}   format="YYYY-MM-DD" style={{ width: 130 }} />
+          <span>类型：</span>
+          <Select value={platform} onChange={setPlatform} style={{ width: 110 }}>
+            <Option value="Android">Android</Option>
+            <Option value="iOS">iOS</Option>
+          </Select>
+          <Button type="primary" icon={<SearchOutlined />} onClick={fetchData} />
+        </Space>
+      </Card>
+
+      {/* 操作按钮 */}
+      <Space style={{ marginBottom: 10 }}>
+        <Button onClick={fetchData}>缓存统计数据</Button>
+        <Button type="primary" icon={<ExportOutlined />} onClick={exportCSV}>导出数据</Button>
+      </Space>
+
+      {/* 表格 */}
+      <Table
+        rowSelection={{ onChange: (_: any, rows: DailyRow[]) => setSelectedRows(rows) }}
+        components={{ header: { cell: ResizableTitle } }}
+        columns={columns}
+        dataSource={data}
+        rowKey="date"
+        loading={loading}
+        scroll={{ x: 4200, y: 540 }}
+        pagination={{ pageSize: 100, pageSizeOptions: [10, 100], showSizeChanger: true, showTotal: t => `共 ${t} 条`, size: 'small' }}
+        size="small"
+        bordered
+        style={{ fontSize: 12 }}
+        rowClassName={r => r.date === '总计' ? 'total-row' : ''}
+      />
+
+    </>
+  );
+};
+
+// ─── 主组件 ──────────────────────────────────────────────────────
+const Analytics: React.FC = () => {
+  const tabItems = [
+    {
+      key: 'daily',
+      label: <span><DatabaseOutlined />每日汇总</span>,
+      children: <DailySummaryTab />,
     },
     {
-      title: '增长率',
-      dataIndex: 'growth',
-      key: 'growth',
-      render: (growth: number) => (
-        <span style={{ color: growth >= 0 ? '#52c41a' : '#ff4d4f' }}>
-          {growth >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-          {Math.abs(growth)}%
-        </span>
-      )
-    }
+      key: 'trend',
+      label: <span><BarChartOutlined />趋势分析</span>,
+      children: <TrendTab />,
+    },
   ];
 
   return (
     <div style={{ padding: '0 24px' }}>
       <h1 className="page-title">数据分析</h1>
-      
-      {/* 筛选器 */}
-      <Card style={{ marginBottom: 24 }}>
-        <Space size="large">
-          <span>时间范围：</span>
-          <Select value={timeRange} onChange={setTimeRange} style={{ width: 120 }}>
-            <Option value="day">今日</Option>
-            <Option value="week">本周</Option>
-            <Option value="month">本月</Option>
-          </Select>
-          <RangePicker 
-            defaultValue={[dayjs().subtract(7, 'day'), dayjs()]}
-            format="YYYY-MM-DD"
-          />
-        </Space>
-      </Card>
-
-      {/* 统计卡片 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="总用户数"
-              value={11270}
-              prefix={<UserOutlined />}
-              suffix={<span style={{ fontSize: 14, color: '#52c41a' }}>
-                <ArrowUpOutlined /> 12.5%
-              </span>}
-              valueStyle={{ color: '#3f8600' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="总收入"
-              value={2388000}
-              prefix={<DollarOutlined />}
-              suffix={<span style={{ fontSize: 14, color: '#52c41a' }}>
-                <ArrowUpOutlined /> 8.2%
-              </span>}
-              precision={2}
-              valueStyle={{ color: '#cf1322' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="日活跃用户"
-              value={2850}
-              prefix={<FireOutlined />}
-              suffix={<span style={{ fontSize: 14, color: '#ff4d4f' }}>
-                <ArrowDownOutlined /> 2.1%
-              </span>}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="转化率"
-              value={18.5}
-              prefix={<LineChartOutlined />}
-              suffix="%"
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 趋势图表 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} lg={16}>
-          <Card title="数据趋势" bordered={false}>
-            <ReactECharts option={getTrendOption()} style={{ height: 400 }} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card title="用户来源分布" bordered={false}>
-            <ReactECharts option={getUserSourceOption()} style={{ height: 400 }} />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 排名表格 */}
-      <Card title="地区排名" bordered={false}>
-        <Table
-          columns={columns}
-          dataSource={rankData}
-          rowKey="rank"
-          loading={loading}
-          pagination={false}
-        />
-      </Card>
+      <Tabs defaultActiveKey="daily" items={tabItems} size="large" style={{ marginTop: -8 }} />
     </div>
   );
 };

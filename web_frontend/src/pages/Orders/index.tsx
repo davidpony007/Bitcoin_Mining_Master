@@ -1,364 +1,336 @@
-import React, { useState } from 'react';
-import { Card, Table, Button, Space, Tag, Input, Select, DatePicker, Row, Col, Statistic, Modal, Descriptions } from 'antd';
-import { ShoppingOutlined, DollarOutlined, CheckCircleOutlined, CloseCircleOutlined, EyeOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Table, Button, Space, Input, Select, Modal, Form, message, DatePicker, Tag, Descriptions,
+} from 'antd';
+import { DeleteOutlined, PlusOutlined, ExportOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import ReactECharts from 'echarts-for-react';
+import { Resizable } from 'react-resizable';
+import type { ResizeCallbackData } from 'react-resizable';
+import dayjs from 'dayjs';
+import 'react-resizable/css/styles.css';
+import { ordersApi } from '@/services/api/admin';
 
-const { Search } = Input;
 const { Option } = Select;
-const { RangePicker } = DatePicker;
 
-interface OrderData {
-  id: string;
-  userId: string;
-  userName: string;
-  type: string;
-  amount: number;
-  status: 'pending' | 'completed' | 'failed' | 'refunded';
-  payMethod: string;
-  createTime: string;
-  completeTime?: string;
+// ─── 可调列宽标题组件 ─────────────────────────────────────────────
+const ResizableTitle = (
+  props: React.HTMLAttributes<any> & {
+    onResize: (e: React.SyntheticEvent<Element>, data: ResizeCallbackData) => void;
+    width: number;
+  }
+) => {
+  const { onResize, width, ...rest } = props;
+  if (!width) return <th {...rest} />;
+  return (
+    <Resizable width={width} height={0}
+      handle={<span className="react-resizable-handle" onClick={e => e.stopPropagation()} />}
+      onResize={onResize} draggableOpts={{ enableUserSelectHack: false }}>
+      <th {...rest} />
+    </Resizable>
+  );
+};
+
+interface OrderRow {
+  id: number;
+  user_id: string;
+  email: string;
+  google_account: string | null;
+  product_id: string;
+  product_name: string;
+  product_price: string;
+  order_status: string;
+  order_creation_time: string;
+  payment_time: string | null;
+  currency_type: string;
+  country_code: string | null;
+  payment_gateway_id: string;
+  payment_network_id: string;
 }
 
+const PRODUCTS = [
+  { id: 'p0499', name: 'contract_4.99',  price: '4.99'  },
+  { id: 'p0699', name: 'contract_6.99',  price: '6.99'  },
+  { id: 'p0999', name: 'contract_9.99',  price: '9.99'  },
+  { id: 'p1999', name: 'contract_19.99', price: '19.99' },
+  { id: 'p4999', name: 'contract_49.99', price: '49.99' },
+  { id: 'p9999', name: 'contract_99.99', price: '99.99' },
+];
+
+const fmtTime = (v: string | null) =>
+  v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-';
+
+const statusMap: Record<string, { label: string; color: string }> = {
+  active:                        { label: '激活中',   color: 'blue'    },
+  renewing:                      { label: '续费中',   color: 'cyan'    },
+  complete:                      { label: '已完成',   color: 'green'   },
+  error:                         { label: '错误',     color: 'red'     },
+  'refund request in progress':  { label: '退款中',   color: 'orange'  },
+  'refund successful':           { label: '已退款',   color: 'default' },
+  'refund rejected':             { label: '退款拒绝', color: 'volcano' },
+};
+
 const Orders: React.FC = () => {
-  const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [loading, setLoading]       = useState(false);
+  const [list, setList]             = useState<OrderRow[]>([]);
+  const [total, setTotal]           = useState(0);
+  const [page, setPage]             = useState(1);
+  const [pageSize, setPageSize]     = useState(10);
+  const [uid, setUid]               = useState('');
+  const [platform, setPlatform]     = useState('');
+  const [startDate, setStartDate]   = useState<dayjs.Dayjs>(dayjs().subtract(6, 'day'));
+  const [endDate, setEndDate]       = useState<dayjs.Dayjs>(dayjs());
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
+  const [addVisible, setAddVisible]       = useState(false);
+  const [selected, setSelected]     = useState<OrderRow | null>(null);
+  const [addForm]                   = Form.useForm();
+  const [colWidths, setColWidths]   = useState<Record<string, number>>({});
+  const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: ResizeCallbackData) => {
+    setColWidths(prev => ({ ...prev, [key]: size.width }));
+  };
 
-  const ordersData: OrderData[] = [
+  const fetchList = useCallback(async (
+    p: number, ps: number, u: string, pl: string, sd: string, ed: string
+  ) => {
+    setLoading(true);
+    try {
+      const res: any = await ordersApi.list({
+        page: p, limit: ps,
+        uid: u || undefined,
+        platform: pl || undefined,
+        startDate: sd || undefined,
+        endDate: ed || undefined,
+      });
+      if (res?.success) { setList(res.data.list); setTotal(res.data.total); }
+    } catch { message.error('加载订单失败'); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchList(1, 10, '', '', dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD'));
+  }, []);
+
+  const doSearch = () => {
+    setPage(1); setSelectedIds([]);
+    fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) { message.warning('请先选择要删除的订单'); return; }
+    Modal.confirm({
+      title: `确认删除 ${selectedIds.length} 条订单？`,
+      okText: '确认删除', okType: 'danger', cancelText: '取消',
+      onOk: async () => {
+        try {
+          await ordersApi.bulkDelete(selectedIds);
+          message.success('删除成功');
+          setSelectedIds([]);
+          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+        } catch { message.error('删除失败'); }
+      },
+    });
+  };
+
+  const handleDelete = (id: number) => {
+    Modal.confirm({
+      title: '确认删除该订单？', okText: '确认删除', okType: 'danger', cancelText: '取消',
+      onOk: async () => {
+        try {
+          await ordersApi.deleteOne(id);
+          message.success('删除成功');
+          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+        } catch { message.error('删除失败'); }
+      },
+    });
+  };
+
+  const handleAdd = async (values: any) => {
+    try {
+      const product = PRODUCTS.find(p => p.id === values.product_id)!;
+      await ordersApi.add({
+        ...values,
+        product_name: product.name,
+        product_price: product.price,
+        payment_time: values.payment_time ? values.payment_time.format('YYYY-MM-DD HH:mm:ss') : null,
+      });
+      message.success('添加成功');
+      setAddVisible(false);
+      addForm.resetFields();
+      fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+    } catch { message.error('添加失败'); }
+  };
+
+  const exportCSV = () => {
+    const headers = ['ID', '用户ID', '标题', '订单号', '实付金额', '国家', '流水号', '支付时间', '创建时间'];
+    const rows = list.map(r => [
+      r.id, r.user_id, r.product_name, r.payment_network_id, r.product_price,
+      r.country_code || '', r.payment_gateway_id, fmtTime(r.payment_time), fmtTime(r.order_creation_time),
+    ].join(','));
+    const csv = [headers.join(','), ...rows].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }));
+    a.download = `orders_${dayjs().format('YYYYMMDD')}.csv`;
+    a.click();
+  };
+
+  const baseColumns: ColumnsType<OrderRow> = [
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 90, fixed: 'left' },
+    { title: '用户id', dataIndex: 'user_id', key: 'user_id', width: 110 },
+    { title: '标题', dataIndex: 'product_name', key: 'product_name', width: 180 },
+    { title: '订单号', dataIndex: 'payment_network_id', key: 'payment_network_id', width: 200, ellipsis: true },
     {
-      id: 'ORD20260129001',
-      userId: 'user_10001',
-      userName: 'Alice Chen',
-      type: '购买算力',
-      amount: 299.00,
-      status: 'completed',
-      payMethod: '支付宝',
-      createTime: '2026-01-29 10:30:22',
-      completeTime: '2026-01-29 10:30:45'
+      title: '实付金额', dataIndex: 'product_price', key: 'product_price', width: 90,
+      render: (v: string) => <span style={{ color: '#faad14', fontWeight: 600 }}>{v}</span>,
     },
+    { title: '国家', dataIndex: 'country_code', key: 'country_code', width: 70, render: (v: string | null) => v || '-' },
+    { title: '流水号', dataIndex: 'payment_gateway_id', key: 'payment_gateway_id', width: 200, ellipsis: true },
+    { title: '支付时间', dataIndex: 'payment_time', key: 'payment_time', width: 160, render: fmtTime },
+    { title: '创建时间', dataIndex: 'order_creation_time', key: 'order_creation_time', width: 160, render: fmtTime },
     {
-      id: 'ORD20260129002',
-      userId: 'user_10002',
-      userName: 'Bob Wang',
-      type: 'VIP会员',
-      amount: 999.00,
-      status: 'completed',
-      payMethod: '微信支付',
-      createTime: '2026-01-29 11:15:33',
-      completeTime: '2026-01-29 11:15:52'
+      title: '操作', key: 'action', width: 100, fixed: 'right',
+      render: (_: any, record: OrderRow) => (
+        <Space size={4}>
+          <Button size="small" type="link" icon={<EyeOutlined />}
+            onClick={() => { setSelected(record); setDetailVisible(true); }} />
+          <Button size="small" type="link" danger icon={<DeleteOutlined />}
+            onClick={() => handleDelete(record.id)} />
+        </Space>
+      ),
     },
-    {
-      id: 'ORD20260129003',
-      userId: 'user_10003',
-      userName: 'Carol Li',
-      type: '购买积分',
-      amount: 50.00,
-      status: 'pending',
-      payMethod: '支付宝',
-      createTime: '2026-01-29 12:20:10'
-    },
-    {
-      id: 'ORD20260129004',
-      userId: 'user_10004',
-      userName: 'David Zhang',
-      type: '购买算力',
-      amount: 599.00,
-      status: 'failed',
-      payMethod: '信用卡',
-      createTime: '2026-01-29 13:45:28'
-    },
-    {
-      id: 'ORD20260128001',
-      userId: 'user_10005',
-      userName: 'Eva Liu',
-      type: '续费会员',
-      amount: 199.00,
-      status: 'refunded',
-      payMethod: '微信支付',
-      createTime: '2026-01-28 15:30:00',
-      completeTime: '2026-01-28 16:20:00'
-    }
   ];
 
-  // 订单统计图表
-  const getOrderStatsChart = () => ({
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' }
-    },
-    legend: {
-      data: ['订单数', '交易额']
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: ['01-23', '01-24', '01-25', '01-26', '01-27', '01-28', '01-29']
-    },
-    yAxis: [
-      {
-        type: 'value',
-        name: '订单数',
-        position: 'left'
-      },
-      {
-        type: 'value',
-        name: '交易额',
-        position: 'right'
-      }
-    ],
-    series: [
-      {
-        name: '订单数',
-        type: 'bar',
-        data: [45, 52, 61, 58, 70, 65, 75],
-        itemStyle: { color: '#1890ff' }
-      },
-      {
-        name: '交易额',
-        type: 'line',
-        yAxisIndex: 1,
-        data: [12500, 15800, 18200, 16900, 21000, 19500, 22800],
-        smooth: true,
-        itemStyle: { color: '#52c41a' }
-      }
-    ]
+  const columns = baseColumns.map(col => {
+    const k = String((col as any).key ?? (col as any).dataIndex ?? '');
+    const w = colWidths[k] ?? (col as any).width ?? 120;
+    return { ...col, width: w, onHeaderCell: () => ({ width: w, onResize: handleResize(k) }) };
   });
-
-  const viewDetail = (record: OrderData) => {
-    setSelectedOrder(record);
-    setDetailVisible(true);
-  };
-
-  const columns: ColumnsType<OrderData> = [
-    {
-      title: '订单号',
-      dataIndex: 'id',
-      key: 'id',
-      width: 150,
-      fixed: 'left'
-    },
-    {
-      title: '用户',
-      dataIndex: 'userName',
-      key: 'userName',
-      width: 120,
-      render: (name, record) => (
-        <div>
-          <div>{name}</div>
-          <div style={{ fontSize: 12, color: '#999' }}>{record.userId}</div>
-        </div>
-      )
-    },
-    {
-      title: '订单类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120
-    },
-    {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      width: 120,
-      sorter: (a, b) => a.amount - b.amount,
-      render: (amount: number) => (
-        <span style={{ color: '#faad14', fontWeight: 'bold' }}>
-          ¥{amount.toFixed(2)}
-        </span>
-      )
-    },
-    {
-      title: '支付方式',
-      dataIndex: 'payMethod',
-      key: 'payMethod',
-      width: 100
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => {
-        const statusMap: Record<string, { label: string; color: string }> = {
-          pending: { label: '待支付', color: 'warning' },
-          completed: { label: '已完成', color: 'success' },
-          failed: { label: '失败', color: 'error' },
-          refunded: { label: '已退款', color: 'default' }
-        };
-        const config = statusMap[status];
-        return <Tag color={config.color}>{config.label}</Tag>;
-      }
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createTime',
-      key: 'createTime',
-      width: 170
-    },
-    {
-      title: '完成时间',
-      dataIndex: 'completeTime',
-      key: 'completeTime',
-      width: 170,
-      render: (time) => time || '-'
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 100,
-      fixed: 'right',
-      render: (_, record) => (
-        <Button 
-          size="small" 
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => viewDetail(record)}
-        >
-          详情
-        </Button>
-      )
-    }
-  ];
-
-  const totalStats = {
-    total: ordersData.length,
-    completed: ordersData.filter(o => o.status === 'completed').length,
-    amount: ordersData.filter(o => o.status === 'completed').reduce((sum, o) => sum + o.amount, 0),
-    pending: ordersData.filter(o => o.status === 'pending').length
-  };
 
   return (
     <div style={{ padding: '0 24px' }}>
       <h1 className="page-title">订单管理</h1>
-      
-      {/* 统计卡片 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="总订单数"
-              value={totalStats.total}
-              prefix={<ShoppingOutlined />}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="已完成"
-              value={totalStats.completed}
-              prefix={<CheckCircleOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="交易总额"
-              value={totalStats.amount}
-              precision={2}
-              prefix={<DollarOutlined />}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="待处理"
-              value={totalStats.pending}
-              prefix={<CloseCircleOutlined />}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
-        </Col>
-      </Row>
 
-      {/* 图表 */}
-      <Card title="订单趋势" style={{ marginBottom: 24 }}>
-        <ReactECharts option={getOrderStatsChart()} style={{ height: 300 }} />
-      </Card>
+      {/* 搜索栏 */}
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <span>搜索：</span>
+        <DatePicker value={startDate} onChange={d => d && setStartDate(d)}
+          format="YYYY-MM-DD" style={{ width: 130 }} allowClear={false} />
+        <DatePicker value={endDate} onChange={d => d && setEndDate(d)}
+          format="YYYY-MM-DD" style={{ width: 130 }} allowClear={false} />
+        <Input placeholder="请输入uid/show_id" value={uid} onChange={e => setUid(e.target.value)}
+          onPressEnter={doSearch} style={{ width: 200 }} allowClear />
+        <span>类型：</span>
+        <Select value={platform || '全部'} onChange={v => setPlatform(v === '全部' ? '' : v)} style={{ width: 110 }}>
+          <Option value="全部">全部</Option>
+          <Option value="iOS">iOS</Option>
+          <Option value="Android">Android</Option>
+        </Select>
+        <Button type="primary" icon={<SearchOutlined />} onClick={doSearch}
+          style={{ background: '#0dab9a', borderColor: '#0dab9a' }} />
+      </div>
 
-      {/* 筛选工具栏 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Search placeholder="搜索订单号/用户" style={{ width: 250 }} />
-          <Select 
-            value={statusFilter} 
-            onChange={setStatusFilter}
-            style={{ width: 120 }}
-          >
-            <Option value="all">全部状态</Option>
-            <Option value="pending">待支付</Option>
-            <Option value="completed">已完成</Option>
-            <Option value="failed">失败</Option>
-            <Option value="refunded">已退款</Option>
-          </Select>
-          <RangePicker placeholder={['开始日期', '结束日期']} />
-        </Space>
-      </Card>
+      {/* 操作按钮行 */}
+      <Space style={{ marginBottom: 12 }}>
+        <Button danger icon={<DeleteOutlined />} onClick={handleBulkDelete}
+          disabled={selectedIds.length === 0}>
+          批量删除{selectedIds.length > 0 ? `（${selectedIds.length}）` : ''}
+        </Button>
+        <Button type="primary" icon={<PlusOutlined />}
+          style={{ background: '#52c41a', borderColor: '#52c41a' }}
+          onClick={() => setAddVisible(true)}>添加</Button>
+        <Button icon={<ExportOutlined />}
+          style={{ background: '#13c2c2', borderColor: '#13c2c2', color: '#fff' }}
+          onClick={exportCSV}>导出数据</Button>
+      </Space>
 
-      {/* 订单列表 */}
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={ordersData}
-          rowKey="id"
-          loading={loading}
-          scroll={{ x: 1300 }}
-          pagination={{
-            total: ordersData.length,
-            pageSize: 10,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条记录`
-          }}
-        />
-      </Card>
+      {/* 表格 */}
+      <Table<OrderRow>
+        rowSelection={{ selectedRowKeys: selectedIds, onChange: keys => setSelectedIds(keys as number[]) }}
+        components={{ header: { cell: ResizableTitle } }}
+        columns={columns}
+        dataSource={list}
+        rowKey="id"
+        loading={loading}
+        scroll={{ x: 1500 }}
+        size="small"
+        bordered
+        pagination={{
+          total, current: page, pageSize,
+          pageSizeOptions: [10, 20, 50, 100],
+          showSizeChanger: true,
+          showQuickJumper: true,
+          showTotal: t => `共 ${t} 条`,
+          onChange: (p, ps) => {
+            setPage(p); setPageSize(ps); setSelectedIds([]);
+            fetchList(p, ps, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+          },
+        }}
+      />
 
-      {/* 订单详情弹窗 */}
-      <Modal
-        title="订单详情"
-        open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setDetailVisible(false)}>
-            关闭
-          </Button>
-        ]}
-        width={600}
-      >
-        {selectedOrder && (
-          <Descriptions bordered column={2}>
-            <Descriptions.Item label="订单号" span={2}>{selectedOrder.id}</Descriptions.Item>
-            <Descriptions.Item label="用户ID">{selectedOrder.userId}</Descriptions.Item>
-            <Descriptions.Item label="用户名">{selectedOrder.userName}</Descriptions.Item>
-            <Descriptions.Item label="订单类型">{selectedOrder.type}</Descriptions.Item>
-            <Descriptions.Item label="金额">
-              <span style={{ color: '#faad14', fontWeight: 'bold' }}>
-                ¥{selectedOrder.amount.toFixed(2)}
-              </span>
+      {/* 详情弹窗 */}
+      <Modal title="订单详情" open={detailVisible} onCancel={() => setDetailVisible(false)}
+        footer={<Button onClick={() => setDetailVisible(false)}>关闭</Button>} width={640}>
+        {selected && (
+          <Descriptions bordered column={2} size="small">
+            <Descriptions.Item label="ID">{selected.id}</Descriptions.Item>
+            <Descriptions.Item label="用户ID">{selected.user_id}</Descriptions.Item>
+            <Descriptions.Item label="邮箱" span={2}>{selected.email || '-'}</Descriptions.Item>
+            <Descriptions.Item label="标题" span={2}>{selected.product_name}</Descriptions.Item>
+            <Descriptions.Item label="订单号" span={2}>{selected.payment_network_id}</Descriptions.Item>
+            <Descriptions.Item label="实付金额">
+              <span style={{ color: '#faad14', fontWeight: 600 }}>{selected.product_price}</span>
             </Descriptions.Item>
-            <Descriptions.Item label="支付方式">{selectedOrder.payMethod}</Descriptions.Item>
+            <Descriptions.Item label="货币">{selected.currency_type}</Descriptions.Item>
+            <Descriptions.Item label="国家">{selected.country_code || '-'}</Descriptions.Item>
             <Descriptions.Item label="状态">
-              <Tag color={selectedOrder.status === 'completed' ? 'success' : 'warning'}>
-                {selectedOrder.status === 'completed' ? '已完成' : '待支付'}
+              <Tag color={statusMap[selected.order_status]?.color}>
+                {statusMap[selected.order_status]?.label || selected.order_status}
               </Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="创建时间" span={2}>{selectedOrder.createTime}</Descriptions.Item>
-            <Descriptions.Item label="完成时间" span={2}>
-              {selectedOrder.completeTime || '-'}
-            </Descriptions.Item>
+            <Descriptions.Item label="流水号" span={2}>{selected.payment_gateway_id}</Descriptions.Item>
+            <Descriptions.Item label="支付时间" span={2}>{fmtTime(selected.payment_time)}</Descriptions.Item>
+            <Descriptions.Item label="创建时间" span={2}>{fmtTime(selected.order_creation_time)}</Descriptions.Item>
           </Descriptions>
         )}
+      </Modal>
+
+      {/* 添加订单弹窗 */}
+      <Modal title="添加订单" open={addVisible}
+        onOk={() => addForm.submit()}
+        onCancel={() => { setAddVisible(false); addForm.resetFields(); }}
+        okText="确定" cancelText="取消" width={520}>
+        <Form form={addForm} onFinish={handleAdd} layout="vertical" size="small">
+          <Form.Item name="user_id" label="用户ID" rules={[{ required: true, message: '请输入用户ID' }]}>
+            <Input placeholder="请输入用户ID" />
+          </Form.Item>
+          <Form.Item name="email" label="邮箱">
+            <Input placeholder="选填" />
+          </Form.Item>
+          <Form.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}>
+            <Select placeholder="选择产品">
+              {PRODUCTS.map(p => <Option key={p.id} value={p.id}>{p.name}（${p.price}）</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="payment_gateway_id" label="流水号" rules={[{ required: true, message: '请输入流水号' }]}>
+            <Input placeholder="GPA.xxxx 或 Apple流水号" />
+          </Form.Item>
+          <Form.Item name="payment_network_id" label="订单号" rules={[{ required: true, message: '请输入订单号' }]}>
+            <Input placeholder="订单号" />
+          </Form.Item>
+          <Form.Item name="country_code" label="国家代码">
+            <Input placeholder="如 CN, US" />
+          </Form.Item>
+          <Form.Item name="currency_type" label="货币" initialValue="USD">
+            <Input />
+          </Form.Item>
+          <Form.Item name="order_status" label="状态" initialValue="active">
+            <Select>
+              {Object.entries(statusMap).map(([k, v]) => <Option key={k} value={k}>{v.label}</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="payment_time" label="支付时间">
+            <DatePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{ width: '100%' }} />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

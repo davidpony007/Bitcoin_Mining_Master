@@ -6,10 +6,11 @@ import {
 import {
   WalletOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, EyeOutlined, ReloadOutlined, SearchOutlined,
-  DollarOutlined,
+  DollarOutlined, CheckSquareOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { withdrawalAPI } from '../../services/api/withdrawal';
+import ResizableTitle from '@/components/ResizableTitle';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -61,6 +62,53 @@ const Withdrawal: React.FC = () => {
   const [rejectVisible, setRejectVisible] = useState(false);
   const [rejectTarget,  setRejectTarget]  = useState<WithdrawalRecord | null>(null);
   const [rejectForm]                      = Form.useForm();
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setColWidths(prev => ({ ...prev, [key]: size.width }));
+  };
+
+  // 批量操作
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkRejecting, setBulkRejecting] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const [bulkRejectVisible, setBulkRejectVisible] = useState(false);
+  const [bulkRejectForm] = Form.useForm();
+
+  const handleBulkApprove = () => {
+    if (selectedIds.length === 0) { message.warning('请先选择要操作的记录'); return; }
+    const pendingOnly = records.filter(r => selectedIds.includes(r.id) && r.status === 'pending');
+    if (pendingOnly.length === 0) { message.warning('所选记录中没有待处理的申请'); return; }
+    Modal.confirm({
+      title: `确认批量同意 ${pendingOnly.length} 条提现申请？`,
+      okText: '确认同意', cancelText: '取消',
+      okButtonProps: { style: { background: '#52c41a', borderColor: '#52c41a' } },
+      onOk: async () => {
+        setBulkApproving(true);
+        try {
+          const res: any = await withdrawalAPI.bulkApprove(pendingOnly.map(r => r.id));
+          message.success(res?.message || '批量同意完成');
+          setSelectedIds([]);
+          fetchList();
+        } catch { message.error('批量同意失败'); }
+        setBulkApproving(false);
+      },
+    });
+  };
+
+  const handleBulkRejectSubmit = async () => {
+    try {
+      const { reason } = await bulkRejectForm.validateFields();
+      const pendingOnly = records.filter(r => selectedIds.includes(r.id) && r.status === 'pending');
+      setBulkRejecting(true);
+      const res: any = await withdrawalAPI.bulkReject(pendingOnly.map(r => r.id), reason);
+      message.success(res?.message || '批量拒绝完成');
+      setBulkRejectVisible(false);
+      bulkRejectForm.resetFields();
+      setSelectedIds([]);
+      fetchList();
+    } catch { /* form validation */ }
+    setBulkRejecting(false);
+  };
 
   // 统计
   const pendingCount  = records.filter(r => r.status === 'pending').length;
@@ -288,8 +336,11 @@ const Withdrawal: React.FC = () => {
         </Space>
       ),
     },
-  ];
-
+  ];  const mergedColumns = columns.map((col) => {
+    const k = String((col as any).key ?? (col as any).dataIndex ?? '');
+    const w = colWidths[k] || (col as any).width || 120;
+    return { ...col, width: w, onHeaderCell: () => ({ width: w, onResize: handleResize(k) }) };
+  });
   // ─────────────────────── 渲染 ─────────────────────────────────
   return (
     <div style={{ padding: '0 4px' }}>
@@ -386,14 +437,48 @@ const Withdrawal: React.FC = () => {
         </Row>
       </Card>
 
+      {/* 批量操作按钮 */}
+      {selectedIds.length > 0 && (
+        <Card style={{ marginBottom: 12, background: '#f0f5ff', border: '1px solid #adc6ff' }}>
+          <Space>
+            <CheckSquareOutlined style={{ color: '#1677ff' }} />
+            <span>已选 <b>{selectedIds.length}</b> 条，其中待处理 <b>{records.filter(r => selectedIds.includes(r.id) && r.status === 'pending').length}</b> 条</span>
+            <Button
+              type="primary"
+              icon={<CheckCircleOutlined />}
+              loading={bulkApproving}
+              style={{ background: '#52c41a', borderColor: '#52c41a' }}
+              onClick={handleBulkApprove}
+            >批量同意</Button>
+            <Button
+              danger
+              icon={<CloseCircleOutlined />}
+              onClick={() => {
+                const pendingOnly = records.filter(r => selectedIds.includes(r.id) && r.status === 'pending');
+                if (pendingOnly.length === 0) { message.warning('所选记录中没有待处理的申请'); return; }
+                bulkRejectForm.resetFields();
+                setBulkRejectVisible(true);
+              }}
+            >批量拒绝</Button>
+            <Button onClick={() => setSelectedIds([])}>取消选择</Button>
+          </Space>
+        </Card>
+      )}
+
       {/* 数据表格 */}
       <Card>
         <Table<WithdrawalRecord>
           rowKey="id"
           loading={loading}
-          columns={columns}
+          columns={mergedColumns}
+          components={{ header: { cell: ResizableTitle } }}
           dataSource={records}
           scroll={{ x: 1640 }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys as number[]),
+            getCheckboxProps: () => ({}),
+          }}
           pagination={{
             current: page,
             pageSize,
@@ -530,6 +615,33 @@ const Withdrawal: React.FC = () => {
             )}
           </Descriptions>
         )}
+      </Modal>
+
+      {/* ─── 批量拒绝弹窗 ──────────────────────────────────── */}
+      <Modal
+        title={`批量拒绝 ${records.filter(r => selectedIds.includes(r.id) && r.status === 'pending').length} 条提现申请`}
+        open={bulkRejectVisible}
+        onCancel={() => { setBulkRejectVisible(false); bulkRejectForm.resetFields(); }}
+        onOk={handleBulkRejectSubmit}
+        okText="确认批量拒绝"
+        cancelText="取消"
+        okButtonProps={{ danger: true, loading: bulkRejecting }}
+        width={480}
+      >
+        <Form form={bulkRejectForm} layout="vertical">
+          <Form.Item
+            name="reason"
+            label="拒绝原因"
+            rules={[{ required: true, message: '请填写拒绝原因' }]}
+          >
+            <TextArea
+              rows={4}
+              maxLength={200}
+              showCount
+              placeholder="请填写拒绝原因（将通知用户，余额自动退还）"
+            />
+          </Form.Item>
+        </Form>
       </Modal>
 
       {/* ─── 拒绝原因弹窗 ─────────────────────────────────── */}

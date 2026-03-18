@@ -8,15 +8,1160 @@ const CountryMiningService = require('../services/countryMiningService'); // 国
 const pool = require('../config/database_native');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
+const jwt = require('jsonwebtoken');
+
+// ─── Admin Login ─────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/login
+ * 管理员登录，返回含 role:admin 的 JWT
+ */
+router.post('/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@2026';
+  if (!username || !password) {
+    return res.status(400).json({ error: '用户名和密码不能为空' });
+  }
+  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: '用户名或密码错误' });
+  }
+  const secret = process.env.JWT_SECRET || 'default_secret';
+  const token = jwt.sign({ user_id: 'admin', role: 'admin' }, secret, { expiresIn: '7d' });
+  return res.json({ success: true, token, user: { id: 'admin', username: ADMIN_USERNAME, role: 'admin' } });
+});
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/dashboard/stats
+ * 仪表盘统计概览：总用户数、今日活跃、总收入、今日订单
+ */
+router.get('/dashboard/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    const [[totalUsersRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information');
+    const [[todayActiveRow]] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM user_status WHERE DATE(last_login_time) = ?", [today]
+    );
+    const [[yesterdayActiveRow]] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM user_status WHERE DATE(last_login_time) = ?", [yesterday]
+    );
+    const [[revenueRow]] = await conn.query(
+      "SELECT COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS total FROM user_orders WHERE order_status NOT IN ('refund successful')"
+    );
+    const [[todayOrdersRow]] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM user_orders WHERE DATE(order_creation_time) = ?", [today]
+    );
+    const [[newUsersRow]] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM user_information WHERE DATE(user_creation_time) = ?", [today]
+    );
+    const [[newUsersYestRow]] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM user_information WHERE DATE(user_creation_time) = ?", [yesterday]
+    );
+
+    const totalUsers = totalUsersRow.cnt;
+    const todayActive = todayActiveRow.cnt;
+    const yesterdayActive = yesterdayActiveRow.cnt;
+    const totalRevenue = parseFloat(revenueRow.total) || 0;
+    const todayOrders = todayOrdersRow.cnt;
+    const newUsersToday = newUsersRow.cnt;
+    const newUsersYest = newUsersYestRow.cnt;
+
+    res.json({
+      success: true,
+      data: {
+        totalUsers,
+        todayActive,
+        activeGrowth: yesterdayActive > 0 ? ((todayActive - yesterdayActive) / yesterdayActive * 100).toFixed(1) : '0',
+        totalRevenue,
+        todayOrders,
+        newUsersToday,
+        newUsersGrowth: newUsersYest > 0 ? ((newUsersToday - newUsersYest) / newUsersYest * 100).toFixed(1) : '0',
+      }
+    });
+  } catch (err) {
+    console.error('Dashboard stats error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/dashboard/trend?days=7
+ * 仪表盘趋势：最近 N 天新增用户、活跃用户、订单数、收入
+ */
+router.get('/dashboard/trend', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const [newUsers] = await conn.query(
+      `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt
+       FROM user_information
+       WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(user_creation_time) ORDER BY d`, [days]
+    );
+    const [dau] = await conn.query(
+      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt
+       FROM user_status
+       WHERE last_login_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(last_login_time) ORDER BY d`, [days]
+    );
+    const [orders] = await conn.query(
+      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+       FROM user_orders
+       WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
+    );
+
+    // 合并为按日期索引的 map
+    const map = {};
+    const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+    newUsers.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers = r.cnt; });
+    dau.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau = r.cnt; });
+    orders.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders = r.cnt; map[k].revenue = parseFloat(r.revenue); });
+
+    const result = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      result.push({ date: d, newUsers: map[d]?.newUsers || 0, dau: map[d]?.dau || 0, orders: map[d]?.orders || 0, revenue: map[d]?.revenue || 0 });
+    }
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('Dashboard trend error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/users/list?page=1&limit=20&search=&status=
+ * 分页用户列表，联合 user_status 表
+ */
+router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (page - 1) * limit;
+    const search = req.query.search ? `%${req.query.search}%` : null;
+    const status = req.query.status || null;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (search) { where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ?)'; params.push(search, search, search); }
+    if (status) { where += ' AND us.user_status = ?'; params.push(status); }
+
+    const [[{ total }]] = await conn.query(
+      `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
+    );
+    const [rows] = await conn.query(
+      `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
+              ui.user_level, ui.user_points, ui.total_ad_views, ui.user_creation_time,
+              us.user_status, us.last_login_time,
+              us.current_bitcoin_balance, us.bitcoin_accumulated_amount
+       FROM user_information ui
+       LEFT JOIN user_status us ON ui.user_id = us.user_id
+       ${where}
+       ORDER BY ui.user_creation_time DESC
+       LIMIT ? OFFSET ?`, [...params, limit, offset]
+    );
+    res.json({ success: true, data: { total, page, limit, list: rows } });
+  } catch (err) {
+    console.error('Users list error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/users/stats
+ * 用户统计：总数、活跃、新增
+ */
+router.get('/users/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information');
+    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_status WHERE user_status = 'active within 3 days'");
+    const [[todayRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE DATE(user_creation_time) = CURDATE()');
+    const [[weekRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Orders ───────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/orders/list?page=1&limit=20&status=&search=
+ * 分页订单列表
+ */
+router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 200);
+    const offset = (page - 1) * limit;
+    const uid       = req.query.uid       ? `%${req.query.uid}%` : null;
+    const search    = req.query.search    ? `%${req.query.search}%` : null;
+    const status    = req.query.status    || null;
+    const platform  = req.query.platform  || null;  // 'Android' | 'iOS'
+    const startDate = req.query.startDate || null;
+    const endDate   = req.query.endDate   || null;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (uid)       { where += ' AND (user_id LIKE ? OR payment_network_id LIKE ?)'; params.push(uid, uid); }
+    if (search)    { where += ' AND (user_id LIKE ? OR email LIKE ? OR payment_gateway_id LIKE ?)'; params.push(search, search, search); }
+    if (status)    { where += ' AND order_status = ?'; params.push(status); }
+    if (platform === 'Android') { where += " AND payment_gateway_id LIKE 'GPA.%'"; }
+    if (platform === 'iOS')     { where += " AND payment_gateway_id NOT LIKE 'GPA.%'"; }
+    if (startDate) { where += ' AND DATE(order_creation_time) >= ?'; params.push(startDate); }
+    if (endDate)   { where += ' AND DATE(order_creation_time) <= ?'; params.push(endDate); }
+
+    const [[{ total }]] = await conn.query(`SELECT COUNT(*) AS total FROM user_orders ${where}`, params);
+    const [rows] = await conn.query(
+      `SELECT id, user_id, email, google_account, product_id, product_name, product_price,
+              order_status, order_creation_time, payment_time, currency_type, country_code,
+              payment_gateway_id, payment_network_id
+       FROM user_orders ${where}
+       ORDER BY id DESC
+       LIMIT ? OFFSET ?`, [...params, limit, offset]
+    );
+    res.json({ success: true, data: { total, page, limit, list: rows } });
+  } catch (err) {
+    console.error('Orders list error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/orders/stats
+ * 订单统计汇总
+ */
+router.get('/orders/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue FROM user_orders');
+    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status = 'active'");
+    const [[refundRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status IN ('refund request in progress','refund successful')");
+    const [[todayRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE DATE(order_creation_time) = CURDATE()");
+    res.json({
+      success: true,
+      data: {
+        total: totalRow.cnt, totalRevenue: parseFloat(totalRow.revenue),
+        active: activeRow.cnt, refund: refundRow.cnt,
+        todayOrders: todayRow.cnt, todayRevenue: parseFloat(todayRow.revenue)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * DELETE /api/admin/orders/:id  删除单条订单
+ */
+router.delete('/orders/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: '无效ID' });
+    await conn.query('DELETE FROM user_orders WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally { conn.release(); }
+});
+
+/**
+ * POST /api/admin/orders/bulk-delete  批量删除订单
+ */
+router.post('/orders/bulk-delete', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ success: false, message: 'ids不能为空' });
+    const placeholders = ids.map(() => '?').join(',');
+    await conn.query(`DELETE FROM user_orders WHERE id IN (${placeholders})`, ids);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally { conn.release(); }
+});
+
+/**
+ * POST /api/admin/orders/add  手动新增订单
+ */
+router.post('/orders/add', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const {
+      user_id, email = '', google_account = null,
+      product_id, product_name, product_price,
+      payment_gateway_id, payment_network_id,
+      currency_type = 'USD', country_code = null,
+      order_status = 'active', payment_time = null,
+    } = req.body;
+    if (!user_id || !product_id || !payment_gateway_id || !payment_network_id)
+      return res.status(400).json({ success: false, message: '必填字段缺失' });
+    await conn.query(
+      `INSERT INTO user_orders
+         (user_id, email, google_account, product_id, product_name, product_price,
+          payment_gateway_id, payment_network_id, currency_type, country_code,
+          order_status, payment_time, hashrate, order_creation_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [user_id, email, google_account, product_id, product_name, product_price,
+       payment_gateway_id, payment_network_id, currency_type, country_code,
+       order_status, payment_time || null]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally { conn.release(); }
+});
+
+// ─── Mining ───────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/mining/list?page=1&limit=20&type=&search=
+ * 分页挖矿合约列表（含用户信息）
+ */
+router.get('/mining/list', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (page - 1) * limit;
+    const search = req.query.search ? `%${req.query.search}%` : null;
+    const type = req.query.type || null;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (search) { where += ' AND (mc.user_id LIKE ? OR ui.email LIKE ?)'; params.push(search, search); }
+    if (type) { where += ' AND mc.contract_type = ?'; params.push(type); }
+
+    const [[{ total }]] = await conn.query(
+      `SELECT COUNT(*) AS total FROM mining_contracts mc LEFT JOIN user_information ui ON mc.user_id = ui.user_id ${where}`, params
+    );
+    const [rows] = await conn.query(
+      `SELECT mc.id, mc.user_id, ui.email, mc.contract_type,
+              mc.contract_creation_time, mc.contract_end_time,
+              mc.hashrate,
+              CASE WHEN mc.contract_end_time > NOW() THEN 'active' ELSE 'expired' END AS status
+       FROM mining_contracts mc
+       LEFT JOIN user_information ui ON mc.user_id = ui.user_id
+       ${where}
+       ORDER BY mc.contract_creation_time DESC
+       LIMIT ? OFFSET ?`, [...params, limit, offset]
+    );
+    res.json({ success: true, data: { total, page, limit, list: rows } });
+  } catch (err) {
+    console.error('Mining list error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/mining/stats
+ * 挖矿整体统计
+ */
+router.get('/mining/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM mining_contracts');
+    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(hashrate),0) AS totalHashrate FROM mining_contracts WHERE contract_end_time > NOW()");
+    const [typeRows] = await conn.query("SELECT contract_type, COUNT(*) AS cnt FROM mining_contracts GROUP BY contract_type");
+    res.json({
+      success: true,
+      data: {
+        total: totalRow.cnt,
+        active: activeRow.cnt,
+        totalHashrate: parseFloat(activeRow.totalHashrate) || 0,
+        byType: typeRows
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Points ───────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/points/leaderboard?page=1&limit=20&search=
+ * 积分排行榜
+ */
+router.get('/points/leaderboard', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (page - 1) * limit;
+    const search = req.query.search ? `%${req.query.search}%` : null;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (search) { where += ' AND (ui.user_id LIKE ? OR ui.email LIKE ?)'; params.push(search, search); }
+
+    const [[{ total }]] = await conn.query(
+      `SELECT COUNT(*) AS total FROM user_information ui ${where}`, params
+    );
+    const [rows] = await conn.query(
+      `SELECT ui.user_id, ui.email, ui.user_points, ui.user_level, ui.total_ad_views, ui.user_creation_time
+       FROM user_information ui
+       ${where}
+       ORDER BY ui.user_points DESC
+       LIMIT ? OFFSET ?`, [...params, limit, offset]
+    );
+    res.json({ success: true, data: { total, page, limit, list: rows } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/points/transactions?page=1&limit=20&userId=&type=
+ * 积分交易记录
+ */
+router.get('/points/transactions', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (page - 1) * limit;
+    const userId = req.query.userId || null;
+    const type = req.query.type || null;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (userId) { where += ' AND pt.user_id = ?'; params.push(userId); }
+    if (type) { where += ' AND pt.points_type = ?'; params.push(type); }
+
+    const [[{ total }]] = await conn.query(
+      `SELECT COUNT(*) AS total FROM points_transaction pt ${where}`, params
+    );
+    const [rows] = await conn.query(
+      `SELECT pt.id, pt.user_id, ui.email, pt.points_type, pt.points_change,
+              pt.balance_after, pt.description, pt.created_at, pt.related_user_id
+       FROM points_transaction pt
+       LEFT JOIN user_information ui ON pt.user_id = ui.user_id
+       ${where}
+       ORDER BY pt.created_at DESC
+       LIMIT ? OFFSET ?`, [...params, limit, offset]
+    );
+    res.json({ success: true, data: { total, page, limit, list: rows } });
+  } catch (err) {
+    console.error('Points transactions error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/points/stats
+ * 积分整体统计
+ */
+router.get('/points/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[totalRow]] = await conn.query('SELECT COALESCE(SUM(user_points),0) AS totalPoints, COUNT(*) AS users FROM user_information');
+    const [[todayRow]] = await conn.query("SELECT COALESCE(SUM(points_change),0) AS pts FROM points_transaction WHERE DATE(created_at) = CURDATE() AND points_change > 0");
+    const [[txRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM points_transaction WHERE DATE(created_at) = CURDATE()");
+    res.json({ success: true, data: { totalPoints: parseFloat(totalRow.totalPoints), users: totalRow.users, todayEarned: parseFloat(todayRow.pts), todayTx: txRow.cnt } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── CheckIn ──────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/checkin/list?page=1&limit=20&search=
+ * 用户签到汇总列表
+ */
+router.get('/checkin/list', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (page - 1) * limit;
+    const search = req.query.search ? `%${req.query.search}%` : null;
+
+    let where = 'WHERE 1=1';
+    const params = [];
+    if (search) { where += ' AND (ci.user_id LIKE ? OR ui.email LIKE ?)'; params.push(search, search); }
+
+    const [[{ total }]] = await conn.query(
+      `SELECT COUNT(DISTINCT ci.user_id) AS total FROM user_check_in ci LEFT JOIN user_information ui ON ci.user_id = ui.user_id ${where}`, params
+    );
+    const [rows] = await conn.query(
+      `SELECT ci.user_id, ui.email,
+              COUNT(*) AS totalDays,
+              MAX(ci.cumulative_days) AS maxCumulative,
+              MAX(ci.check_in_date) AS lastCheckIn,
+              COALESCE(SUM(ci.points_earned),0) AS totalRewards
+       FROM user_check_in ci
+       LEFT JOIN user_information ui ON ci.user_id = ui.user_id
+       ${where}
+       GROUP BY ci.user_id, ui.email
+       ORDER BY totalDays DESC
+       LIMIT ? OFFSET ?`, [...params, limit, offset]
+    );
+    res.json({ success: true, data: { total, page, limit, list: rows } });
+  } catch (err) {
+    console.error('CheckIn list error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/checkin/stats
+ * 签到整体统计
+ */
+router.get('/checkin/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[todayRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_check_in WHERE check_in_date = CURDATE()");
+    const [[totalRow]] = await conn.query("SELECT COUNT(*) AS cnt, COUNT(DISTINCT user_id) AS users FROM user_check_in");
+    const [[weekRow]] = await conn.query("SELECT COUNT(DISTINCT user_id) AS cnt FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)");
+    const [trendRows] = await conn.query(
+      "SELECT check_in_date AS d, COUNT(*) AS cnt FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) GROUP BY check_in_date ORDER BY d"
+    );
+    res.json({ success: true, data: { todayCount: todayRow.cnt, totalRecords: totalRow.cnt, totalUsers: totalRow.users, weekActiveUsers: weekRow.cnt, trend: trendRows } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Geography ────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/geography/data
+ * 按国家分布的用户和收入数据
+ */
+router.get('/geography/data', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [userRows] = await conn.query(
+      `SELECT COALESCE(country_code,'Unknown') AS country, COUNT(*) AS users
+       FROM user_information GROUP BY country_code ORDER BY users DESC LIMIT 50`
+    );
+    const [revenueRows] = await conn.query(
+      `SELECT COALESCE(country_code,'Unknown') AS country,
+              COUNT(*) AS orders,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+       FROM user_orders GROUP BY country_code ORDER BY revenue DESC LIMIT 50`
+    );
+    // 合并
+    const map = {};
+    userRows.forEach(r => { map[r.country] = { country: r.country, users: r.users, orders: 0, revenue: 0 }; });
+    revenueRows.forEach(r => {
+      if (!map[r.country]) map[r.country] = { country: r.country, users: 0 };
+      map[r.country].orders = r.orders;
+      map[r.country].revenue = parseFloat(r.revenue);
+    });
+    const list = Object.values(map).sort((a, b) => b.users - a.users);
+    res.json({ success: true, data: list });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/analytics/trend?days=30
+ * 多维度趋势分析（用户/收入/订单）
+ */
+router.get('/analytics/trend', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    const [newUsers] = await conn.query(
+      `SELECT DATE(user_creation_time) AS d, COUNT(*) AS users
+       FROM user_information WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(user_creation_time) ORDER BY d`, [days]
+    );
+    const [orders] = await conn.query(
+      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS orders,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+       FROM user_orders WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
+    );
+    const [checkins] = await conn.query(
+      `SELECT check_in_date AS d, COUNT(*) AS checkins
+       FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY check_in_date ORDER BY d`, [days]
+    );
+
+    const map = {};
+    const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+    newUsers.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].users = r.users; });
+    orders.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders = r.orders; map[k].revenue = parseFloat(r.revenue); });
+    checkins.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].checkins = r.checkins; });
+
+    const result = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      result.push({ date: d, users: map[d]?.users || 0, orders: map[d]?.orders || 0, revenue: map[d]?.revenue || 0, checkins: map[d]?.checkins || 0 });
+    }
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/analytics/country-rank?days=30
+ * 国家排名（用户数 + 收入）
+ */
+router.get('/analytics/country-rank', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [rows] = await conn.query(
+      `SELECT COALESCE(ui.country_code,'Unknown') AS country,
+              COUNT(DISTINCT ui.user_id) AS users,
+              COALESCE(SUM(CAST(uo.product_price AS DECIMAL(10,2))),0) AS revenue
+       FROM user_information ui
+       LEFT JOIN user_orders uo ON ui.user_id = uo.user_id
+       GROUP BY country ORDER BY users DESC LIMIT 20`
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Ads ──────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/ads/stats
+ * 广告整体统计
+ */
+router.get('/ads/stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[totalRow]] = await conn.query('SELECT COALESCE(SUM(total_ad_views),0) AS total, COUNT(*) AS users FROM user_information');
+    const [[todayRow]] = await conn.query('SELECT COALESCE(SUM(view_count),0) AS cnt FROM ad_view_record WHERE view_date = CURDATE()');
+    const [[weekRow]] = await conn.query('SELECT COALESCE(SUM(view_count),0) AS cnt FROM ad_view_record WHERE view_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
+    const [[rewardRow]] = await conn.query("SELECT COALESCE(SUM(points_change),0) AS pts FROM points_transaction WHERE points_type LIKE '%AD%' OR points_type LIKE '%ad%' AND points_change > 0");
+    res.json({
+      success: true,
+      data: {
+        totalViews: parseFloat(totalRow.total),
+        totalUsers: totalRow.users,
+        todayViews: parseFloat(todayRow.cnt),
+        weekViews: parseFloat(weekRow.cnt),
+        totalRewards: parseFloat(rewardRow.pts)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/ads/trend?days=30
+ * 广告观看趋势
+ */
+router.get('/ads/trend', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 90);
+    const [rows] = await conn.query(
+      `SELECT view_date AS d, SUM(view_count) AS views, COUNT(DISTINCT user_id) AS watchers,
+              COALESCE(SUM(points_earned),0) AS rewards
+       FROM ad_view_record
+       WHERE view_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY view_date ORDER BY d`, [days]
+    );
+    const map = {};
+    rows.forEach(r => {
+      const k = r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d).slice(0, 10);
+      map[k] = { views: parseInt(r.views), watchers: r.watchers, rewards: parseFloat(r.rewards) };
+    });
+    const result = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      result.push({ date: d, views: map[d]?.views || 0, watchers: map[d]?.watchers || 0, rewards: map[d]?.rewards || 0 });
+    }
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * GET /api/admin/ads/top-users?limit=20
+ * 广告观看 Top 用户
+ */
+router.get('/ads/top-users', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const [rows] = await conn.query(
+      `SELECT ui.user_id, ui.email, ui.total_ad_views, ui.user_points,
+              COALESCE(avr.today_views,0) AS todayViews
+       FROM user_information ui
+       LEFT JOIN (
+         SELECT user_id, SUM(view_count) AS today_views FROM ad_view_record WHERE view_date = CURDATE() GROUP BY user_id
+       ) avr ON ui.user_id COLLATE utf8mb4_unicode_ci = avr.user_id COLLATE utf8mb4_unicode_ci
+       ORDER BY ui.total_ad_views DESC LIMIT ?`, [limit]
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── DataCenter ───────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/datacenter/daily?days=30
+ * 每日综合数据（用于 DataCenter 报表）
+ */
+router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
+
+    const [newUsers] = await conn.query(
+      `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt FROM user_information
+       WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(user_creation_time)`, [days]
+    );
+    const [dau] = await conn.query(
+      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt FROM user_status
+       WHERE last_login_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(last_login_time)`, [days]
+    );
+    const [orders] = await conn.query(
+      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+       FROM user_orders
+       WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(order_creation_time)`, [days]
+    );
+    const [adViews] = await conn.query(
+      `SELECT view_date AS d, SUM(view_count) AS views, COALESCE(SUM(points_earned),0) AS rewards
+       FROM ad_view_record
+       WHERE view_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY view_date`, [days]
+    );
+    const [withdrawals] = await conn.query(
+      `SELECT DATE(created_at) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(withdrawal_request_amount),0) AS amount
+       FROM withdrawal_records WHERE withdrawal_status = 'success'
+         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(created_at)`, [days]
+    );
+    const [checkins] = await conn.query(
+      `SELECT check_in_date AS d, COUNT(*) AS cnt
+       FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY check_in_date`, [days]
+    );
+
+    const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+    const map = {};
+    newUsers.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers = r.cnt; });
+    dau.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau = r.cnt; });
+    orders.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders = r.cnt; map[k].revenue = parseFloat(r.revenue); });
+    adViews.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adViews = parseInt(r.views); map[k].adRewards = parseFloat(r.rewards); });
+    withdrawals.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].withdrawals = r.cnt; map[k].withdrawalAmount = parseFloat(r.amount); });
+    checkins.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].checkins = r.cnt; });
+
+    const result = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      const m = map[d] || {};
+      result.push({
+        date: d,
+        newUsers: m.newUsers || 0,
+        dau: m.dau || 0,
+        firstSubOrders: m.orders || 0,
+        firstSubRevenue: m.revenue || 0,
+        adViews: m.adViews || 0,
+        adRewards: m.adRewards || 0,
+        withdrawals: m.withdrawals || 0,
+        withdrawalAmount: m.withdrawalAmount || 0,
+        checkins: m.checkins || 0
+      });
+    }
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('DataCenter daily error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── DataCenter daily-report (完整每日业务报表) ───────────────────────────────
+
+/**
+ * GET /api/admin/datacenter/daily-report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&platform=Android
+ */
+router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const platform = req.query.platform || 'Android';
+    const endDate   = (req.query.endDate   || new Date().toISOString().slice(0, 10));
+    const startDate = (req.query.startDate || new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
+
+    const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
+
+    // 1. 每日新增用户
+    const [nuRows] = await conn.query(
+      `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt
+       FROM user_information
+       WHERE DATE(user_creation_time) BETWEEN ? AND ?
+       GROUP BY DATE(user_creation_time)`, [startDate, endDate]);
+
+    // 2. DAU
+    const [dauRows] = await conn.query(
+      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt
+       FROM user_status
+       WHERE DATE(last_login_time) BETWEEN ? AND ?
+       GROUP BY DATE(last_login_time)`, [startDate, endDate]);
+
+    // 3. 订单（订阅单数 + 销售额）
+    const [ordRows] = await conn.query(
+      `SELECT DATE(order_creation_time) AS d,
+              COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+       FROM user_orders
+       WHERE DATE(order_creation_time) BETWEEN ? AND ?
+         AND order_status NOT IN ('refund successful','error')
+       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+
+    // 4. 取消订阅（status='refund successful'）
+    const [cancelRows] = await conn.query(
+      `SELECT DATE(payment_time) AS d, COUNT(*) AS cnt
+       FROM user_orders
+       WHERE DATE(payment_time) BETWEEN ? AND ?
+         AND order_status = 'refund successful'
+       GROUP BY DATE(payment_time)`, [startDate, endDate]);
+
+    // 5. 广告投放数据
+    const [adRows] = await conn.query(
+      `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
+              ad_new_users, new_users_m1, new_users_m2, new_users_m3,
+              cancel_count, renewal_count, renewal_amount,
+              renewal_revenue, ad_count, ad_revenue, playtime_revenue, playtime_sent_btc, btc_avg_price
+       FROM daily_ad_stats
+       WHERE stat_date BETWEEN ? AND ? AND platform = ?`, [startDate, endDate, platform]);
+
+    // 5b. 每日送出BTC数量（所有类型）
+    const [btcSentRows] = await conn.query(
+      `SELECT DATE(transaction_creation_time) AS d, SUM(transaction_amount) AS sent
+       FROM bitcoin_transaction_records
+       WHERE DATE(transaction_creation_time) BETWEEN ? AND ?
+       GROUP BY DATE(transaction_creation_time)`, [startDate, endDate]);
+
+    // 5c. 每日提现BTC数量
+    const [wdDailyRows] = await conn.query(
+      `SELECT DATE(created_at) AS d, SUM(received_amount) AS amt
+       FROM withdrawal_records
+       WHERE withdrawal_status = 'success'
+         AND DATE(created_at) BETWEEN ? AND ?
+       GROUP BY DATE(created_at)`, [startDate, endDate]);
+
+    // 6. BTC 汇总统计
+    const [[btcRow]] = await conn.query(
+      `SELECT SUM(t.balance_after) AS totalBtc
+       FROM (SELECT user_id, MAX(id) AS mid FROM bitcoin_transaction_records GROUP BY user_id) x
+       JOIN bitcoin_transaction_records t ON t.id = x.mid`);
+    const [[wdRow]] = await conn.query(
+      `SELECT COALESCE(SUM(received_amount),0) AS totalWithdrawn
+       FROM withdrawal_records WHERE withdrawal_status = 'success'`);
+
+    const BTC_PRICE = 74000; // 可在 app_config 中配置
+    const totalBtc       = parseFloat(btcRow.totalBtc || 0);
+    const totalWithdrawn = parseFloat(wdRow.totalWithdrawn || 0);
+    const summary = {
+      totalBtcBalance: totalBtc,
+      totalBtcBalanceUsd: (totalBtc * BTC_PRICE).toFixed(4),
+      totalWithdrawn,
+      totalWithdrawnUsd: (totalWithdrawn * BTC_PRICE).toFixed(4),
+    };
+
+    // 构建 map
+    const nuMap = {}, dauMap = {}, ordMap = {}, cancelMap = {}, adMap = {}, btcSentMap = {}, wdDailyMap = {};
+    nuMap; dauMap; ordMap; cancelMap; adMap; btcSentMap; wdDailyMap; // prevent unused warning
+    nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
+    dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
+    ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
+    cancelRows.forEach(r => { cancelMap[toKey(r.d)] = parseInt(r.cnt); });
+    adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
+    btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
+    wdDailyRows.forEach(r  => { wdDailyMap[toKey(r.d)]  = parseFloat(r.amt  || 0); });
+
+    // 生成日期序列
+    const dates = [];
+    let cur = new Date(startDate);
+    const endD = new Date(endDate);
+    while (cur <= endD) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+
+    const rows = dates.map(d => {
+      const ad = adMap[d] || {};
+      const googleSpend     = parseFloat(ad.google_spend    || 0);
+      const applovinSpend   = parseFloat(ad.applovin_spend  || 0);
+      const mintegralSpend  = parseFloat(ad.mintegral_spend || 0);
+      const totalSpend      = parseFloat((googleSpend + applovinSpend + mintegralSpend).toFixed(2));
+      const adNewUsers      = parseInt(ad.ad_new_users  || 0);
+      const newUsersM1      = parseInt(ad.new_users_m1  || 0);
+      const newUsersM2      = parseInt(ad.new_users_m2  || 0);
+      const newUsersM3      = parseInt(ad.new_users_m3  || 0);
+      const totalNewUsers   = nuMap[d]  || 0;
+      const dauVal          = dauMap[d] || 0;
+      const ord             = ordMap[d] || {};
+      const subOrders       = ord.cnt     || 0;
+      const salesAmount     = parseFloat((ord.revenue || 0).toFixed(2));
+      const subRevenue      = salesAmount;
+      const cancelCount     = (cancelMap[d] || 0) + parseInt(ad.cancel_count || 0);
+      const renewalCount    = parseInt(ad.renewal_count  || 0);
+      const renewalAmount   = parseFloat(ad.renewal_amount   || 0);
+      const renewalRevenue  = parseFloat(ad.renewal_revenue  || 0);
+      const adCount         = parseInt(ad.ad_count           || 0);
+      const adRevenue       = parseFloat(ad.ad_revenue       || 0);
+      const playtimeRevenue = parseFloat(ad.playtime_revenue || 0);
+      const playtimeSentBtc = parseFloat(ad.playtime_sent_btc|| 0);
+      const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0);
+      const btcSentAmount      = btcSentMap[d] || 0;
+      const withdrawalBtcAmount= wdDailyMap[d] || 0;
+      const adPerUser          = dauVal   > 0 ? parseFloat((adCount / dauVal).toFixed(2)) : 0;
+      const ecpm               = adCount  > 0 ? parseFloat(((adRevenue / adCount) * 1000).toFixed(2)) : 0;
+      const totalRevenue       = parseFloat((subRevenue + adRevenue + playtimeRevenue + renewalRevenue).toFixed(2));
+      const btcSentValue       = parseFloat((btcSentAmount    * btcAvgPrice).toFixed(2));
+      const playtimeSentValue  = parseFloat((playtimeSentBtc  * btcAvgPrice).toFixed(2));
+      const withdrawalBtcValue = parseFloat((withdrawalBtcAmount * btcAvgPrice).toFixed(2));
+      const actualCost         = totalSpend;
+      const profitSent         = parseFloat((totalRevenue - actualCost - btcSentValue).toFixed(2));
+      const profitWithdraw     = parseFloat((totalRevenue - actualCost - withdrawalBtcValue).toFixed(2));
+      const roi                = actualCost > 0 ? ((profitSent / actualCost) * 100).toFixed(2) + '%' : '0%';
+      const roiWithdraw        = actualCost > 0 ? ((profitWithdraw / actualCost) * 100).toFixed(2) + '%' : '0%';
+      const cpa     = totalNewUsers > 0 ? parseFloat((totalSpend / totalNewUsers).toFixed(2)) : 0;
+      const adCpa   = adNewUsers    > 0 ? parseFloat((totalSpend / adNewUsers).toFixed(2))    : 0;
+      const subCost = subOrders     > 0 ? parseFloat((totalSpend / subOrders).toFixed(2))     : 0;
+      const subRate = totalNewUsers > 0 ? ((subOrders / totalNewUsers) * 100).toFixed(2) + '%' : '0%';
+      const arppu   = subOrders     > 0 ? parseFloat((salesAmount / subOrders).toFixed(2))    : 0;
+      const cancelRate = subOrders  > 0 ? ((cancelCount / subOrders) * 100).toFixed(2) + '%'  : '0%';
+      return {
+        date: d, totalSpend, googleSpend, applovinSpend, mintegralSpend,
+        adNewUsers, newUsersM1, newUsersM2, newUsersM3, totalNewUsers,
+        retentionRate: '-', retentionRatePct: '-', dau: dauVal, cpa, adCpa,
+        subOrders, subCost, subRate, salesAmount, subRevenue, arppu,
+        cancelCount, cancelRate, renewalCount, renewalAmount,
+        renewalRevenue, adCount, adPerUser, ecpm, adRevenue, playtimeRevenue, totalRevenue,
+        btcSentAmount, btcSentValue, playtimeSentBtc, playtimeSentValue, btcAvgPrice,
+        withdrawalBtcAmount, withdrawalBtcValue, actualCost, profitSent, profitWithdraw, roi, roiWithdraw,
+      };
+    });
+
+    // 总计行
+    const sum = (key) => rows.reduce((s, r) => s + (typeof r[key] === 'number' ? r[key] : 0), 0);
+    const ttlSpend = parseFloat(sum('totalSpend').toFixed(2));
+    const ttlNew   = sum('totalNewUsers');
+    const ttlAdNew = sum('adNewUsers');
+    const ttlSub   = sum('subOrders');
+    const ttlRev   = parseFloat(sum('salesAmount').toFixed(2));
+    const ttlCancel= sum('cancelCount');
+    const ttlAdRevenue       = parseFloat(sum('adRevenue').toFixed(2));
+    const ttlAdCount         = sum('adCount');
+    const ttlPlaytimeRevenue = parseFloat(sum('playtimeRevenue').toFixed(2));
+    const ttlRenewalRevenue  = parseFloat(sum('renewalRevenue').toFixed(2));
+    const ttlTotalRevenue    = parseFloat((ttlRev + ttlAdRevenue + ttlPlaytimeRevenue + ttlRenewalRevenue).toFixed(2));
+    const ttlBtcSent         = sum('btcSentAmount');
+    const ttlBtcSentValue    = parseFloat(sum('btcSentValue').toFixed(2));
+    const ttlPlaytimeSentBtc = sum('playtimeSentBtc');
+    const ttlPlaytimeSentValue = parseFloat(sum('playtimeSentValue').toFixed(2));
+    const ttlWdBtc           = sum('withdrawalBtcAmount');
+    const ttlWdBtcValue      = parseFloat(sum('withdrawalBtcValue').toFixed(2));
+    const ttlProfitSent      = parseFloat((ttlTotalRevenue - ttlSpend - ttlBtcSentValue).toFixed(2));
+    const ttlProfitWithdraw  = parseFloat((ttlTotalRevenue - ttlSpend - ttlWdBtcValue).toFixed(2));
+    const totalRow = {
+      date: '总计',
+      totalSpend: ttlSpend, googleSpend: parseFloat(sum('googleSpend').toFixed(2)),
+      applovinSpend: parseFloat(sum('applovinSpend').toFixed(2)), mintegralSpend: parseFloat(sum('mintegralSpend').toFixed(2)),
+      adNewUsers: ttlAdNew, newUsersM1: sum('newUsersM1'), newUsersM2: sum('newUsersM2'), newUsersM3: sum('newUsersM3'),
+      totalNewUsers: ttlNew, retentionRate: '-', dau: '-',
+      cpa:    ttlNew   > 0 ? parseFloat((ttlSpend / ttlNew).toFixed(2))   : 0,
+      adCpa:  ttlAdNew > 0 ? parseFloat((ttlSpend / ttlAdNew).toFixed(2)) : 0,
+      subOrders: ttlSub,
+      subCost:  ttlSub > 0 ? parseFloat((ttlSpend / ttlSub).toFixed(2))  : 0,
+      subRate:  ttlNew > 0 ? ((ttlSub / ttlNew) * 100).toFixed(2) + '%'  : '0%',
+      salesAmount: ttlRev, subRevenue: ttlRev,
+      arppu:      ttlSub > 0 ? parseFloat((ttlRev / ttlSub).toFixed(2)) : 0,
+      cancelCount: ttlCancel,
+      cancelRate:  ttlSub > 0 ? ((ttlCancel / ttlSub) * 100).toFixed(2) + '%' : '0%',
+      renewalCount: sum('renewalCount'), renewalAmount: parseFloat(sum('renewalAmount').toFixed(2)),
+      renewalRevenue: ttlRenewalRevenue,
+      adCount: ttlAdCount,
+      adPerUser: '-',
+      ecpm: ttlAdCount > 0 ? parseFloat(((ttlAdRevenue / ttlAdCount) * 1000).toFixed(2)) : 0,
+      adRevenue: ttlAdRevenue, playtimeRevenue: ttlPlaytimeRevenue, totalRevenue: ttlTotalRevenue,
+      btcSentAmount: ttlBtcSent, btcSentValue: ttlBtcSentValue,
+      playtimeSentBtc: ttlPlaytimeSentBtc, playtimeSentValue: ttlPlaytimeSentValue,
+      btcAvgPrice: '-',
+      withdrawalBtcAmount: ttlWdBtc, withdrawalBtcValue: ttlWdBtcValue,
+      actualCost: ttlSpend, profitSent: ttlProfitSent, profitWithdraw: ttlProfitWithdraw,
+      retentionRate: '-', retentionRatePct: '-',
+      roi:        ttlSpend > 0 ? ((ttlProfitSent     / ttlSpend) * 100).toFixed(2) + '%' : '0%',
+      roiWithdraw: ttlSpend > 0 ? ((ttlProfitWithdraw / ttlSpend) * 100).toFixed(2) + '%' : '0%',
+    };
+
+    res.json({ success: true, data: [totalRow, ...rows], summary });
+  } catch (err) {
+    console.error('DataCenter daily-report error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * POST /api/admin/datacenter/ad-spend  添加/更新广告消耗
+ */
+router.post('/datacenter/ad-spend', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { statDate, platform = 'Android', googleSpend = 0, applovinSpend = 0, mintegralSpend = 0 } = req.body;
+    if (!statDate) return res.status(400).json({ success: false, message: '日期不能为空' });
+    await conn.query(
+      `INSERT INTO daily_ad_stats (stat_date, platform, google_spend, applovin_spend, mintegral_spend)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         google_spend    = VALUES(google_spend),
+         applovin_spend  = VALUES(applovin_spend),
+         mintegral_spend = VALUES(mintegral_spend)`,
+      [statDate, platform, googleSpend, applovinSpend, mintegralSpend]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally { conn.release(); }
+});
+
+/**
+ * POST /api/admin/datacenter/ad-data  添加/更新广告数据（M1/M2/M3 新增、取消、续期）
+ */
+router.post('/datacenter/ad-data', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { statDate, platform = 'Android', adNewUsers = 0, newUsersM1 = 0, newUsersM2 = 0,
+            newUsersM3 = 0, cancelCount = 0, renewalCount = 0, renewalAmount = 0,
+            renewalRevenue = 0, adCount = 0, adRevenue = 0, playtimeRevenue = 0,
+            playtimeSentBtc = 0, btcAvgPrice = 0 } = req.body;
+    if (!statDate) return res.status(400).json({ success: false, message: '日期不能为空' });
+    await conn.query(
+      `INSERT INTO daily_ad_stats (stat_date, platform, ad_new_users, new_users_m1, new_users_m2,
+                                   new_users_m3, cancel_count, renewal_count, renewal_amount,
+                                   renewal_revenue, ad_count, ad_revenue, playtime_revenue,
+                                   playtime_sent_btc, btc_avg_price)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         ad_new_users      = VALUES(ad_new_users),
+         new_users_m1      = VALUES(new_users_m1),
+         new_users_m2      = VALUES(new_users_m2),
+         new_users_m3      = VALUES(new_users_m3),
+         cancel_count      = VALUES(cancel_count),
+         renewal_count     = VALUES(renewal_count),
+         renewal_amount    = VALUES(renewal_amount),
+         renewal_revenue   = VALUES(renewal_revenue),
+         ad_count          = VALUES(ad_count),
+         ad_revenue        = VALUES(ad_revenue),
+         playtime_revenue  = VALUES(playtime_revenue),
+         playtime_sent_btc = VALUES(playtime_sent_btc),
+         btc_avg_price     = VALUES(btc_avg_price)`,
+      [statDate, platform, adNewUsers, newUsersM1, newUsersM2, newUsersM3,
+       cancelCount, renewalCount, renewalAmount,
+       renewalRevenue, adCount, adRevenue, playtimeRevenue, playtimeSentBtc, btcAvgPrice]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally { conn.release(); }
+});
+
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/reports/summary
+ * 报表概要统计（用于 Reports 页面）
+ */
+router.get('/reports/summary', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[users]] = await conn.query('SELECT COUNT(*) AS total, COUNT(DISTINCT country_code) AS countries FROM user_information');
+    const [[orders]] = await conn.query("SELECT COUNT(*) AS total, COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE order_status NOT IN ('refund successful')");
+    const [[mining]] = await conn.query('SELECT COUNT(*) AS total, COUNT(CASE WHEN contract_end_time > NOW() THEN 1 END) AS active FROM mining_contracts');
+    const [[withdrawals]] = await conn.query("SELECT COUNT(*) AS total, COALESCE(SUM(withdrawal_request_amount),0) AS amount FROM withdrawal_records WHERE withdrawal_status = 'success'");
+    const [[points]] = await conn.query('SELECT COALESCE(SUM(user_points),0) AS total FROM user_information');
+    res.json({
+      success: true,
+      data: {
+        users: { total: users.total, countries: users.countries },
+        orders: { total: orders.total, revenue: parseFloat(orders.revenue) },
+        mining: { total: mining.total, active: mining.active },
+        withdrawals: { total: withdrawals.total, amount: parseFloat(withdrawals.amount) },
+        points: { total: parseFloat(points.total) }
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Legacy stub endpoints (backward compat) ─────────────────────────────────
 
 // GET /api/admin/stats
-// 获取后台统计信息（需管理员权限）
 router.get('/stats', authenticateToken, requireAdmin, (req, res) => {
-  res.json({ users: 100, miningNodes: 10, revenue: 12345 }); // 示例数据，实际应从数据库获取
+  res.json({ users: 100, miningNodes: 10, revenue: 12345 });
 });
 
 // POST /api/admin/action
-// 管理员操作接口（需管理员权限）
 router.post('/action', authenticateToken, requireAdmin, (req, res) => {
   // 实际管理员操作逻辑应在此实现
   res.json({ message: 'Admin action executed' });
@@ -168,7 +1313,7 @@ router.post('/scan-fix-missing-referral-rewards', authenticateToken, requireAdmi
       SELECT ir.referrer_user_id, ir.user_id AS referee_user_id,
              SUM(avr.view_count) AS total_views
       FROM invitation_relationship ir
-      JOIN ad_view_record avr ON avr.user_id = ir.user_id
+      JOIN ad_view_record avr ON avr.user_id COLLATE utf8mb4_unicode_ci = ir.user_id COLLATE utf8mb4_unicode_ci
       LEFT JOIN points_transaction pt ON pt.user_id = ir.referrer_user_id
         AND pt.related_user_id = ir.user_id
         AND pt.points_type = 'REFERRAL_1'

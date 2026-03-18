@@ -1,428 +1,151 @@
-import React, { useState } from 'react';
-import { Card, Table, Button, Space, Tag, Input, Select, Modal, Form, InputNumber, message, Row, Col, Statistic, Tabs } from 'antd';
-import { GiftOutlined, PlusOutlined, MinusOutlined, HistoryOutlined, TrophyOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, Table, Space, Tag, Input, Select, Row, Col, Statistic, Tabs, message } from 'antd';
+import { GiftOutlined, HistoryOutlined, TrophyOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import ReactECharts from 'echarts-for-react';
+import { pointsApi } from '@/services/api/admin';
+import ResizableTitle from '@/components/ResizableTitle';
 
-const { Search } = Input;
 const { Option } = Select;
 const { TabPane } = Tabs;
 
-interface PointsRecord {
-  id: string;
-  userId: string;
-  userName: string;
-  balance: number;
-  totalEarned: number;
-  totalSpent: number;
-  lastUpdate: string;
+interface LeaderboardRow {
+  user_id: string;
+  email: string;
+  user_points: number;
+  user_level: number;
+  total_ad_views: number;
+  user_creation_time: string;
 }
 
-interface PointsHistory {
-  id: string;
-  userId: string;
-  userName: string;
-  type: 'earn' | 'spend';
-  amount: number;
-  reason: string;
-  balance: number;
-  time: string;
+interface TxRow {
+  id: number;
+  user_id: string;
+  email: string | null;
+  points_type: string;
+  points_amount: number;
+  balance_after: number;
+  description: string;
+  created_at: string;
 }
 
 const Points: React.FC = () => {
+  const [tab, setTab] = useState('leaderboard');
   const [loading, setLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [operationType, setOperationType] = useState<'add' | 'deduct'>('add');
-  const [form] = Form.useForm();
+  const [lbList, setLbList] = useState<LeaderboardRow[]>([]);
+  const [lbTotal, setLbTotal] = useState(0);
+  const [lbPage, setLbPage] = useState(1);
+  const [lbSearch, setLbSearch] = useState('');
+  const [txList, setTxList] = useState<TxRow[]>([]);
+  const [txTotal, setTxTotal] = useState(0);
+  const [txPage, setTxPage] = useState(1);
+  const [txUserId, setTxUserId] = useState('');
+  const [txType, setTxType] = useState('');
+  const [stats, setStats] = useState<any>({});
+  const [lbColWidths, setLbColWidths] = useState<Record<string, number>>({});
+  const handleLbResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setLbColWidths(prev => ({ ...prev, [key]: size.width }));
+  };
+  const [txColWidths, setTxColWidths] = useState<Record<string, number>>({});
+  const handleTxResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setTxColWidths(prev => ({ ...prev, [key]: size.width }));
+  };
 
-  const pointsData: PointsRecord[] = [
-    {
-      id: 'user_10001',
-      userId: 'user_10001',
-      userName: 'Alice Chen',
-      balance: 15800,
-      totalEarned: 28500,
-      totalSpent: 12700,
-      lastUpdate: '2026-01-29 10:30:00'
-    },
-    {
-      id: 'user_10002',
-      userId: 'user_10002',
-      userName: 'Bob Wang',
-      balance: 23500,
-      totalEarned: 35000,
-      totalSpent: 11500,
-      lastUpdate: '2026-01-29 09:15:00'
-    },
-    {
-      id: 'user_10003',
-      userId: 'user_10003',
-      userName: 'Carol Li',
-      balance: 8920,
-      totalEarned: 15600,
-      totalSpent: 6680,
-      lastUpdate: '2026-01-28 16:45:00'
-    }
+  const loadLeaderboard = useCallback(async (p: number, s: string) => {
+    try { setLoading(true);
+      const res = await pointsApi.leaderboard({ page: p, limit: 20, search: s || undefined });
+      if (res?.success) { setLbList(res.data.list); setLbTotal(res.data.total); }
+    } catch { message.error('加载排行榜失败'); } finally { setLoading(false); }
+  }, []);
+
+  const loadTransactions = useCallback(async (p: number, uid: string, t: string) => {
+    try { setLoading(true);
+      const res = await pointsApi.transactions({ page: p, limit: 20, userId: uid || undefined, type: t || undefined });
+      if (res?.success) { setTxList(res.data.list); setTxTotal(res.data.total); }
+    } catch { message.error('加载积分记录失败'); } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    pointsApi.stats().then(res => { if (res?.success) setStats(res.data); });
+    loadLeaderboard(1, '');
+  }, []);
+
+  const lbColumns: ColumnsType<LeaderboardRow> = [
+    { title: '排名', key: 'rank', width: 70, render: (_, __, i) => (lbPage - 1) * 20 + i + 1 },
+    { title: '用户ID', dataIndex: 'user_id', key: 'user_id', width: 160, ellipsis: true },
+    { title: '邮箱', dataIndex: 'email', key: 'email', ellipsis: true },
+    { title: '积分', dataIndex: 'user_points', key: 'user_points', width: 100, render: v => <span style={{ color: '#faad14', fontWeight: 'bold' }}>{v}</span> },
+    { title: '等级', dataIndex: 'user_level', key: 'user_level', width: 70 },
+    { title: '广告观看', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 90 },
+    { title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 120, render: v => new Date(v).toLocaleDateString() },
   ];
-
-  const historyData: PointsHistory[] = [
-    {
-      id: 'pts_001',
-      userId: 'user_10001',
-      userName: 'Alice Chen',
-      type: 'earn',
-      amount: 500,
-      reason: '每日签到',
-      balance: 15800,
-      time: '2026-01-29 10:30:00'
-    },
-    {
-      id: 'pts_002',
-      userId: 'user_10002',
-      userName: 'Bob Wang',
-      type: 'earn',
-      amount: 1000,
-      reason: '邀请好友',
-      balance: 23500,
-      time: '2026-01-29 09:15:00'
-    },
-    {
-      id: 'pts_003',
-      userId: 'user_10001',
-      userName: 'Alice Chen',
-      type: 'spend',
-      amount: 800,
-      reason: '兑换礼品',
-      balance: 15300,
-      time: '2026-01-28 18:20:00'
-    },
-    {
-      id: 'pts_004',
-      userId: 'user_10003',
-      userName: 'Carol Li',
-      type: 'earn',
-      amount: 2000,
-      reason: '完成任务',
-      balance: 8920,
-      time: '2026-01-28 16:45:00'
-    }
-  ];
-
-  // 积分趋势图
-  const getPointsTrendChart = () => ({
-    tooltip: {
-      trigger: 'axis'
-    },
-    legend: {
-      data: ['获得积分', '消费积分']
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: ['01-23', '01-24', '01-25', '01-26', '01-27', '01-28', '01-29']
-    },
-    yAxis: {
-      type: 'value',
-      name: '积分'
-    },
-    series: [
-      {
-        name: '获得积分',
-        type: 'bar',
-        data: [3200, 2800, 4100, 3500, 5200, 4800, 3800],
-        itemStyle: { color: '#52c41a' }
-      },
-      {
-        name: '消费积分',
-        type: 'bar',
-        data: [1500, 1200, 1800, 1600, 2200, 1900, 1400],
-        itemStyle: { color: '#ff4d4f' }
-      }
-    ]
+  const mergedLbColumns = lbColumns.map((col) => {
+    const k = String((col as any).key ?? (col as any).dataIndex ?? '');
+    const w = lbColWidths[k] || (col as any).width || 120;
+    return { ...col, width: w, onHeaderCell: () => ({ width: w, onResize: handleLbResize(k) }) };
   });
 
-  const handleOperation = () => {
-    form.validateFields().then(values => {
-      console.log('积分操作:', { ...values, type: operationType });
-      message.success(operationType === 'add' ? '积分发放成功' : '积分扣除成功');
-      setModalVisible(false);
-      form.resetFields();
-    });
-  };
-
-  const balanceColumns: ColumnsType<PointsRecord> = [
+  const txColumns: ColumnsType<TxRow> = [
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
+    { title: '用户ID', dataIndex: 'user_id', key: 'user_id', width: 160, ellipsis: true },
+    { title: '邮箱', dataIndex: 'email', key: 'email', ellipsis: true, render: v => v || '-' },
     {
-      title: '用户ID',
-      dataIndex: 'userId',
-      key: 'userId',
-      width: 120
+      title: '类型', dataIndex: 'points_type', key: 'points_type', width: 160, ellipsis: true,
+      render: v => <Tag color={v?.includes?.('EARN') || v?.includes?.('ADD') || v?.includes?.('CHECKIN') || v?.includes?.('AD') || v?.includes?.('REFERRAL') ? 'green' : 'orange'}>{v}</Tag>
     },
     {
-      title: '用户名',
-      dataIndex: 'userName',
-      key: 'userName',
-      width: 120
+      title: '积分变动', dataIndex: 'points_amount', key: 'points_amount', width: 100,
+      render: (v: number) => <span style={{ color: v > 0 ? '#52c41a' : '#ff4d4f', fontWeight: 'bold' }}>{v > 0 ? '+' : ''}{v}</span>
     },
-    {
-      title: '当前余额',
-      dataIndex: 'balance',
-      key: 'balance',
-      width: 120,
-      sorter: (a, b) => a.balance - b.balance,
-      render: (balance: number) => (
-        <span style={{ color: '#1890ff', fontWeight: 'bold', fontSize: 16 }}>
-          {balance.toLocaleString()}
-        </span>
-      )
-    },
-    {
-      title: '累计获得',
-      dataIndex: 'totalEarned',
-      key: 'totalEarned',
-      width: 120,
-      sorter: (a, b) => a.totalEarned - b.totalEarned,
-      render: (total: number) => (
-        <span style={{ color: '#52c41a' }}>
-          +{total.toLocaleString()}
-        </span>
-      )
-    },
-    {
-      title: '累计消费',
-      dataIndex: 'totalSpent',
-      key: 'totalSpent',
-      width: 120,
-      sorter: (a, b) => a.totalSpent - b.totalSpent,
-      render: (total: number) => (
-        <span style={{ color: '#ff4d4f' }}>
-          -{total.toLocaleString()}
-        </span>
-      )
-    },
-    {
-      title: '最后更新',
-      dataIndex: 'lastUpdate',
-      key: 'lastUpdate',
-      width: 180
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 180,
-      render: (_, record) => (
-        <Space>
-          <Button 
-            size="small" 
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setOperationType('add');
-              form.setFieldsValue({ userId: record.userId });
-              setModalVisible(true);
-            }}
-          >
-            发放
-          </Button>
-          <Button 
-            size="small" 
-            danger
-            icon={<MinusOutlined />}
-            onClick={() => {
-              setOperationType('deduct');
-              form.setFieldsValue({ userId: record.userId });
-              setModalVisible(true);
-            }}
-          >
-            扣除
-          </Button>
-        </Space>
-      )
-    }
+    { title: '余额', dataIndex: 'balance_after', key: 'balance_after', width: 90 },
+    { title: '说明', dataIndex: 'description', key: 'description', ellipsis: true },
+    { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 160, render: v => new Date(v).toLocaleString() },
   ];
-
-  const historyColumns: ColumnsType<PointsHistory> = [
-    {
-      title: '用户',
-      dataIndex: 'userName',
-      key: 'userName',
-      width: 120
-    },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 100,
-      render: (type: string) => (
-        <Tag color={type === 'earn' ? 'success' : 'error'}>
-          {type === 'earn' ? '获得' : '消费'}
-        </Tag>
-      )
-    },
-    {
-      title: '数量',
-      dataIndex: 'amount',
-      key: 'amount',
-      width: 120,
-      render: (amount: number, record) => (
-        <span style={{ color: record.type === 'earn' ? '#52c41a' : '#ff4d4f', fontWeight: 'bold' }}>
-          {record.type === 'earn' ? '+' : '-'}{amount.toLocaleString()}
-        </span>
-      )
-    },
-    {
-      title: '原因',
-      dataIndex: 'reason',
-      key: 'reason'
-    },
-    {
-      title: '余额',
-      dataIndex: 'balance',
-      key: 'balance',
-      width: 120,
-      render: (balance: number) => balance.toLocaleString()
-    },
-    {
-      title: '时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 180
-    }
-  ];
-
-  const totalStats = {
-    totalBalance: pointsData.reduce((sum, p) => sum + p.balance, 0),
-    totalEarned: pointsData.reduce((sum, p) => sum + p.totalEarned, 0),
-    totalSpent: pointsData.reduce((sum, p) => sum + p.totalSpent, 0),
-    users: pointsData.length
-  };
+  const mergedTxColumns = txColumns.map((col) => {
+    const k = String((col as any).key ?? (col as any).dataIndex ?? '');
+    const w = txColWidths[k] || (col as any).width || 120;
+    return { ...col, width: w, onHeaderCell: () => ({ width: w, onResize: handleTxResize(k) }) };
+  });
 
   return (
     <div style={{ padding: '0 24px' }}>
-      <h1 className="page-title">积分系统</h1>
-      
-      {/* 统计卡片 */}
+      <h1 className="page-title">积分管理</h1>
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="积分总余额"
-              value={totalStats.totalBalance}
-              prefix={<GiftOutlined />}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="累计发放"
-              value={totalStats.totalEarned}
-              prefix={<PlusOutlined />}
-              valueStyle={{ color: '#52c41a' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="累计消费"
-              value={totalStats.totalSpent}
-              prefix={<MinusOutlined />}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="用户数量"
-              value={totalStats.users}
-              prefix={<TrophyOutlined />}
-              valueStyle={{ color: '#faad14' }}
-            />
-          </Card>
-        </Col>
+        <Col xs={24} sm={12} lg={6}><Card><Statistic title="全平台积分" value={stats.totalPoints ?? 0} prefix={<GiftOutlined />} valueStyle={{ color: '#faad14' }} /></Card></Col>
+        <Col xs={24} sm={12} lg={6}><Card><Statistic title="用户总数" value={stats.users ?? 0} prefix={<TrophyOutlined />} valueStyle={{ color: '#1890ff' }} /></Card></Col>
+        <Col xs={24} sm={12} lg={6}><Card><Statistic title="今日发放积分" value={stats.todayEarned ?? 0} prefix={<GiftOutlined />} valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col xs={24} sm={12} lg={6}><Card><Statistic title="今日交易次数" value={stats.todayTx ?? 0} prefix={<HistoryOutlined />} valueStyle={{ color: '#722ed1' }} /></Card></Col>
       </Row>
-
-      {/* 积分趋势图 */}
-      <Card title="积分趋势" style={{ marginBottom: 24 }}>
-        <ReactECharts option={getPointsTrendChart()} style={{ height: 300 }} />
-      </Card>
-
-      {/* 标签页 */}
       <Card>
-        <Tabs defaultActiveKey="balance">
-          <TabPane tab={<span><GiftOutlined />积分余额</span>} key="balance">
-            <Space style={{ marginBottom: 16 }}>
-              <Search placeholder="搜索用户" style={{ width: 250 }} />
+        <Tabs activeKey={tab} onChange={k => { setTab(k); if (k === 'transactions' && txList.length === 0) loadTransactions(1, '', ''); }}>
+          <TabPane tab="积分排行榜" key="leaderboard">
+            <Space style={{ marginBottom: 16 }} wrap>
+              <Input placeholder="搜索用户ID/邮箱" prefix={<SearchOutlined />} style={{ width: 260 }} value={lbSearch} onChange={e => setLbSearch(e.target.value)} onPressEnter={() => { setLbPage(1); loadLeaderboard(1, lbSearch); }} />
+              <span style={{ cursor: 'pointer', color: '#1890ff' }} onClick={() => { setLbPage(1); loadLeaderboard(1, lbSearch); }}>搜索</span>
             </Space>
-            <Table
-              columns={balanceColumns}
-              dataSource={pointsData}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                total: pointsData.length,
-                pageSize: 10,
-                showTotal: (total) => `共 ${total} 条记录`
-              }}
+            <Table<LeaderboardRow>
+              columns={mergedLbColumns} components={{ header: { cell: ResizableTitle } }} dataSource={lbList} rowKey="user_id" loading={loading}
+              pagination={{ total: lbTotal, current: lbPage, pageSize: 20, showSizeChanger: false, showTotal: t => `共 ${t}`, onChange: p => { setLbPage(p); loadLeaderboard(p, lbSearch); } }}
             />
           </TabPane>
-          <TabPane tab={<span><HistoryOutlined />积分记录</span>} key="history">
-            <Space style={{ marginBottom: 16 }}>
-              <Search placeholder="搜索用户" style={{ width: 250 }} />
-              <Select defaultValue="all" style={{ width: 120 }}>
-                <Option value="all">全部类型</Option>
-                <Option value="earn">获得</Option>
-                <Option value="spend">消费</Option>
+          <TabPane tab="积分交易记录" key="transactions">
+            <Space style={{ marginBottom: 16 }} wrap>
+              <Input placeholder="用户ID" style={{ width: 200 }} value={txUserId} onChange={e => setTxUserId(e.target.value)} onPressEnter={() => { setTxPage(1); loadTransactions(1, txUserId, txType); }} />
+              <Select placeholder="筛选类型" allowClear style={{ width: 180 }} value={txType || undefined} onChange={v => { setTxType(v || ''); setTxPage(1); loadTransactions(1, txUserId, v || ''); }}>
+                <Option value="CHECKIN">签到</Option>
+                <Option value="AD_VIEW">广告</Option>
+                <Option value="REFERRAL_1">邀请奖励</Option>
+                <Option value="ADMIN_ADD">管理员增加</Option>
+                <Option value="ADMIN_DEDUCT">管理员扣减</Option>
               </Select>
+              <span style={{ cursor: 'pointer', color: '#1890ff' }} onClick={() => { setTxPage(1); loadTransactions(1, txUserId, txType); }}>查询</span>
             </Space>
-            <Table
-              columns={historyColumns}
-              dataSource={historyData}
-              rowKey="id"
-              loading={loading}
-              pagination={{
-                total: historyData.length,
-                pageSize: 10,
-                showTotal: (total) => `共 ${total} 条记录`
-              }}
+            <Table<TxRow>
+              columns={mergedTxColumns} components={{ header: { cell: ResizableTitle } }} dataSource={txList} rowKey="id" loading={loading}
+              pagination={{ total: txTotal, current: txPage, pageSize: 20, showSizeChanger: false, showTotal: t => `共 ${t}`, onChange: p => { setTxPage(p); loadTransactions(p, txUserId, txType); } }}
             />
           </TabPane>
         </Tabs>
       </Card>
-
-      {/* 积分操作弹窗 */}
-      <Modal
-        title={operationType === 'add' ? '发放积分' : '扣除积分'}
-        open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        onOk={handleOperation}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="userId" label="用户ID" rules={[{ required: true }]}>
-            <Input placeholder="请输入用户ID" />
-          </Form.Item>
-          <Form.Item name="amount" label="积分数量" rules={[{ required: true }]}>
-            <InputNumber 
-              style={{ width: '100%' }} 
-              min={1}
-              placeholder="请输入积分数量"
-            />
-          </Form.Item>
-          <Form.Item name="reason" label="操作原因" rules={[{ required: true }]}>
-            <Input.TextArea 
-              rows={3}
-              placeholder="请输入操作原因"
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 };

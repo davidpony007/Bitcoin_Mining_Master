@@ -1,26 +1,34 @@
-import React from 'react';
-import { Form, Input, Button, Card } from 'antd';
+import React, { useState } from 'react';
+import { Form, Input, Button, Card, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@store/hooks';
 import { setCredentials } from '@store/slices/authSlice';
+import request from '@/services/api/request';
 import './styles.css';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const [loading, setLoading] = useState(false);
 
-  const onFinish = (values: any) => {
-    // 模拟登录
-    dispatch(setCredentials({
-      token: 'mock-token-' + Date.now(),
-      user: {
-        id: '1',
+  const onFinish = async (values: any) => {
+    setLoading(true);
+    try {
+      const res: any = await request.post('/admin/login', {
         username: values.username,
-        email: 'admin@example.com',
-      },
-    }));
-    navigate('/dashboard');
+        password: values.password,
+      });
+      dispatch(setCredentials({
+        token: res.token,
+        user: res.user,
+      }));
+      navigate('/dashboard');
+    } catch (err: any) {
+      message.error(err?.response?.data?.error || '登录失败，请检查用户名和密码');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -50,7 +58,7 @@ const Login: React.FC = () => {
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit" block>
+            <Button type="primary" htmlType="submit" block loading={loading}>
               登录
             </Button>
           </Form.Item>

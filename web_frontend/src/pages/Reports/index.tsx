@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { Card, Button, Space, DatePicker, Select, Table, Tag, List, Row, Col, message } from 'antd';
-import { DownloadOutlined, FileExcelOutlined, FilePdfOutlined, EyeOutlined, BarChartOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Card, Button, Space, DatePicker, Select, Table, Tag, List, Row, Col, Statistic, message } from 'antd';
+import { DownloadOutlined, FileExcelOutlined, FilePdfOutlined, EyeOutlined, BarChartOutlined, UserOutlined, DollarOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import ReactECharts from 'echarts-for-react';
 import dayjs from 'dayjs';
+import { reportsApi } from '@/services/api/admin';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -17,9 +17,24 @@ interface ReportData {
   status: 'completed' | 'processing' | 'failed';
 }
 
+interface ReportSummary {
+  users?: { total: number; countries: number };
+  orders?: { total: number; revenue: number };
+  mining?: { total: number; active: number };
+  withdrawals?: { total: number; amount: number };
+  points?: { total: number };
+}
+
 const Reports: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [reportType, setReportType] = useState('user');
+  const [summary, setSummary] = useState<ReportSummary>({});
+
+  useEffect(() => {
+    reportsApi.summary().then((res: any) => {
+      setSummary(res?.data || {});
+    }).catch(() => {});
+  }, []);
 
   const reportHistory: ReportData[] = [
     {
@@ -95,56 +110,7 @@ const Reports: React.FC = () => {
     }
   ];
 
-  // 样例数据图表
-  const getSampleChartOption = () => ({
-    title: {
-      text: '近七日数据概览',
-      left: 'center'
-    },
-    tooltip: {
-      trigger: 'axis'
-    },
-    legend: {
-      data: ['用户', '订单', '收入'],
-      bottom: 10
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '15%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: ['01-23', '01-24', '01-25', '01-26', '01-27', '01-28', '01-29']
-    },
-    yAxis: {
-      type: 'value'
-    },
-    series: [
-      {
-        name: '用户',
-        type: 'line',
-        data: [1200, 1350, 1500, 1420, 1680, 1850, 2000],
-        smooth: true,
-        itemStyle: { color: '#1890ff' }
-      },
-      {
-        name: '订单',
-        type: 'line',
-        data: [320, 340, 380, 350, 420, 450, 480],
-        smooth: true,
-        itemStyle: { color: '#52c41a' }
-      },
-      {
-        name: '收入',
-        type: 'line',
-        data: [45000, 48000, 52000, 49000, 58000, 62000, 68000],
-        smooth: true,
-        itemStyle: { color: '#faad14' }
-      }
-    ]
-  });
+  // 样例数据图表已替换为真实数据摘要
 
   const handleGenerate = () => {
     setLoading(true);
@@ -237,7 +203,31 @@ const Reports: React.FC = () => {
   return (
     <div style={{ padding: '0 24px' }}>
       <h1 className="page-title">报表中心</h1>
-      
+
+      {/* 实时数据摘要 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic title="累计用户" value={summary.users?.total || 0} prefix={<UserOutlined />} valueStyle={{ color: '#1890ff' }} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic title="订单总收入" value={Number(summary.orders?.revenue || 0)} prefix={<DollarOutlined />} precision={2} valueStyle={{ color: '#52c41a' }} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic title="活跃矿机合约" value={summary.mining?.active || 0} prefix={<ThunderboltOutlined />} valueStyle={{ color: '#faad14' }} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic title="累计积分" value={summary.points?.total || 0} prefix={<BarChartOutlined />} valueStyle={{ color: '#722ed1' }} />
+          </Card>
+        </Col>
+      </Row>
+
       {/* 报表生成 */}
       <Card title="生成报表" style={{ marginBottom: 24 }}>
         <Row gutter={[16, 16]}>
@@ -308,11 +298,6 @@ const Reports: React.FC = () => {
             </List.Item>
           )}
         />
-      </Card>
-
-      {/* 样例图表 */}
-      <Card title="报表预览" style={{ marginBottom: 24 }}>
-        <ReactECharts option={getSampleChartOption()} style={{ height: 400 }} />
       </Card>
 
       {/* 历史报表 */}

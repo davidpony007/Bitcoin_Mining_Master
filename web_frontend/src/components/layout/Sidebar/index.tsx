@@ -1,8 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Layout, Menu } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  DashboardOutlined,
   UserOutlined,
   BarChartOutlined,
   DollarOutlined,
@@ -11,7 +10,6 @@ import {
   CalendarOutlined,
   ThunderboltOutlined,
   TrophyOutlined,
-  FileTextOutlined,
   SettingOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
@@ -22,27 +20,18 @@ const { Sider } = Layout;
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
 
   const menuItems = [
-    {
-      key: '/dashboard',
-      icon: <DashboardOutlined />,
-      label: '仪表盘',
-    },
-    {
-      key: '/users',
-      icon: <UserOutlined />,
-      label: '用户管理',
-    },
     {
       key: '/analytics',
       icon: <BarChartOutlined />,
       label: '数据分析',
     },
     {
-      key: '/ads',
-      icon: <DollarOutlined />,
-      label: '广告数据',
+      key: '/withdrawals',
+      icon: <WalletOutlined />,
+      label: '提现管理',
     },
     {
       key: '/orders',
@@ -50,9 +39,14 @@ const Sidebar: React.FC = () => {
       label: '订单管理',
     },
     {
-      key: '/withdrawals',
-      icon: <WalletOutlined />,
-      label: '提现管理',
+      key: '/users',
+      icon: <UserOutlined />,
+      label: '用户管理',
+    },
+    {
+      key: '/ads',
+      icon: <DollarOutlined />,
+      label: '广告数据',
     },
     {
       key: '/geography',
@@ -75,16 +69,6 @@ const Sidebar: React.FC = () => {
       label: '积分系统',
     },
     {
-      key: '/reports',
-      icon: <FileTextOutlined />,
-      label: '报表中心',
-    },
-    {
-      key: '/datacenter',
-      icon: <BarChartOutlined />,
-      label: '数据中心',
-    },
-    {
       key: '/settings',
       icon: <SettingOutlined />,
       label: '系统设置',
@@ -96,10 +80,17 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    <Sider width={220} className="sidebar">
+    <Sider
+      width={220}
+      className="sidebar"
+      collapsible
+      collapsed={collapsed}
+      onCollapse={setCollapsed}
+      collapsedWidth={64}
+    >
       <div className="logo">
         <ThunderboltOutlined style={{ fontSize: 24 }} />
-        <span>BTC Mining</span>
+        {!collapsed && <span>BTC Mining</span>}
       </div>
       <Menu
         theme="dark"

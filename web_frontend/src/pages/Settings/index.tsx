@@ -29,11 +29,11 @@ const Settings: React.FC = () => {
         layout="vertical"
         initialValues={{
           siteName: 'Bitcoin Mining Master',
-          siteUrl: 'https://example.com',
-          adminEmail: 'admin@example.com',
-          timezone: 'Asia/Shanghai',
+          siteUrl: 'https://smartearningtool.top',
+          adminEmail: 'davidpony007@gmail.com',
+          timezone: 'Europe/London',
           language: 'zh-CN',
-          itemsPerPage: 10,
+          itemsPerPage: 100,
           enableCache: true,
           enableDebug: false
         }}

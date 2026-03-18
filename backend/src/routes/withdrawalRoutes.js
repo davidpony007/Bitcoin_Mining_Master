@@ -551,6 +551,82 @@ router.put('/reject/:id', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 /**
+ * POST /api/withdrawal/admin/bulk-approve
+ * 管理员批量同意提现
+ * Body: { ids: number[] }
+ */
+router.post('/admin/bulk-approve', authenticateToken, requireAdmin, async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: '请提供要操作的提现记录ID' });
+  }
+
+  const results = { success: [], failed: [] };
+
+  for (const id of ids) {
+    const transaction = await sequelize.transaction();
+    try {
+      const withdrawal = await WithdrawalRecord.findByPk(id, { transaction });
+      if (!withdrawal) { results.failed.push({ id, reason: '记录不存在' }); await transaction.rollback(); continue; }
+      if (withdrawal.withdrawal_status !== 'pending') { results.failed.push({ id, reason: '状态不是pending' }); await transaction.rollback(); continue; }
+
+      await withdrawal.update({ withdrawal_status: 'success' }, { transaction });
+      await transaction.commit();
+      results.success.push(id);
+    } catch (err) {
+      await transaction.rollback();
+      results.failed.push({ id, reason: err.message });
+    }
+  }
+
+  res.json({ success: true, data: results, message: `成功同意 ${results.success.length} 条，失败 ${results.failed.length} 条` });
+});
+
+/**
+ * POST /api/withdrawal/admin/bulk-reject
+ * 管理员批量拒绝提现
+ * Body: { ids: number[], reason?: string }
+ */
+router.post('/admin/bulk-reject', authenticateToken, requireAdmin, async (req, res) => {
+  const { ids, reason } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ success: false, message: '请提供要操作的提现记录ID' });
+  }
+
+  const rejectReason = reason || '管理员批量拒绝';
+  const results = { success: [], failed: [] };
+
+  for (const id of ids) {
+    const transaction = await sequelize.transaction();
+    try {
+      const withdrawal = await WithdrawalRecord.findByPk(id, { transaction });
+      if (!withdrawal) { results.failed.push({ id, reason: '记录不存在' }); await transaction.rollback(); continue; }
+      if (withdrawal.withdrawal_status !== 'pending') { results.failed.push({ id, reason: '状态不是pending' }); await transaction.rollback(); continue; }
+
+      // 退还余额
+      const userStatus = await UserStatus.findOne({ where: { user_id: withdrawal.user_id }, transaction });
+      if (userStatus) {
+        const newBalance = parseFloat(userStatus.bitcoin_balance || 0) + parseFloat(withdrawal.withdrawal_request_amount || 0);
+        await userStatus.update({ bitcoin_balance: newBalance }, { transaction });
+      }
+
+      await withdrawal.update({
+        withdrawal_status: 'rejected',
+        reject_reason: rejectReason,
+      }, { transaction });
+
+      await transaction.commit();
+      results.success.push(id);
+    } catch (err) {
+      await transaction.rollback();
+      results.failed.push({ id, reason: err.message });
+    }
+  }
+
+  res.json({ success: true, data: results, message: `成功拒绝 ${results.success.length} 条，失败 ${results.failed.length} 条` });
+});
+
+/**
  * GET /api/withdrawal/admin/stats
  * 管理员获取提现统计数据
  */

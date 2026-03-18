@@ -15,7 +15,7 @@ dayjs.locale('zh-cn');
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Provider store={store}>
-      <BrowserRouter>
+      <BrowserRouter basename="/data-system">
         <ConfigProvider locale={zhCN} theme={{
           token: {
             colorPrimary: '#1890ff',
