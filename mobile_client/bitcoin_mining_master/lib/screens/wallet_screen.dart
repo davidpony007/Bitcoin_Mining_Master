@@ -242,6 +242,43 @@ class _WalletScreenState extends State<WalletScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: ElevatedButton(
         onPressed: () async {
+          // 封禁用户不允许进入提现页面
+          if (StorageService().isBanned()) {
+            if (!mounted) return;
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: AppColors.cardDark,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.block, color: Color(0xFFB71C1C), size: 22),
+                    SizedBox(width: 8),
+                    Text(
+                      'Account Disabled',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                    ),
+                  ],
+                ),
+                content: const Text(
+                  'Your account has been disabled. Please contact support to reactivate your account before making a withdrawal.',
+                  style: TextStyle(color: Color(0xFFB0B0B0), fontSize: 14, height: 1.5),
+                ),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('OK', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
           await Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const WithdrawalScreen()),
