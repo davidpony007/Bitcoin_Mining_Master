@@ -214,4 +214,14 @@ class StorageService {
   Future<bool> clearAll() async {
     return await _prefs?.clear() ?? false;
   }
+
+  /// 保存账户禁用状态
+  Future<bool> saveBanStatus(bool isBanned) async {
+    return await _prefs?.setBool('is_banned', isBanned) ?? false;
+  }
+
+  /// 获取账户禁用状态（本地缓存）
+  bool isBanned() {
+    return _prefs?.getBool('is_banned') ?? false;
+  }
 }

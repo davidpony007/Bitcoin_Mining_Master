@@ -72,5 +72,23 @@ router.post('/activate-ad-contract', authController.activateAdFreeContract);
 
 router.get('/invitation-rebate', authController.getInvitationRebate);
 
+// GET /api/auth/ban-status?user_id=xxx
+// 查询用户禁用状态（无需登录，仅用于客户端展示提示）
+router.get('/ban-status', async (req, res) => {
+  const { user_id } = req.query;
+  if (!user_id) return res.status(400).json({ success: false, message: 'user_id 不能为空' });
+  try {
+    const pool = require('../config/database_native');
+    const [[row]] = await pool.query(
+      'SELECT is_banned, ban_reason FROM user_information WHERE user_id = ?',
+      [user_id]
+    );
+    if (!row) return res.status(404).json({ success: false, message: '用户不存在' });
+    res.json({ success: true, data: { isBanned: row.is_banned === 1, banReason: row.ban_reason || null } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // 导出路由模块，供主应用挂载
 module.exports = router;

@@ -21,6 +21,10 @@ export const usersApi = {
     request.get('/admin/users/list', { params }),
   /** 用户统计概要 */
   stats: () => request.get('/admin/users/stats'),
+  /** 禁用用户 */
+  ban: (userId: string, reason?: string) => request.put(`/admin/users/${userId}/ban`, { reason }),
+  /** 解除禁用 */
+  unban: (userId: string) => request.put(`/admin/users/${userId}/unban`, {}),
 };
 
 // ─── Orders ───────────────────────────────────────────────────────────────────

@@ -660,6 +660,7 @@ router.post('/admin/bulk-reject', authenticateToken, requireAdmin, async (req, r
       if (userStatus) {
           const newBalance = parseFloat(userStatus.current_bitcoin_balance || 0) + parseFloat(withdrawal.withdrawal_request_amount || 0);
           await userStatus.update({ current_bitcoin_balance: newBalance }, { transaction });
+      }
       await withdrawal.update({
         withdrawal_status: 'rejected',
         reject_reason: rejectReason,

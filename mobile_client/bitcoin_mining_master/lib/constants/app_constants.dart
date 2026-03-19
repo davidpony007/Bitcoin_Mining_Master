@@ -58,6 +58,7 @@ class ApiConstants {
   static const String addReferrer = '/auth/add-referrer';
   static const String createAdContract = '/auth/create-ad-contract';
   static const String activateAdContract = '/auth/activate-ad-contract';
+  static const String banStatus = '/auth/ban-status'; // 查询账户禁用状态
   
   // 用户相关端点
   static const String getBitcoinBalance = '/balance/realtime'; // 使用实时余额API

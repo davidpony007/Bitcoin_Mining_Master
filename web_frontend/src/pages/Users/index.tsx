@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Table, Button, Input, Space, Tag, Row, Col, Statistic, Select, message } from 'antd';
+import { Card, Table, Button, Input, Space, Tag, Row, Col, Statistic, Select, message, Modal, Popconfirm } from 'antd';
 import { SearchOutlined, UserOutlined, TeamOutlined, RiseOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { usersApi } from '@/services/api/admin';
@@ -19,6 +19,8 @@ interface UserRow {
   system: string | null;
   acquisition_channel: string | null;
   user_status: string | null;
+  is_banned: number;
+  ban_reason: string | null;
   last_login_time: string | null;
   user_creation_time: string;
   current_bitcoin_balance: string | null;
@@ -69,6 +71,35 @@ const Users: React.FC = () => {
 
   const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter); };
 
+  const handleBan = (record: UserRow) => {
+    Modal.confirm({
+      title: `确认禁用用户？`,
+      content: `将禁用用户 ${record.email || record.user_id}，所有活跃挖矿合约将立即终止。`,
+      okText: '确认禁用',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await usersApi.ban(record.user_id);
+          message.success('用户已禁用');
+          loadList(page, search, status, systemFilter, acquisitionFilter);
+        } catch {
+          message.error('操作失败');
+        }
+      },
+    });
+  };
+
+  const handleUnban = async (record: UserRow) => {
+    try {
+      await usersApi.unban(record.user_id);
+      message.success('用户已解除禁用');
+      loadList(page, search, status, systemFilter, acquisitionFilter);
+    } catch {
+      message.error('操作失败');
+    }
+  };
+
   const columns: ColumnsType<UserRow> = [
     { title: 'User ID', dataIndex: 'user_id', key: 'user_id', width: 160, ellipsis: true },
     { title: '邮箱', dataIndex: 'email', key: 'email', ellipsis: true },
@@ -98,6 +129,17 @@ const Users: React.FC = () => {
     },
     { title: '最后登录', dataIndex: 'last_login_time', key: 'last_login_time', width: 160, render: v => v ? new Date(v).toLocaleString() : '-' },
     { title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 160, render: v => new Date(v).toLocaleDateString() },
+    {
+      title: '操作', key: 'action', width: 100, fixed: 'right' as const,
+      render: (_: any, record: UserRow) =>
+        record.is_banned ? (
+          <Popconfirm title="确认解除禁用？" okText="确认" cancelText="取消" onConfirm={() => handleUnban(record)}>
+            <Button size="small" type="default">启用</Button>
+          </Popconfirm>
+        ) : (
+          <Button size="small" danger onClick={() => handleBan(record)}>禁用</Button>
+        )
+    },
   ];
   const mergedColumns = columns.map((col) => {
     const k = String((col as any).key ?? (col as any).dataIndex ?? '');

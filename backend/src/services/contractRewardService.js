@@ -28,6 +28,9 @@ class ContractRewardService {
           FROM mining_contracts 
           WHERE contract_end_time > ?
         ) AS all_users
+        WHERE user_id NOT IN (
+          SELECT user_id FROM user_information WHERE is_banned = 1
+        )
       `, [startTime, startTime]);
       
       return users.map(u => u.user_id);

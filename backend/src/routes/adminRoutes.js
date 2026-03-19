@@ -173,6 +173,7 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     const [rows] = await conn.query(
       `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
               ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
+              ui.is_banned, ui.banned_at, ui.ban_reason,
               us.user_status, us.last_login_time,
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount
        FROM user_information ui
@@ -1366,6 +1367,83 @@ router.post('/scan-fix-missing-referral-rewards', authenticateToken, requireAdmi
   } catch (error) {
     console.error('批量补发失败:', error);
     res.status(500).json({ success: false, message: '批量补发失败', error: error.message });
+  }
+});
+
+// ─── User Ban / Unban ─────────────────────────────────────────────────────────
+
+/**
+ * PUT /api/admin/users/:userId/ban
+ * 禁用用户：设置 is_banned=1，并立即终止所有活跃合约
+ */
+router.put('/users/:userId/ban', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { reason } = req.body || {};
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 1. 标记用户为已禁用
+    await conn.query(
+      'UPDATE user_information SET is_banned = 1, banned_at = NOW(), ban_reason = ? WHERE user_id = ?',
+      [reason || null, userId]
+    );
+
+    // 2. 立即终止所有活跃的免费合约
+    const [freeResult] = await conn.query(
+      'UPDATE free_contract_records SET free_contract_end_time = NOW() WHERE user_id = ? AND free_contract_end_time > NOW()',
+      [userId]
+    );
+
+    // 3. 立即终止所有活跃的付费合约
+    const [paidResult] = await conn.query(
+      'UPDATE mining_contracts SET contract_end_time = NOW() WHERE user_id = ? AND contract_end_time > NOW()',
+      [userId]
+    );
+
+    await conn.commit();
+    res.json({
+      success: true,
+      message: '用户已禁用，所有活跃合约已终止',
+      data: {
+        freeContractsStopped: freeResult.affectedRows,
+        paidContractsStopped: paidResult.affectedRows,
+      }
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('Ban user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * PUT /api/admin/users/:userId/unban
+ * 解除用户禁用
+ */
+router.put('/users/:userId/unban', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+
+  const conn = await pool.getConnection();
+  try {
+    const [result] = await conn.query(
+      'UPDATE user_information SET is_banned = 0, banned_at = NULL, ban_reason = NULL WHERE user_id = ?',
+      [userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+    res.json({ success: true, message: '用户已解除禁用' });
+  } catch (err) {
+    console.error('Unban user error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
   }
 });
 

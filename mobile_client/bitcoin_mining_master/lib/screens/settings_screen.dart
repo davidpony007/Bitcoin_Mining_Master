@@ -43,6 +43,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   // 评价奖励领取状态
   bool _hasClaimedRatingPoints = false;
 
+  // 账户禁用状态
+  bool _isBanned = false;
+
   // 用户等级相关
   int _userLevel = 1;
   String _levelName = 'Lv.1';
@@ -219,6 +222,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
         // 5. 加载评价奖励领取状态
         _loadRatingClaimedStatus();
+
+        // 6. 检查账户禁用状态
+        _checkBanStatus(savedUserId);
         return;
       }
 
@@ -240,6 +246,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           _loadGoogleSignInStatus();
           if (Platform.isIOS) _loadAppleSignInStatus();
           _loadRatingClaimedStatus();
+          _checkBanStatus(retryUserId);
           return;
         }
       }
@@ -427,7 +434,32 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       print('⚠️ 加载 Apple 登录状态失败: $e');
     }
   }
-  
+
+  /// 检查账户禁用状态
+  Future<void> _checkBanStatus(String userId) async {
+    try {
+      final response = await _apiService.checkBanStatus(userId);
+      if (response['success'] == true && response['data'] != null) {
+        final isBanned = response['data']['isBanned'] == true;
+        await _storageService.saveBanStatus(isBanned);
+        if (mounted) {
+          setState(() {
+            _isBanned = isBanned;
+          });
+        }
+        print('✅ 账户禁用状态: $_isBanned');
+      }
+    } catch (e) {
+      // 网络失败时使用本地缓存
+      if (mounted) {
+        setState(() {
+          _isBanned = _storageService.isBanned();
+        });
+      }
+      print('⚠️ 检查账户禁用状态失败，使用本地缓存: $e');
+    }
+  }
+
   /// 加载用户等级
   Future<void> _loadUserLevel() async {
     try {
@@ -678,6 +710,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           children: [
             const SizedBox(height: 16),
 
+            // Account disabled banner
+            if (_isBanned) ...[
+              _buildBanBanner(),
+              const SizedBox(height: 16),
+            ],
+
             // User Info
             _buildUserCard(),
 
@@ -874,6 +912,76 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         ],
         const SizedBox(height: 8),
       ],
+    );
+  }
+
+  /// 账户禁用提示横幅
+  Widget _buildBanBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFB71C1C),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.block, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Account Disabled',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Your account has been disabled due to inactivity or suspected violations. '
+            'To reactivate, please tap [Contact Us] to email the administrator with your reason.',
+            style: TextStyle(color: Colors.white, fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () async {
+              final uri = Uri(
+                scheme: 'mailto',
+                path: 'support@smartearningtool.top',
+                queryParameters: {
+                  'subject': 'Account Reactivation Request',
+                  'body': 'Hello,\n\nMy User ID is: $_userId\n\nReason for reactivation:\n',
+                },
+              );
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Contact Us',
+                style: TextStyle(
+                  color: Color(0xFFB71C1C),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

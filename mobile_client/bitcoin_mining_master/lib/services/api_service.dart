@@ -352,6 +352,20 @@ class ApiService {
     }
   }
 
+  /// 查询账户禁用状态 - 对应后端 /api/auth/ban-status
+  Future<Map<String, dynamic>> checkBanStatus(String userId) async {
+    try {
+      final response = await _dio.get(
+        ApiConstants.banStatus,
+        queryParameters: {'user_id': userId},
+      );
+      return response.data;
+    } on DioException catch (e) {
+      print('❌ checkBanStatus API错误: ${e.message}');
+      throw _handleError(e);
+    }
+  }
+
   /// 获取邀请关系信息 - 对应后端 /api/auth/invitation-info
   Future<Map<String, dynamic>> getInvitationInfo(String userId) async {
     try {
