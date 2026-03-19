@@ -1,9 +1,11 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/user_provider.dart';
 import '../constants/app_constants.dart';
+import '../services/storage_service.dart';
 import 'withdrawal_history_screen.dart';
 
 /// 提现页面 - Withdrawal Screen
@@ -1015,6 +1017,26 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Future<void> _handleWithdraw(UserProvider provider) async {
+    // 检查账号绑定状态
+    final storage = StorageService();
+    final bool isBound = Platform.isAndroid
+        ? (storage.getGoogleEmail()?.isNotEmpty ?? false)
+        : (storage.getAppleId()?.isNotEmpty ?? false);
+    if (!isBound) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You have not bound an account yet. Please bind your account before attempting to withdraw.',
+          ),
+          backgroundColor: Color(0xFFD32F2F),
+          duration: Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     // 显示确认对话框
     final confirmed = await showDialog<bool>(
       context: context,

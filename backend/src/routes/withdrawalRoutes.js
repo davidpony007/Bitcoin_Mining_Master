@@ -147,7 +147,20 @@ router.post('/request', authenticateToken, async (req, res) => {
       }
     }
 
-    // 4. 检查每日提现次数限制（每位用户每天最多3次）
+    // 4. 验证用户账号绑定状态（必须绑定 Google 或 Apple 账号才能提现）
+    const [userInfoRows] = await sequelize.query(
+      'SELECT google_account, apple_id FROM user_information WHERE user_id = ? LIMIT 1',
+      { replacements: [userId], transaction }
+    );
+    if (!userInfoRows.length || (!userInfoRows[0].google_account && !userInfoRows[0].apple_id)) {
+      await transaction.rollback();
+      return res.status(403).json({
+        success: false,
+        message: 'You have not bound an account yet. Please bind your account before attempting to withdraw.'
+      });
+    }
+
+    // 5. 检查每日提现次数限制（每位用户每天最多3次）
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const [dailyCountResult] = await sequelize.query(
