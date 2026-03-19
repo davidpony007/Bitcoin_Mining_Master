@@ -45,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   // 账户禁用状态
   bool _isBanned = false;
+  Timer? _banPollTimer;
 
   // 用户等级相关
   int _userLevel = 1;
@@ -69,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     _loadUserData(); // 先加载userId，再加载昵称
     _loadUserLevel();
     _startUtcTimeUpdater();
+    _startBanPolling();
     _loadAppVersion(); // 加载版本信息并检查更新
   }
 
@@ -78,6 +80,11 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) {
       // 页面重新激活时刷新等级数据
       _loadUserLevel();
+      // 应用回到前台时立即重新检查封禁状态（解封/封号立即生效）
+      final userId = _storageService.getUserId();
+      if (userId != null && userId.isNotEmpty) {
+        _checkBanStatus(userId);
+      }
     }
   }
 
@@ -85,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timeTimer?.cancel();
+    _banPollTimer?.cancel();
     super.dispose();
   }
 
@@ -103,6 +111,17 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       _utcTime =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} '
           '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+    });
+  }
+
+  /// 封禁状态实时轮询（每 30 秒检查一次）
+  /// SettingsScreen 在 IndexedStack 中始终保持 mounted，因此 timer 在所有 tab 下均有效
+  void _startBanPolling() {
+    _banPollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      final userId = _storageService.getUserId();
+      if (userId != null && userId.isNotEmpty) {
+        _checkBanStatus(userId);
+      }
     });
   }
 
