@@ -266,7 +266,9 @@ class UserProvider with ChangeNotifier {
       await fetchBitcoinBalance();
       return true;
     } else {
-      _setError('Withdrawal failed: ${result.error}');
+      final raw = result.error?.toString() ?? 'Withdrawal failed';
+      final msg = raw.startsWith('Exception: ') ? raw.substring(11) : raw;
+      _setError(msg);
       return false;
     }
   }

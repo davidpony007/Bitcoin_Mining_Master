@@ -147,7 +147,23 @@ router.post('/request', authenticateToken, async (req, res) => {
       }
     }
 
-    // 4. 查询用户余额
+    // 4. 检查每日提现次数限制（每位用户每天最多3次）
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const [dailyCountResult] = await sequelize.query(
+      'SELECT COUNT(*) AS cnt FROM withdrawal_records WHERE user_id = ? AND created_at >= ?',
+      { replacements: [userId, todayStart], transaction }
+    );
+    const dailyCount = parseInt(dailyCountResult[0].cnt || 0);
+    if (dailyCount >= 3) {
+      await transaction.rollback();
+      return res.status(429).json({
+        success: false,
+        message: 'You have reached the daily withdrawal limit of 3. Please try again tomorrow.'
+      });
+    }
+
+    // 5. 查询用户余额
     const userStatus = await UserStatus.findOne({
       where: { user_id: userId },
       transaction
@@ -161,9 +177,9 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
-    const currentBalance = parseFloat(userStatus.current_bitcoin_balance || 0);
+    // 5. 检查每日提现次数限制 (已移至上方)
 
-    // 5. 验证余额是否足够
+    // 6. 验证余额是否足够
     if (currentBalance < withdrawAmount) {
       await transaction.rollback();
       return res.status(400).json({
@@ -172,13 +188,13 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
-    // 6. 扣除用户余额
+    // 7. 扣除用户余额
     await sequelize.query(
       'UPDATE user_status SET current_bitcoin_balance = current_bitcoin_balance - ? WHERE user_id = ?',
       { replacements: [withdrawAmount, userId], transaction }
     );
 
-    // 7. 创建提现记录（使用原生SQL避免Sequelize验证问题）
+    // 8. 创建提现记录（使用原生SQL避免Sequelize验证问题）
     const [insertResult] = await sequelize.query(
       `INSERT INTO withdrawal_records 
        (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_id, created_at)
@@ -188,7 +204,7 @@ router.post('/request', authenticateToken, async (req, res) => {
     
     const withdrawalId = insertResult;
 
-    // 8. 记录比特币交易（提现）
+    // 9. 记录比特币交易（提现）
     const newBalanceAfterWithdraw = currentBalance - withdrawAmount;
     const txDescription = isBinanceUID
       ? `Withdrawal to Binance UID: ${walletAddress}`
