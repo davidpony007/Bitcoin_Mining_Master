@@ -900,9 +900,9 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     // 5. 广告投放数据
     const [adRows] = await conn.query(
       `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
-              ad_new_users, new_users_m1, new_users_m2, new_users_m3,
+              ad_new_users, new_users_m1, new_users_m2,
               cancel_count, renewal_count, renewal_amount,
-              renewal_revenue, ad_count, ad_revenue, playtime_revenue, playtime_sent_btc, btc_avg_price
+              renewal_revenue, ad_count, ad_revenue, btc_avg_price
        FROM daily_ad_stats
        WHERE stat_date BETWEEN ? AND ? AND platform = ?`, [startDate, endDate, platform]);
 
@@ -966,7 +966,6 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const adNewUsers      = parseInt(ad.ad_new_users  || 0);
       const newUsersM1      = parseInt(ad.new_users_m1  || 0);
       const newUsersM2      = parseInt(ad.new_users_m2  || 0);
-      const newUsersM3      = parseInt(ad.new_users_m3  || 0);
       const totalNewUsers   = nuMap[d]  || 0;
       const dauVal          = dauMap[d] || 0;
       const ord             = ordMap[d] || {};
@@ -979,16 +978,13 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const renewalRevenue  = parseFloat(ad.renewal_revenue  || 0);
       const adCount         = parseInt(ad.ad_count           || 0);
       const adRevenue       = parseFloat(ad.ad_revenue       || 0);
-      const playtimeRevenue = parseFloat(ad.playtime_revenue || 0);
-      const playtimeSentBtc = parseFloat(ad.playtime_sent_btc|| 0);
       const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0);
       const btcSentAmount      = btcSentMap[d] || 0;
       const withdrawalBtcAmount= wdDailyMap[d] || 0;
       const adPerUser          = dauVal   > 0 ? parseFloat((adCount / dauVal).toFixed(2)) : 0;
       const ecpm               = adCount  > 0 ? parseFloat(((adRevenue / adCount) * 1000).toFixed(2)) : 0;
-      const totalRevenue       = parseFloat((subRevenue + adRevenue + playtimeRevenue + renewalRevenue).toFixed(2));
+      const totalRevenue       = parseFloat((subRevenue + adRevenue + renewalRevenue).toFixed(2));
       const btcSentValue       = parseFloat((btcSentAmount    * btcAvgPrice).toFixed(2));
-      const playtimeSentValue  = parseFloat((playtimeSentBtc  * btcAvgPrice).toFixed(2));
       const withdrawalBtcValue = parseFloat((withdrawalBtcAmount * btcAvgPrice).toFixed(2));
       const actualCost         = totalSpend;
       const profitSent         = parseFloat((totalRevenue - actualCost - btcSentValue).toFixed(2));
@@ -1003,12 +999,12 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const cancelRate = subOrders  > 0 ? ((cancelCount / subOrders) * 100).toFixed(2) + '%'  : '0%';
       return {
         date: d, totalSpend, googleSpend, applovinSpend, mintegralSpend,
-        adNewUsers, newUsersM1, newUsersM2, newUsersM3, totalNewUsers,
+        adNewUsers, newUsersM1, newUsersM2, totalNewUsers,
         retentionRate: '-', retentionRatePct: '-', dau: dauVal, cpa, adCpa,
         subOrders, subCost, subRate, salesAmount, subRevenue, arppu,
         cancelCount, cancelRate, renewalCount, renewalAmount,
-        renewalRevenue, adCount, adPerUser, ecpm, adRevenue, playtimeRevenue, totalRevenue,
-        btcSentAmount, btcSentValue, playtimeSentBtc, playtimeSentValue, btcAvgPrice,
+        renewalRevenue, adCount, adPerUser, ecpm, adRevenue, totalRevenue,
+        btcSentAmount, btcSentValue, btcAvgPrice,
         withdrawalBtcAmount, withdrawalBtcValue, actualCost, profitSent, profitWithdraw, roi, roiWithdraw,
       };
     });
@@ -1023,13 +1019,10 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     const ttlCancel= sum('cancelCount');
     const ttlAdRevenue       = parseFloat(sum('adRevenue').toFixed(2));
     const ttlAdCount         = sum('adCount');
-    const ttlPlaytimeRevenue = parseFloat(sum('playtimeRevenue').toFixed(2));
     const ttlRenewalRevenue  = parseFloat(sum('renewalRevenue').toFixed(2));
-    const ttlTotalRevenue    = parseFloat((ttlRev + ttlAdRevenue + ttlPlaytimeRevenue + ttlRenewalRevenue).toFixed(2));
+    const ttlTotalRevenue    = parseFloat((ttlRev + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
     const ttlBtcSent         = sum('btcSentAmount');
     const ttlBtcSentValue    = parseFloat(sum('btcSentValue').toFixed(2));
-    const ttlPlaytimeSentBtc = sum('playtimeSentBtc');
-    const ttlPlaytimeSentValue = parseFloat(sum('playtimeSentValue').toFixed(2));
     const ttlWdBtc           = sum('withdrawalBtcAmount');
     const ttlWdBtcValue      = parseFloat(sum('withdrawalBtcValue').toFixed(2));
     const ttlProfitSent      = parseFloat((ttlTotalRevenue - ttlSpend - ttlBtcSentValue).toFixed(2));
@@ -1038,7 +1031,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       date: '总计',
       totalSpend: ttlSpend, googleSpend: parseFloat(sum('googleSpend').toFixed(2)),
       applovinSpend: parseFloat(sum('applovinSpend').toFixed(2)), mintegralSpend: parseFloat(sum('mintegralSpend').toFixed(2)),
-      adNewUsers: ttlAdNew, newUsersM1: sum('newUsersM1'), newUsersM2: sum('newUsersM2'), newUsersM3: sum('newUsersM3'),
+      adNewUsers: ttlAdNew, newUsersM1: sum('newUsersM1'), newUsersM2: sum('newUsersM2'),
       totalNewUsers: ttlNew, retentionRate: '-', dau: '-',
       cpa:    ttlNew   > 0 ? parseFloat((ttlSpend / ttlNew).toFixed(2))   : 0,
       adCpa:  ttlAdNew > 0 ? parseFloat((ttlSpend / ttlAdNew).toFixed(2)) : 0,
@@ -1054,9 +1047,8 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       adCount: ttlAdCount,
       adPerUser: '-',
       ecpm: ttlAdCount > 0 ? parseFloat(((ttlAdRevenue / ttlAdCount) * 1000).toFixed(2)) : 0,
-      adRevenue: ttlAdRevenue, playtimeRevenue: ttlPlaytimeRevenue, totalRevenue: ttlTotalRevenue,
+      adRevenue: ttlAdRevenue, totalRevenue: ttlTotalRevenue,
       btcSentAmount: ttlBtcSent, btcSentValue: ttlBtcSentValue,
-      playtimeSentBtc: ttlPlaytimeSentBtc, playtimeSentValue: ttlPlaytimeSentValue,
       btcAvgPrice: '-',
       withdrawalBtcAmount: ttlWdBtc, withdrawalBtcValue: ttlWdBtcValue,
       actualCost: ttlSpend, profitSent: ttlProfitSent, profitWithdraw: ttlProfitWithdraw,
@@ -1103,33 +1095,29 @@ router.post('/datacenter/ad-data', authenticateToken, requireAdmin, async (req, 
   const conn = await pool.getConnection();
   try {
     const { statDate, platform = 'Android', adNewUsers = 0, newUsersM1 = 0, newUsersM2 = 0,
-            newUsersM3 = 0, cancelCount = 0, renewalCount = 0, renewalAmount = 0,
-            renewalRevenue = 0, adCount = 0, adRevenue = 0, playtimeRevenue = 0,
-            playtimeSentBtc = 0, btcAvgPrice = 0 } = req.body;
+            cancelCount = 0, renewalCount = 0, renewalAmount = 0,
+            renewalRevenue = 0, adCount = 0, adRevenue = 0,
+            btcAvgPrice = 0 } = req.body;
     if (!statDate) return res.status(400).json({ success: false, message: '日期不能为空' });
     await conn.query(
       `INSERT INTO daily_ad_stats (stat_date, platform, ad_new_users, new_users_m1, new_users_m2,
-                                   new_users_m3, cancel_count, renewal_count, renewal_amount,
-                                   renewal_revenue, ad_count, ad_revenue, playtime_revenue,
-                                   playtime_sent_btc, btc_avg_price)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   cancel_count, renewal_count, renewal_amount,
+                                   renewal_revenue, ad_count, ad_revenue, btc_avg_price)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          ad_new_users      = VALUES(ad_new_users),
          new_users_m1      = VALUES(new_users_m1),
          new_users_m2      = VALUES(new_users_m2),
-         new_users_m3      = VALUES(new_users_m3),
          cancel_count      = VALUES(cancel_count),
          renewal_count     = VALUES(renewal_count),
          renewal_amount    = VALUES(renewal_amount),
          renewal_revenue   = VALUES(renewal_revenue),
          ad_count          = VALUES(ad_count),
          ad_revenue        = VALUES(ad_revenue),
-         playtime_revenue  = VALUES(playtime_revenue),
-         playtime_sent_btc = VALUES(playtime_sent_btc),
          btc_avg_price     = VALUES(btc_avg_price)`,
-      [statDate, platform, adNewUsers, newUsersM1, newUsersM2, newUsersM3,
+      [statDate, platform, adNewUsers, newUsersM1, newUsersM2,
        cancelCount, renewalCount, renewalAmount,
-       renewalRevenue, adCount, adRevenue, playtimeRevenue, playtimeSentBtc, btcAvgPrice]);
+       renewalRevenue, adCount, adRevenue, btcAvgPrice]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

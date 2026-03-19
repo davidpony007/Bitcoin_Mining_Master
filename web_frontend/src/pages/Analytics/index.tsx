@@ -84,12 +84,9 @@ interface DailyRow {
   adPerUser: number | string;
   ecpm: number;
   adRevenue: number;
-  playtimeRevenue: number;
   totalRevenue: number;
   btcSentAmount: number;
   btcSentValue: number;
-  playtimeSentBtc: number;
-  playtimeSentValue: number;
   btcAvgPrice: number | string;
   withdrawalBtcAmount: number;
   withdrawalBtcValue: number;
