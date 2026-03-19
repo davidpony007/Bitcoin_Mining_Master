@@ -1017,8 +1017,24 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Future<void> _handleWithdraw(UserProvider provider) async {
-    // 检查账号绑定状态
+    // 检查账户封禁状态（封禁用户禁止提现）
     final storage = StorageService();
+    if (storage.isBanned()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Your account has been disabled. Withdrawals are not available.',
+          ),
+          backgroundColor: Color(0xFFB71C1C),
+          duration: Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // 检查账号绑定状态
     final bool isBound = Platform.isAndroid
         ? (storage.getGoogleEmail()?.isNotEmpty ?? false)
         : (storage.getAppleId()?.isNotEmpty ?? false);

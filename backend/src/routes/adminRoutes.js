@@ -1362,50 +1362,25 @@ router.post('/scan-fix-missing-referral-rewards', authenticateToken, requireAdmi
 
 /**
  * PUT /api/admin/users/:userId/ban
- * 禁用用户：设置 is_banned=1，并立即终止所有活跃合约
+ * 禁用用户：仅设置 is_banned=1，不终止挖矿合约（挖矿照常运行，仅限制提现）
  */
 router.put('/users/:userId/ban', authenticateToken, requireAdmin, async (req, res) => {
   const { userId } = req.params;
   const { reason } = req.body || {};
   if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
 
-  const conn = await pool.getConnection();
   try {
-    await conn.beginTransaction();
-
-    // 1. 标记用户为已禁用
-    await conn.query(
+    const [result] = await pool.query(
       'UPDATE user_information SET is_banned = 1, banned_at = NOW(), ban_reason = ? WHERE user_id = ?',
       [reason || null, userId]
     );
-
-    // 2. 立即终止所有活跃的免费合约
-    const [freeResult] = await conn.query(
-      'UPDATE free_contract_records SET free_contract_end_time = NOW() WHERE user_id = ? AND free_contract_end_time > NOW()',
-      [userId]
-    );
-
-    // 3. 立即终止所有活跃的付费合约
-    const [paidResult] = await conn.query(
-      'UPDATE mining_contracts SET contract_end_time = NOW() WHERE user_id = ? AND contract_end_time > NOW()',
-      [userId]
-    );
-
-    await conn.commit();
-    res.json({
-      success: true,
-      message: '用户已禁用，所有活跃合约已终止',
-      data: {
-        freeContractsStopped: freeResult.affectedRows,
-        paidContractsStopped: paidResult.affectedRows,
-      }
-    });
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+    res.json({ success: true, message: '用户已禁用（挖矿继续，提现已限制）' });
   } catch (err) {
-    await conn.rollback();
     console.error('Ban user error:', err);
     res.status(500).json({ success: false, message: err.message });
-  } finally {
-    conn.release();
   }
 });
 
