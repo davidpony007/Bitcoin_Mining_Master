@@ -1,7 +1,7 @@
 'use strict';
 
 const axios = require('axios');
-const { UserOrder } = require('../models');
+const { UserOrder, UserInformation } = require('../models');
 const paidContractService = require('../services/paidContractService');
 
 // Store product ID → backend product ID 映射
@@ -22,10 +22,10 @@ const PRODUCT_MAP = {
 
 // 商品信息（用于记录订单）
 const PRODUCT_INFO = {
-  p0499: { name: 'Mining Starter Monthly', price: 4.99 },
-  p0699: { name: 'Mining Standard Monthly', price: 6.99 },
-  p0999: { name: 'Mining Advanced Monthly', price: 9.99 },
-  p1999: { name: 'Mining Premium Monthly', price: 19.99 },
+  p0499: { name: 'contract_4.99',  price: 4.99,  hashrate: 0.000000000004456  },
+  p0699: { name: 'contract_6.99',  price: 6.99,  hashrate: 0.000000000007723  },
+  p0999: { name: 'contract_9.99',  price: 9.99,  hashrate: 0.000000000015447  },
+  p1999: { name: 'contract_19.99', price: 19.99, hashrate: 0.000000000033522  },
 };
 
 /**
@@ -116,6 +116,15 @@ exports.verifyPurchase = async (req, res) => {
     // ── 创建付费合约 ─────────────────────────────────────────
     const productMeta = PRODUCT_INFO[resolvedBackendProductId] || {};
 
+    // 查询用户邮箱（user_orders.email 为 NOT NULL）
+    const user = await UserInformation.findOne({
+      where: { user_id },
+      attributes: ['email'],
+    });
+    if (!user) {
+      return res.status(400).json({ success: false, message: '用户不存在' });
+    }
+
     const contract = await paidContractService.createPaidContract(
       user_id,
       resolvedBackendProductId,
@@ -125,14 +134,17 @@ exports.verifyPurchase = async (req, res) => {
     // ── 记录订单 ─────────────────────────────────────────────
     await UserOrder.create({
       user_id,
+      email: user.email,
       product_id: resolvedBackendProductId,
       product_name: productMeta.name || store_product_id,
-      product_price: productMeta.price || 0,
+      product_price: String(productMeta.price || 0),
+      hashrate: productMeta.hashrate || 0,
+      order_creation_time: new Date(),
       payment_time: new Date(),
       currency_type: 'USD',
       payment_gateway_id: transaction_id,
-      payment_network_id: purchase_token || null,
-      order_status: 'completed',
+      payment_network_id: purchase_token || transaction_id,
+      order_status: 'active',
     });
 
     return res.status(200).json({
