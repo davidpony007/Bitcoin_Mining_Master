@@ -74,7 +74,7 @@ const Users: React.FC = () => {
   const handleBan = (record: UserRow) => {
     Modal.confirm({
       title: `确认禁用用户？`,
-      content: `将禁用用户 ${record.email || record.user_id}，所有活跃挖矿合约将立即终止。`,
+      content: `将禁用用户 ${record.email || record.user_id}，该用户的提现功能将暂时失效。`,
       okText: '确认禁用',
       okType: 'danger',
       cancelText: '取消',
