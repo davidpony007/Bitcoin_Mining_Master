@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "1026466488683-oj0o8tkjdotapj219bd4d6n42eu2d93u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cloudminingtool.bitcoin_mining_app",
+            "certificate_hash": "e29ddefafadff47f45034092fcff913f0bd5abac"
+          }
+        },
+        {
           "client_id": "1026466488683-1ps9vc7puchr9don7fmja0vrnngj78kk.apps.googleusercontent.com",
           "client_type": 3
         }

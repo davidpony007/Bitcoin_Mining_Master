@@ -973,7 +973,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             onTap: () async {
               final uri = Uri(
                 scheme: 'mailto',
-                path: 'support@smartearningtool.top',
+                path: 'maguiremarks70@gmail.com',
                 queryParameters: {
                   'subject': 'Account Reactivation Request',
                   'body': 'Hello,\n\nMy User ID is: $_userId\n\nReason for reactivation:\n',
