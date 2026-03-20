@@ -290,7 +290,7 @@ router.get('/history', authenticateToken, async (req, res) => {
     }
 
     // 确保只能查看自己的记录（管理员可查任意用户）
-    if (req.user.role !== 'admin' && String(req.user.id) !== String(userId)) {
+    if (req.user.role !== 'admin' && String(req.user.user_id) !== String(userId)) {
       return res.status(403).json({
         success: false,
         message: 'Forbidden: cannot access other users\' withdrawal history'
@@ -367,7 +367,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 
     // 确保只能查看自己的记录（管理员可查任意记录）
-    if (req.user.role !== 'admin' && String(req.user.id) !== String(userId)) {
+    if (req.user.role !== 'admin' && String(req.user.user_id) !== String(userId)) {
       return res.status(403).json({
         success: false,
         message: 'Forbidden: cannot access other users\' withdrawal records'
