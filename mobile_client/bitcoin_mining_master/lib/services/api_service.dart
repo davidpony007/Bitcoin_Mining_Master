@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'package:package_info_plus/package_info_plus.dart';
 import '../constants/app_constants.dart';
 import '../models/user_model.dart';
+import 'storage_service.dart';
 
 /// API服务类 - 对应Kotlin的ApiService
 class ApiService {
@@ -36,6 +37,19 @@ class ApiService {
         responseHeader: true,
         responseBody: true,
         error: true,
+      ),
+    );
+
+    // 自动注入 JWT token
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final token = StorageService().getAuthToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
       ),
     );
   }
