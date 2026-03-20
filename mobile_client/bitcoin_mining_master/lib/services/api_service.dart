@@ -541,6 +541,12 @@ class ApiService {
     String? appleId,
   }) async {
     try {
+      // 显式获取 token 并注入 Authorization header（与拦截器双重保障）
+      final token = StorageService().getAuthToken();
+      print('[Withdrawal] token=${token != null ? "present(${token.length}chars)" : "NULL"}');
+      if (token == null || token.isEmpty) {
+        throw Exception('Authentication required. Please restart the app and try again.');
+      }
       final response = await _dio.post(
         ApiConstants.withdrawRequest,
         data: {
@@ -553,6 +559,7 @@ class ApiService {
           if (googleAccount != null) 'googleAccount': googleAccount,
           if (appleId != null) 'appleId': appleId,
         },
+        options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
       return response.data;
     } on DioException catch (e) {
