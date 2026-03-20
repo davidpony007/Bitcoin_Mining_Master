@@ -711,6 +711,10 @@ class ApiService {
       case DioExceptionType.sendTimeout:
         return Exception('Network connection error, please try again!');
       case DioExceptionType.badResponse:
+        final data = error.response?.data;
+        if (data is Map && data['message'] is String && (data['message'] as String).isNotEmpty) {
+          return Exception(data['message'] as String);
+        }
         return Exception('Server error: ${error.response?.statusCode}');
       case DioExceptionType.cancel:
         return Exception('Request cancelled');

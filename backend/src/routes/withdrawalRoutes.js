@@ -172,7 +172,7 @@ router.post('/request', authenticateToken, async (req, res) => {
       await transaction.rollback();
       return res.status(429).json({
         success: false,
-        message: 'You have reached the daily withdrawal limit of 3. Please try again tomorrow.'
+        message: 'Daily withdrawal limit reached (max 3 per day). Please try again tomorrow.'
       });
     }
 
