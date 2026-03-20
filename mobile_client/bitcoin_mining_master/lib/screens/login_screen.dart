@@ -241,12 +241,13 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       final errorText = e.toString();
+      print('[GoogleSignIn] error: $e');
       if (account != null) {
         await _googleSignIn.signOut();
       }
 
       String errorMsg;
-      if (errorText.contains('sign_in_canceled')) {
+      if (errorText.contains('sign_in_canceled') || errorText.contains('sign_in_cancelled')) {
         errorMsg = 'Google sign-in cancelled';
       } else if (errorText.contains('network') ||
           errorText.contains('connection') ||
@@ -254,6 +255,12 @@ class _LoginScreenState extends State<LoginScreen> {
         errorMsg = 'Network connection error. Please check your internet connection and try again.';
       } else if (errorText.contains('timeout')) {
         errorMsg = 'Connection timeout. Please try again.';
+      } else if (errorText.contains('10') && errorText.contains('sign_in_failed')) {
+        // DEVELOPER_ERROR: SHA-1 fingerprint not registered in Firebase Console
+        errorMsg = 'Google sign-in configuration error. Please contact support.';
+        print('[GoogleSignIn] DEVELOPER_ERROR (code 10): SHA-1 not registered in Firebase Console');
+      } else if (errorText.contains('12500') || errorText.contains('sign_in_failed')) {
+        errorMsg = 'Google sign-in failed. Please ensure a Google account is added on this device.';
       } else {
         errorMsg = 'Google sign-in failed. Please try again.';
       }
