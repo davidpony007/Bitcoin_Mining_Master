@@ -31,11 +31,11 @@ router.get('/records', async (req, res) => {
     const safeLimit = Math.min(Math.max(parseInt(limit) || 20, 1), 100);
     const safeOffset = Math.max(parseInt(offset) || 0, 0);
 
-    // 构建WHERE条件
+    // 最近3天的截止时间（从当天0点算起向前2天，即今天+昨天+前天）
     const replacements = { userId, limit: safeLimit, offset: safeOffset };
 
     // 主查询 SQL：bitcoin_transaction_records
-    let btrWhere = 'WHERE btr.user_id = :userId';
+    let btrWhere = 'WHERE btr.user_id = :userId AND btr.transaction_creation_time >= CURDATE() - INTERVAL 2 DAY';
     if (type !== 'all') {
       btrWhere += ' AND btr.transaction_type = :type';
       replacements.type = type;
@@ -64,6 +64,7 @@ router.get('/records', async (req, res) => {
         wr.withdrawal_status                                  AS transaction_status
       FROM withdrawal_records wr
       WHERE wr.user_id = :userId
+        AND wr.created_at >= CURDATE() - INTERVAL 2 DAY
         AND NOT EXISTS (
           SELECT 1 FROM bitcoin_transaction_records btr2
           WHERE btr2.user_id = wr.user_id
@@ -77,6 +78,7 @@ router.get('/records', async (req, res) => {
       SELECT (0 - wr.id) AS id
       FROM withdrawal_records wr
       WHERE wr.user_id = :userId
+        AND wr.created_at >= CURDATE() - INTERVAL 2 DAY
         AND NOT EXISTS (
           SELECT 1 FROM bitcoin_transaction_records btr2
           WHERE btr2.user_id = wr.user_id
@@ -99,7 +101,7 @@ router.get('/records', async (req, res) => {
       }
     );
 
-    // 查询总记录数（两侧 SELECT 均只取 id，列数一致）
+    // 查询总记录数（两侧 SELECT 均只取 id，列数一致，含3天限制）
     const [countResult] = await sequelize.query(
       `SELECT COUNT(*) as total FROM (
         SELECT id FROM bitcoin_transaction_records btr

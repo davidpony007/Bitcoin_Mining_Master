@@ -123,3 +123,14 @@ export const reportsApi = {
   /** 报表概要统计 */
   summary: () => request.get('/admin/reports/summary'),
 };
+
+// ─── Bitcoin Transactions (Admin) ─────────────────────────────────────────────
+
+export const bitcoinTxApi = {
+  /** 比特币交易记录（无3天限制，支持日期范围） */
+  list: (params: { page?: number; limit?: number; userId?: string; type?: string; startDate?: string; endDate?: string }) =>
+    request.get('/admin/bitcoin-transactions', { params }),
+  /** 邀请返利记录（无3天限制，支持日期范围） */
+  rebateList: (params: { page?: number; limit?: number; userId?: string; startDate?: string; endDate?: string }) =>
+    request.get('/admin/invitation-rebate', { params }),
+};

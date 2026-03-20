@@ -6,6 +6,8 @@ const authenticateToken = require('../middleware/auth'); // JWT 认证中间件
 const { requireAdmin } = require('../middleware/role'); // 管理员权限校验中间件
 const CountryMiningService = require('../services/countryMiningService'); // 国家挖矿配置服务
 const pool = require('../config/database_native');
+const sequelize = require('../config/database');
+const { QueryTypes } = require('sequelize');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
 const jwt = require('jsonwebtoken');
@@ -1407,6 +1409,142 @@ router.put('/users/:userId/unban', authenticateToken, requireAdmin, async (req, 
     res.status(500).json({ success: false, message: err.message });
   } finally {
     conn.release();
+  }
+});
+
+// ─── Bitcoin Transaction Records (Admin - no day restriction) ────────────────
+/**
+ * GET /api/admin/bitcoin-transactions
+ * 管理员查看比特币交易记录（支持日期范围，无3天限制）
+ * Query: userId?, type?, startDate?, endDate?, page=1, limit=20
+ */
+router.get('/bitcoin-transactions', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { userId, type = 'all', startDate, endDate, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    let where = '1=1';
+    const replacements = { limit: limitNum, offset };
+
+    if (userId) {
+      where += ' AND btr.user_id = :userId';
+      replacements.userId = userId;
+    }
+    if (type !== 'all') {
+      where += ' AND btr.transaction_type = :type';
+      replacements.type = type;
+    }
+    if (startDate) {
+      where += ' AND btr.transaction_creation_time >= :startDate';
+      replacements.startDate = startDate;
+    }
+    if (endDate) {
+      where += ' AND btr.transaction_creation_time < DATE_ADD(:endDate, INTERVAL 1 DAY)';
+      replacements.endDate = endDate;
+    }
+
+    const records = await sequelize.query(
+      `SELECT id, user_id, transaction_type, transaction_amount, balance_after,
+              description, transaction_creation_time, transaction_status
+       FROM bitcoin_transaction_records btr
+       WHERE ${where}
+       ORDER BY transaction_creation_time DESC
+       LIMIT :limit OFFSET :offset`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+
+    const [countResult] = await sequelize.query(
+      `SELECT COUNT(*) as total FROM bitcoin_transaction_records btr WHERE ${where}`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        records: records.map(r => ({
+          id: r.id,
+          userId: r.user_id,
+          type: r.transaction_type,
+          amount: parseFloat(r.transaction_amount),
+          balanceAfter: r.balance_after != null ? parseFloat(r.balance_after) : null,
+          description: r.description || null,
+          createdAt: r.transaction_creation_time,
+          status: r.transaction_status,
+        })),
+        pagination: { total: countResult.total, page: pageNum, limit: limitNum,
+          hasMore: offset + limitNum < countResult.total }
+      }
+    });
+  } catch (error) {
+    console.error('Admin bitcoin transactions error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ─── Invitation Rebate Records (Admin - no day restriction) ──────────────────
+/**
+ * GET /api/admin/invitation-rebate
+ * 管理员查看邀请返利记录（支持日期范围，无3天限制）
+ * Query: userId?, startDate?, endDate?, page=1, limit=20
+ */
+router.get('/invitation-rebate', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { userId, startDate, endDate, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    let where = '1=1';
+    const replacements = { limit: limitNum, offset };
+
+    if (userId) {
+      where += ' AND user_id = :userId';
+      replacements.userId = userId;
+    }
+    if (startDate) {
+      where += ' AND rebate_creation_time >= :startDate';
+      replacements.startDate = startDate;
+    }
+    if (endDate) {
+      where += ' AND rebate_creation_time < DATE_ADD(:endDate, INTERVAL 1 DAY)';
+      replacements.endDate = endDate;
+    }
+
+    const records = await sequelize.query(
+      `SELECT id, user_id, invitation_code, subordinate_user_id,
+              subordinate_rebate_amount, rebate_creation_time
+       FROM invitation_rebate
+       WHERE ${where}
+       ORDER BY rebate_creation_time DESC
+       LIMIT :limit OFFSET :offset`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+
+    const [countResult] = await sequelize.query(
+      `SELECT COUNT(*) as total FROM invitation_rebate WHERE ${where}`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        records: records.map(r => ({
+          id: r.id,
+          userId: r.user_id,
+          invitationCode: r.invitation_code,
+          subordinateUserId: r.subordinate_user_id,
+          amount: parseFloat(r.subordinate_rebate_amount),
+          createdAt: r.rebate_creation_time,
+        })),
+        pagination: { total: countResult.total, page: pageNum, limit: limitNum,
+          hasMore: offset + limitNum < countResult.total }
+      }
+    });
+  } catch (error) {
+    console.error('Admin invitation rebate error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

@@ -1281,13 +1281,33 @@ $downloadUrl
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Rebate Records',
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Text(
+                    'Rebate Records',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'Last 3 Days',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               TextButton(
                 onPressed: () {
@@ -1336,7 +1356,7 @@ $downloadUrl
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'No rebate records yet',
+                    'No rebate records in the last 3 days',
                     style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 14,
@@ -1347,7 +1367,7 @@ $downloadUrl
                     'Rebates are calculated every 2 hours\nbased on your friends\' ad mining earnings',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.textSecondary,
+                      color: AppColors.textSecondary.withOpacity(0.7),
                       fontSize: 12,
                     ),
                   ),

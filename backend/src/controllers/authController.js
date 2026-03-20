@@ -2019,8 +2019,16 @@ exports.getInvitationRebate = async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
     const offset = (pageNum - 1) * limitNum;
 
+    // 最近3天过滤：从今日00:00往前2天（今天+昨天+前天）
+    const threeDayStart = new Date();
+    threeDayStart.setHours(0, 0, 0, 0);
+    threeDayStart.setDate(threeDayStart.getDate() - 2);
+
     const { count, rows } = await InvitationRebate.findAndCountAll({
-      where: { user_id: user_id.trim() },
+      where: {
+        user_id: user_id.trim(),
+        rebate_creation_time: { [Op.gte]: threeDayStart },
+      },
       order: [['rebate_creation_time', 'DESC']],
       limit: limitNum,
       offset,

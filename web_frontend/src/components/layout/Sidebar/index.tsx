@@ -15,6 +15,7 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   FileTextOutlined,
+  TransactionOutlined,
 } from '@ant-design/icons';
 import './styles.css';
 
@@ -85,6 +86,11 @@ const Sidebar: React.FC = () => {
       key: '/reports',
       icon: <FileTextOutlined />,
       label: '报表导出',
+    },
+    {
+      key: '/transactions',
+      icon: <TransactionOutlined />,
+      label: '交易记录',
     },
     {
       key: '/settings',
