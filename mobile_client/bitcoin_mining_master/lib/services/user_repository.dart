@@ -29,6 +29,12 @@ class UserRepository {
           await _storageService.setOfflineUser(false);
           throw Exception('Network connection required. Please check your internet connection and try again.');
         }
+        // 有 userId 但没有 token（老用户/重装后），需要重新登录获取 token
+        final cachedToken = _storageService.getAuthToken();
+        if (cachedToken == null || cachedToken.isEmpty) {
+          print('⚠️ [Token] userId 存在但 token 缺失，重新调用 deviceLogin 获取 token...');
+          await _refreshAuthToken();
+        }
         return Result.success(cachedUserId);
       }
 
@@ -168,6 +174,7 @@ class UserRepository {
           print('正在保存到本地存储...');
           final saveUserIdResult = await _storageService.saveUserId(userId);
           final saveInvCodeResult = await _storageService.saveInvitationCode(invitationCode);
+          await _storageService.saveDeviceId(deviceId); // 保存设备ID供后续 token 刷新使用
           print('   saveUserId结果: $saveUserIdResult');
           print('   saveInvitationCode结果: $saveInvCodeResult');
           
@@ -218,6 +225,43 @@ class UserRepository {
     } catch (e) {
       print('❌ fetchUserId 失败: $e');
       return Result.failure(e is Exception ? e : Exception(e.toString()));
+    }
+  }
+
+  /// 刷新 auth token（已有 userId 但 token 缺失时调用）
+  Future<void> _refreshAuthToken() async {
+    try {
+      // 优先从缓存获取 deviceId
+      String? deviceId = _storageService.getDeviceId();
+      // 缓存没有则从硬件重新获取
+      if (deviceId == null || deviceId.isEmpty) {
+        if (!kIsWeb && Platform.isAndroid) {
+          final String? nativeId = await NativeDeviceIdService.getAndroidId();
+          if (nativeId != null && nativeId.isNotEmpty) {
+            deviceId = nativeId;
+          } else {
+            final info = await DeviceInfoPlugin().androidInfo;
+            deviceId = info.id.isNotEmpty ? info.id : info.fingerprint;
+          }
+        } else if (!kIsWeb && Platform.isIOS) {
+          final info = await DeviceInfoPlugin().iosInfo;
+          deviceId = 'IOS_${info.identifierForVendor ?? info.utsname.machine}';
+        }
+      }
+      if (deviceId == null || deviceId.isEmpty) {
+        print('⚠️ [Token] 无法获取设备ID，跳过 token 刷新');
+        return;
+      }
+      final response = await _apiService.deviceLogin(deviceId: deviceId);
+      if (response.success && response.token != null && response.token!.isNotEmpty) {
+        await _storageService.saveAuthToken(response.token!);
+        await _storageService.saveDeviceId(deviceId);
+        print('✅ [Token] token 刷新成功');
+      } else {
+        print('⚠️ [Token] deviceLogin 返回成功但无 token');
+      }
+    } catch (e) {
+      print('⚠️ [Token] token 刷新失败（不阻断流程）: $e');
     }
   }
 

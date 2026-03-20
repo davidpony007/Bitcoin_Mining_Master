@@ -190,7 +190,8 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
-    // 5. 检查每日提现次数限制 (已移至上方)
+    // 5. 从 userStatus 中提取当前余额
+    const currentBalance = parseFloat(userStatus.current_bitcoin_balance || 0);
 
     // 6. 验证余额是否足够
     if (currentBalance < withdrawAmount) {
