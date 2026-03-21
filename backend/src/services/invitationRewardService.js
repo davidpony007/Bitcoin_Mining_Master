@@ -159,6 +159,7 @@ class InvitationRewardService {
       // 7. 清除邀请人的缓存
       if (redisClient.isReady()) {
         await redisClient.deleteUserLevel(referrerId);
+        await redisClient.deleteUserPoints(referrerId); // 同步清除积分缓存，保证 /points/balance 也返回最新值
         await redisClient.deleteInvitationProgress(referrerId);
       }
 

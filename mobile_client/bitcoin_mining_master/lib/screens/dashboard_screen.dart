@@ -607,6 +607,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         setState(() {
           _pointsBalance = balance;
           _todayAdInfo = adInfo;
+          // 同步 Experience 积分：与 Points Center 使用同一数据源，保证两处显示一致
+          _userPoints = balance.availablePoints;
           _isLoadingPoints = false;
         });
       }

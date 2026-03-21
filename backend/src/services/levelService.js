@@ -204,9 +204,10 @@ class LevelService {
 
       const transactionResult = result[0][0];
 
-      // 清除 Redis 缓存
+      // 清除 Redis 缓存（等级缓存和积分缓存必须同时清除以保证两个接口数据一致）
       if (redisClient.isReady()) {
         await redisClient.deleteUserLevel(userId);
+        await redisClient.deleteUserPoints(userId);
       }
 
       return {

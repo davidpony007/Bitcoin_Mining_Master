@@ -172,7 +172,7 @@ class PointsService {
       // 6. 更新 Redis 缓存（available = 当前等级进度，与 user_information.user_points 保持一致）
       if (redisClient.isReady()) {
         await redisClient.cacheUserPoints(userId, newPoints, newPoints);
-        // 清除等级缓存，强制重新计算
+        // 清除等级缓存，强制重新计算（deleteUserLevel 必须在 cacheUserPoints 之后调用，避免竞态）
         await redisClient.deleteUserLevel(userId);
       }
 

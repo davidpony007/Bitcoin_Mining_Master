@@ -136,9 +136,10 @@ class AdService {
                 totalAdCount: totalCount
               };
 
-              // 11. 清除邀请人的等级缓存
+              // 11. 清除邀请人的等级缓存和积分缓存
               if (redisClient.isReady()) {
                 await redisClient.deleteUserLevel(referrerId);
+                await redisClient.deleteUserPoints(referrerId); // 同步清除积分缓存
               }
             }
 
@@ -170,9 +171,10 @@ class AdService {
         }
       }
 
-      // 14. 清除用户等级缓存 (积分已变化)
+      // 14. 清除用户等级缓存和积分缓存 (积分已变化)
       if (redisClient.isReady() && isCompleted) {
         await redisClient.deleteUserLevel(userId);
+        await redisClient.deleteUserPoints(userId); // 同步清除积分缓存
       }
 
       // 15. 获取最新用户等级信息

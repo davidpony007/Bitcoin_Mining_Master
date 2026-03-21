@@ -234,8 +234,9 @@ class CheckInService {
         const expireTimestamp = Date.now() + 2 * 60 * 60 * 1000;
         await redisClient.addDailyBonusUser(userId, expireTimestamp);
 
-        // 清除用户等级缓存 (积分已变化)
+        // 清除用户等级缓存和积分缓存 (积分已变化)
         await redisClient.deleteUserLevel(userId);
+        await redisClient.deleteUserPoints(userId); // 同步清除积分缓存，保证 /points/balance 也返回最新值
       }
 
       // 10. 获取最新用户等级信息
