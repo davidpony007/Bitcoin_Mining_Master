@@ -104,13 +104,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final country = deviceInfo['country'];
 
       final response = await _apiService.appleLoginOrCreate(
-        appleId:     appleId,
-        appleAccount: appleEmail,
-        appleName:   appleName.isEmpty == true ? null : appleName,
-        iosDeviceId: _idfv,
-        idfa:        _idfa,
-        attStatus:   _attStatus,
-        country:     country,
+        appleId:       appleId,
+        appleAccount:  appleEmail,
+        appleName:     appleName.isEmpty == true ? null : appleName,
+        iosDeviceId:   _idfv,
+        idfv:          _idfv,
+        idfa:          _idfa,
+        attStatus:     _attStatus,
+        country:       country,
+        identityToken: credential.identityToken,
       );
 
       final responseData = response['data'];
@@ -136,11 +138,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
         // 用户取消，不提示
-      } else if (e.code == AuthorizationErrorCode.unknown) {
-        _showError(
-          'Sign In with Apple is not available in this build.\n'
-          'Please use Google Sign In or Continue as Guest.',
-        );
       } else {
         _showError('Apple sign-in failed. Please try again.');
       }

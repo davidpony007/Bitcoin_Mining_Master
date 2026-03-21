@@ -10,6 +10,8 @@ const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
 const InvitationValidationService = require('../services/invitationValidationService');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const axios = require('axios');
 const geoip = require('geoip-lite');
 
 /**
@@ -29,6 +31,53 @@ function determineAcquisitionChannel(referrerCode, installReferrer) {
     return 'paid_unknown';
   }
   return 'organic';
+}
+
+/**
+ * 验证 Apple Identity Token (JWT)
+ * 从 Apple 公钥 JWKS 端点获取公钥，验证 token 签名及声明。
+ * @param {string} identityToken - Flutter sign_in_with_apple 返回的 identityToken
+ * @param {string} appleId       - 声称的 Apple sub (userIdentifier)
+ * @returns {object} JWT payload（验证通过后）
+ */
+async function verifyAppleIdentityToken(identityToken, appleId) {
+  // 1. 解码 header，获取 kid
+  const decoded = jwt.decode(identityToken, { complete: true });
+  if (!decoded || !decoded.header) {
+    throw new Error('Apple identity token 格式无效');
+  }
+  const { kid } = decoded.header;
+
+  // 2. 从 Apple JWKS 端点获取公钥集合（60s 超时）
+  const jwksResponse = await axios.get('https://appleid.apple.com/auth/keys', { timeout: 6000 });
+  const keys = jwksResponse.data.keys;
+  if (!Array.isArray(keys) || keys.length === 0) {
+    throw new Error('未能获取 Apple 公钥列表');
+  }
+
+  // 3. 找到匹配 kid 的 JWK
+  const jwk = keys.find(k => k.kid === kid);
+  if (!jwk) {
+    throw new Error(`未找到匹配的 Apple 公钥 (kid=${kid})`);
+  }
+
+  // 4. 用 Node.js 内置 crypto 将 JWK 转为 PEM
+  const publicKey = crypto.createPublicKey({ key: jwk, format: 'jwk' });
+  const pem = publicKey.export({ type: 'spki', format: 'pem' });
+
+  // 5. 验证 JWT 签名及标准声明
+  const payload = jwt.verify(identityToken, pem, {
+    algorithms: ['RS256'],
+    issuer: 'https://appleid.apple.com',
+    audience: 'com.cloudminingtool.bitcoinMiningMaster',
+  });
+
+  // 6. 确认 sub 与前端传入的 apple_id 一致
+  if (payload.sub !== appleId) {
+    throw new Error('Identity token sub 与 apple_id 不匹配');
+  }
+
+  return payload;
 }
 
 /**
@@ -1726,7 +1775,7 @@ exports.emailLogin = async (req, res) => {
  */
 exports.appleLoginOrCreate = async (req, res) => {
   try {
-    const { apple_id, apple_account, apple_name, ios_device_id, idfv, idfa, att_status, country, app_version, app_build_number, referrer_invitation_code, install_referrer } = req.body;
+    const { apple_id, apple_account, apple_name, ios_device_id, idfv, idfa, att_status, country, app_version, app_build_number, referrer_invitation_code, install_referrer, identity_token } = req.body;
 
     console.log('🍎 [Apple Login/Create] Received request:');
     console.log('   - apple_id:', apple_id);
@@ -1737,12 +1786,30 @@ exports.appleLoginOrCreate = async (req, res) => {
     console.log('   - idfa:', idfa);
     console.log('   - att_status:', att_status);
     console.log('   - country:', country);
+    console.log('   - identity_token:', identity_token ? '(provided)' : '(missing)');
 
     if (!apple_id || apple_id.trim() === '') {
       return res.status(400).json({
         success: false,
         error: 'apple_id is required'
       });
+    }
+
+    // 🔐 验证 Apple Identity Token（若客户端提供则必须通过）
+    if (identity_token) {
+      try {
+        await verifyAppleIdentityToken(identity_token, apple_id.trim());
+        console.log('   ✅ Apple identity token 验证通过');
+      } catch (verifyErr) {
+        console.error('   ❌ Apple identity token 验证失败:', verifyErr.message);
+        return res.status(401).json({
+          success: false,
+          error: 'Apple identity token verification failed',
+          message: verifyErr.message,
+        });
+      }
+    } else {
+      console.warn('   ⚠️ 未提供 identity_token，跳过 Apple token 验证（建议升级客户端）');
     }
 
     const generateUserIds = () => {
@@ -1948,18 +2015,36 @@ exports.getAppleBindingStatus = async (req, res) => {
  */
 exports.bindAppleAccount = async (req, res) => {
   try {
-    const { user_id, apple_id, apple_account } = req.body;
+    const { user_id, apple_id, apple_account, identity_token } = req.body;
 
     console.log('🍎 Bind Apple Account 请求:');
     console.log('   - user_id:', user_id);
     console.log('   - apple_id:', apple_id);
     console.log('   - apple_account:', apple_account);
+    console.log('   - identity_token:', identity_token ? '(provided)' : '(missing)');
 
     if (!user_id || !apple_id) {
       return res.status(400).json({
         success: false,
         error: 'user_id and apple_id are required'
       });
+    }
+
+    // 🔐 验证 Apple Identity Token
+    if (identity_token) {
+      try {
+        await verifyAppleIdentityToken(identity_token, apple_id.trim());
+        console.log('   ✅ Apple identity token 验证通过');
+      } catch (verifyErr) {
+        console.error('   ❌ Apple identity token 验证失败:', verifyErr.message);
+        return res.status(401).json({
+          success: false,
+          error: 'Apple identity token verification failed',
+          message: verifyErr.message,
+        });
+      }
+    } else {
+      console.warn('   ⚠️ 未提供 identity_token，跳过 Apple token 验证');
     }
 
     // 查找当前用户

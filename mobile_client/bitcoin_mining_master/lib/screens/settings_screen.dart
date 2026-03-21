@@ -1571,6 +1571,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           userId: _userId,
           appleId: appleId,
           appleAccount: appleEmail,
+          identityToken: credential.identityToken,
         );
 
         if (mounted) Navigator.of(context).pop(); // 关闭加载

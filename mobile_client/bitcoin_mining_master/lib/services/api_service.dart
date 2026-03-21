@@ -245,9 +245,11 @@ class ApiService {
     String? appleAccount,
     String? appleName,
     String? iosDeviceId,
+    String? idfv,
     String? idfa,
     int? attStatus,
     String? country,
+    String? identityToken,
   }) async {
     String? appVersion;
     int? appBuildNumber;
@@ -258,13 +260,15 @@ class ApiService {
     } catch (_) {}
     try {
       final requestData = {
-        'apple_id':      appleId,
-        'apple_account': appleAccount,
-        'apple_name':    appleName,
-        'ios_device_id': iosDeviceId,
-        'idfa':          idfa,
-        'att_status':    attStatus,
-        'country':       country,
+        'apple_id':       appleId,
+        'apple_account':  appleAccount,
+        'apple_name':     appleName,
+        'ios_device_id':  iosDeviceId,
+        'idfv':           idfv,
+        'idfa':           idfa,
+        'att_status':     attStatus,
+        'country':        country,
+        if (identityToken != null) 'identity_token': identityToken,
         if (appVersion != null) 'app_version': appVersion,
         if (appBuildNumber != null) 'app_build_number': appBuildNumber,
       };
@@ -292,6 +296,7 @@ class ApiService {
     required String userId,
     required String appleId,
     String? appleAccount,
+    String? identityToken,
   }) async {
     try {
       final response = await _dio.post(
@@ -300,6 +305,7 @@ class ApiService {
           'user_id': userId,
           'apple_id': appleId,
           'apple_account': appleAccount,
+          if (identityToken != null) 'identity_token': identityToken,
         },
       );
       return response.data;
