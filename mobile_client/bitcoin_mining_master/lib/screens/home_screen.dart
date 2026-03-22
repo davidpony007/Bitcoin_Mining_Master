@@ -29,6 +29,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // ReferralScreen 的 GlobalKey，用于切换到 tab 时刷新邀请列表
   final _referralKey = GlobalKey<ReferralScreenState>();
 
+  // WalletScreen 的 GlobalKey，用于切换到 tab 时刷新交易记录
+  final _walletKey = GlobalKey<WalletScreenState>();
+
   // 稳定的页面列表，避免每次 build 重建实例导致 GlobalKey 失效
   late final List<Widget> _screens;
 
@@ -50,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
         onContractRefreshNeeded: () =>
             _contractsKey.currentState?.refreshContracts(),
       ),
-      const WalletScreen(),
+      WalletScreen(key: _walletKey),
       const SettingsScreen(),
     ];
     // 预加载广告
@@ -152,6 +155,14 @@ class _HomeScreenState extends State<HomeScreen> {
       if (index == 2) {
         _referralKey.currentState?.refreshInvitedFriends();
       }
+      // 切换到 Wallet tab (index=3) 时刷新交易记录和合约状态
+      if (index == 3) {
+        _walletKey.currentState?.refreshData();
+      }
+      // 切换到 Contracts tab (index=1) 时刷新合约数据
+      if (index == 1) {
+        _contractsKey.currentState?.refreshContracts();
+      }
     }
   }
   @override
@@ -181,6 +192,14 @@ class _HomeScreenState extends State<HomeScreen> {
             // 切换到 Referral tab (index=2) 时刷新邀请好友列表
             if (index == 2) {
               _referralKey.currentState?.refreshInvitedFriends();
+            }
+            // 切换到 Wallet tab (index=3) 时刷新交易记录和合约状态
+            if (index == 3) {
+              _walletKey.currentState?.refreshData();
+            }
+            // 切换到 Contracts tab (index=1) 时刷新合约数据
+            if (index == 1) {
+              _contractsKey.currentState?.refreshContracts();
             }
           },
           items: _navigationItems,

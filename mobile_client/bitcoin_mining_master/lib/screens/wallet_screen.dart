@@ -14,10 +14,10 @@ class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
 
   @override
-  State<WalletScreen> createState() => _WalletScreenState();
+  State<WalletScreen> createState() => WalletScreenState();
 }
 
-class _WalletScreenState extends State<WalletScreen>
+class WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
@@ -55,6 +55,15 @@ class _WalletScreenState extends State<WalletScreen>
 
     // 监听余额变化
     _previousBalance = context.read<UserProvider>().bitcoinBalance;
+  }
+
+  /// 公共方法：切换到 Wallet tab 时刷新数据（由HomeScreen调用）
+  Future<void> refreshData() async {
+    if (!mounted) return;
+    await Future.wait([
+      context.read<UserProvider>().fetchTransactions(),
+      _checkActiveContracts(),
+    ]);
   }
 
   /// 公共方法：手动刷新余额（由HomeScreen调用）

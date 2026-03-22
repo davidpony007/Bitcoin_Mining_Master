@@ -778,14 +778,20 @@ class _DashboardScreenState extends State<DashboardScreen>
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const CheckInScreen()),
-    ).then((_) => _loadPointsData());
+    ).then((_) {
+      _loadPointsData();
+      _loadUserLevel();
+    });
   }
 
   void _navigateToPoints() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const PointsScreen()),
-    ).then((_) => _loadPointsData());
+    ).then((_) {
+      _loadPointsData();
+      _loadUserLevel();
+    });
   }
 
   @override
@@ -855,7 +861,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                         MaterialPageRoute(
                           builder: (context) => const PaidContractsScreen(),
                         ),
-                      );
+                      ).then((_) {
+                        if (mounted) {
+                          _loadContractAndUpdateBatteries();
+                          _loadUserLevel();
+                          _loadPointsData();
+                          context.read<UserProvider>().fetchBitcoinBalance();
+                          widget.onContractRefreshNeeded?.call();
+                        }
+                      });
                     },
                     icon: const Icon(
                       Icons.add_shopping_cart,
