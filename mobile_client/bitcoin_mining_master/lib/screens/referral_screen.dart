@@ -54,8 +54,30 @@ class ReferralScreenState extends State<ReferralScreen> {
   Future<void> refreshInvitedFriends() async {
     final userId = _storageService.getUserId();
     if (userId != null && userId.isNotEmpty && !userId.startsWith('OFFLINE_')) {
-      await _loadInvitationInfo(userId);
-      await _loadRebateRecords(userId);
+      // 同步刷新 Total Rebate Earnings（来自 user_status.total_invitation_rebate）
+      // 必须与 rebate records 一起刷新，否则顶部总额永远显示首次加载时的旧值
+      await Future.wait([
+        _loadInvitationInfo(userId),
+        _loadRebateRecords(userId),
+        _refreshTotalRebate(userId),
+      ]);
+    }
+  }
+
+  /// 刷新顶部 Total Rebate Earnings 数值
+  Future<void> _refreshTotalRebate(String userId) async {
+    try {
+      final response = await _getUserStatusWithFallback(userId);
+      if (response['success'] == true && response['data'] != null) {
+        final data = response['data'];
+        if (mounted) {
+          setState(() {
+            _totalRebate = (data['total_invitation_rebate'] ?? 0).toString();
+          });
+        }
+      }
+    } catch (e) {
+      print('❌ Error refreshing total rebate: $e');
     }
   }
 
