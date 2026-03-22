@@ -163,9 +163,13 @@ class AppleInAppPurchaseService {
         return;
       }
 
-      // iOS 收据：localVerificationData 为 base64 编码的 App Receipt
+      // iOS 自动续期订阅：优先用 serverVerificationData（经 StoreKit 编码的完整收据）
+      // serverVerificationData 与 localVerificationData 在 iOS 上内容相同（均为 base64 App Receipt）
+      // 但某些版本 localVerificationData 可能为空，serverVerificationData 更可靠
       final receiptData =
-          purchase.verificationData.localVerificationData;
+          purchase.verificationData.serverVerificationData.isNotEmpty
+              ? purchase.verificationData.serverVerificationData
+              : purchase.verificationData.localVerificationData;
       final transactionId =
           purchase.purchaseID ??
           purchase.verificationData.serverVerificationData;

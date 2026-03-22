@@ -163,6 +163,28 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
           ),
         ),
         centerTitle: true,
+        // iOS 要求提供恢复购买入口（Restore Purchases）
+        actions: Platform.isIOS
+            ? [
+                TextButton(
+                  onPressed: _serviceInitialized
+                      ? () {
+                          _appleService.restorePurchases();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Restoring purchases...'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: const Text(
+                    'Restore',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ),
+              ]
+            : null,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

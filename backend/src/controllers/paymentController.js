@@ -77,8 +77,11 @@ exports.verifyPurchase = async (req, res) => {
 
   try {
     // ── 防重复校验：检查 transaction_id 是否已处理 ──────────
+    // iOS 自动续期订阅用 original_transaction_id（同一订阅生命周期内不变）
+    // 存在则说明是"续订"，更新合约到期时间即可
+    const lookupId = transaction_id;
     const existingOrder = await UserOrder.findOne({
-      where: { payment_gateway_id: transaction_id },
+      where: { payment_gateway_id: lookupId },
     });
     if (existingOrder) {
       return res.status(200).json({
@@ -107,6 +110,58 @@ exports.verifyPurchase = async (req, res) => {
           message: `Apple 收据验证失败: ${verifyResult.reason}`,
         });
       }
+
+      // ── iOS 自动续期订阅：续订处理 ────────────────────────
+      // original_transaction_id 在整个订阅生命周期内不变，用它识别续订
+      const originalTxId = verifyResult.originalTransactionId;
+      if (originalTxId && originalTxId !== transaction_id) {
+        // 当前 transaction_id 是新交易，但 original_transaction_id 已存在 → 续订
+        const renewalOrder = await UserOrder.findOne({
+          where: { payment_network_id: originalTxId },
+        });
+        if (renewalOrder) {
+          // 更新现有合约到期时间
+          const newExpiry = verifyResult.expiresDateMs
+            ? new Date(parseInt(verifyResult.expiresDateMs))
+            : null;
+          if (newExpiry) {
+            const { MiningContract } = require('../models');
+            await MiningContract.update(
+              { contract_end_time: newExpiry },
+              { where: { user_id: user_id, contract_type: 'paid contract' } }
+            );
+          }
+          // 记录续订交易
+          const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email'] });
+          const productMeta = PRODUCT_INFO[resolvedBackendProductId] || {};
+          await UserOrder.create({
+            user_id,
+            email: renewUser?.email || '',
+            product_id: resolvedBackendProductId,
+            product_name: productMeta.name || store_product_id,
+            product_price: String(productMeta.price || 0),
+            hashrate: productMeta.hashrate || 0,
+            order_creation_time: new Date(),
+            payment_time: new Date(),
+            currency_type: 'USD',
+            payment_gateway_id: transaction_id,
+            payment_network_id: originalTxId,
+            order_status: 'renewing',
+          });
+          return res.status(200).json({
+            success: true,
+            message: '订阅续订成功，合约已延期',
+            renewed: true,
+            newExpiry,
+          });
+        }
+      }
+
+      // 新订阅：继续后续流程，携带 expiresDate 和 originalTxId
+      req._iosSubscriptionMeta = {
+        originalTransactionId: originalTxId || transaction_id,
+        expiresDateMs: verifyResult.expiresDateMs,
+      };
     }
     // Android：Google Play 服务端验证可选。
     // 生产环境建议调用 Google Play Developer API 验证 purchase_token，
@@ -115,6 +170,12 @@ exports.verifyPurchase = async (req, res) => {
 
     // ── 创建付费合约 ─────────────────────────────────────────
     const productMeta = PRODUCT_INFO[resolvedBackendProductId] || {};
+
+    // iOS 自动续期：使用 Apple 收据中的到期时间
+    const iosMeta = req._iosSubscriptionMeta;
+    const expiresDate = iosMeta?.expiresDateMs
+      ? new Date(parseInt(iosMeta.expiresDateMs))
+      : null;
 
     // 查询用户邮箱（user_orders.email 为 NOT NULL）
     const user = await UserInformation.findOne({
@@ -128,10 +189,12 @@ exports.verifyPurchase = async (req, res) => {
     const contract = await paidContractService.createPaidContract(
       user_id,
       resolvedBackendProductId,
-      transaction_id
+      transaction_id,
+      expiresDate
     );
 
     // ── 记录订单 ─────────────────────────────────────────────
+    const originalTxId = iosMeta?.originalTransactionId || purchase_token || transaction_id;
     await UserOrder.create({
       user_id,
       email: user.email,
@@ -143,7 +206,7 @@ exports.verifyPurchase = async (req, res) => {
       payment_time: new Date(),
       currency_type: 'USD',
       payment_gateway_id: transaction_id,
-      payment_network_id: purchase_token || transaction_id,
+      payment_network_id: originalTxId,
       order_status: 'active',
     });
 
@@ -211,11 +274,17 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
 
   // 检查收据中是否存在对应的交易
   const receipts = appleRes.data.latest_receipt_info || [];
+  // 自动续期订阅：取最新一条（expires_date_ms 最大的那条）
+  const latestReceipt = receipts.reduce((best, r) => {
+    if (!best) return r;
+    return parseInt(r.expires_date_ms || '0') > parseInt(best.expires_date_ms || '0') ? r : best;
+  }, null);
+
   const match = receipts.find(
     (r) =>
       r.transaction_id === transactionId ||
       r.original_transaction_id === transactionId
-  );
+  ) || latestReceipt;
 
   if (!match) {
     return {
@@ -231,5 +300,9 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
     };
   }
 
-  return { valid: true };
+  return {
+    valid: true,
+    originalTransactionId: match.original_transaction_id,
+    expiresDateMs: match.expires_date_ms || null,
+  };
 }

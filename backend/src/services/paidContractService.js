@@ -62,8 +62,10 @@ class PaidContractService {
    * @param {string} userId - 用户ID
    * @param {string} productId - 产品ID (p0499, p0699, etc.)
    * @param {string} orderId - 订单ID（可选，用于关联订单）
+   * @param {Date|null} expiresDate - iOS 自动续期订阅的到期时间（由 Apple 收据提供）；
+   *                                  为 null 时使用档位默认 30 天
    */
-  static async createPaidContract(userId, productId, orderId = null) {
+  static async createPaidContract(userId, productId, orderId = null, expiresDate = null) {
     try {
       // 1. 验证用户存在
       const user = await UserInformation.findOne({
@@ -88,7 +90,10 @@ class PaidContractService {
 
       // 3. 计算合约时间
       const now = new Date();
-      const endTime = new Date(now.getTime() + tier.duration * 24 * 60 * 60 * 1000);
+      // iOS 自动续期订阅：使用 Apple 提供的到期时间；其余情况按档位默认 30 天
+      const endTime = expiresDate instanceof Date && !isNaN(expiresDate)
+        ? expiresDate
+        : new Date(now.getTime() + tier.duration * 24 * 60 * 60 * 1000);
       const durationTime = `${tier.duration * 24}:00:00`; // 格式: HH:MM:SS
 
       // 4. 创建付费合约（固定收益，不受国家/等级系数影响）
