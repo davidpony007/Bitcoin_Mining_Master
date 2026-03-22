@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/google_play_billing_service.dart';
+import '../services/apple_in_app_purchase_service.dart';
 import '../services/storage_service.dart';
 
 class PaidContractsScreen extends StatefulWidget {
@@ -12,6 +13,7 @@ class PaidContractsScreen extends StatefulWidget {
 
 class _PaidContractsScreenState extends State<PaidContractsScreen> {
   final GooglePlayBillingService _billingService = GooglePlayBillingService();
+  final AppleInAppPurchaseService _appleService = AppleInAppPurchaseService();
   bool _serviceInitialized = false;
   String? _loadingTierId; // 正在发起购买的套餐内部ID
 
@@ -80,6 +82,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
     super.initState();
     if (Platform.isAndroid) {
       _initBillingService();
+    } else if (Platform.isIOS) {
+      _initAppleService();
     }
   }
 
@@ -95,6 +99,18 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
     if (available) {
       await _billingService.loadProducts();
     }
+    if (mounted) setState(() => _serviceInitialized = available);
+  }
+
+  Future<void> _initAppleService() async {
+    final userId = StorageService().getUserId();
+    _appleService.userId = userId;
+    _appleService.onPurchaseUpdate = (bool success, String message) {
+      if (!mounted) return;
+      setState(() => _loadingTierId = null);
+      _showPurchaseResult(success, message);
+    };
+    final available = await _appleService.init();
     if (mounted) setState(() => _serviceInitialized = available);
   }
 
@@ -123,6 +139,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   @override
   void dispose() {
     _billingService.dispose();
+    _appleService.dispose();
     super.dispose();
   }
 
@@ -506,8 +523,25 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       await _billingService.buySubscription(storeId);
       // 结果通过 onPurchaseUpdate 回调返回，会自动清除 _loadingTierId
     } else if (Platform.isIOS) {
-      // iOS: Apple In-App Purchase (即将支持)
-      _showPurchaseResult(false, 'Apple In-App Purchase coming soon.');
+      // iOS: Apple In-App Purchase via App Store
+      if (!_serviceInitialized) {
+        _showPurchaseResult(false, 'Payment service unavailable. Please check your connection and try again.');
+        return;
+      }
+      final userId = StorageService().getUserId();
+      if (userId == null || userId.isEmpty) {
+        _showPurchaseResult(false, 'Please log in before subscribing.');
+        return;
+      }
+      final storeId = _storeProductIdMap[tier['id'] as String];
+      if (storeId == null) {
+        _showPurchaseResult(false, 'Invalid product configuration.');
+        return;
+      }
+      setState(() => _loadingTierId = tier['id'] as String);
+      _appleService.userId = userId;
+      await _appleService.buyProduct(storeId);
+      // 结果通过 onPurchaseUpdate 回调返回，会自动清除 _loadingTierId
     }
   }
 }
