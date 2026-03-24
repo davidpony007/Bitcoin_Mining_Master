@@ -18,7 +18,15 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   String? _loadingTierId; // 正在发起购买的套餐内部ID
 
   // 内部ID → 商店产品ID 映射
-  static const Map<String, String> _storeProductIdMap = {
+  // iOS App Store 产品ID（appstore04.99 格式），Android Google Play 产品ID（p04.99 格式）
+  static const Map<String, String> _iosStoreProductIdMap = {
+    'p0499': 'appstore04.99',
+    'p0699': 'appstore06.99',
+    'p0999': 'appstore09.99',
+    'p1999': 'appstore19.99',
+  };
+
+  static const Map<String, String> _androidStoreProductIdMap = {
     'p0499': 'p04.99',
     'p0699': 'p06.99',
     'p0999': 'p09.99',
@@ -94,6 +102,13 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       if (!mounted) return;
       setState(() => _loadingTierId = null);
       _showPurchaseResult(success, message);
+      if (success) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+        });
+      }
     };
     final available = await _billingService.init();
     if (available) {
@@ -109,6 +124,13 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       if (!mounted) return;
       setState(() => _loadingTierId = null);
       _showPurchaseResult(success, message);
+      if (success) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+        });
+      }
     };
     final available = await _appleService.init();
     if (mounted) setState(() => _serviceInitialized = available);
@@ -535,7 +557,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         _showPurchaseResult(false, 'Please log in before subscribing.');
         return;
       }
-      final storeId = _storeProductIdMap[tier['id'] as String];
+      final storeId = _androidStoreProductIdMap[tier['id'] as String];
       if (storeId == null) {
         _showPurchaseResult(false, 'Invalid product configuration.');
         return;
@@ -555,7 +577,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         _showPurchaseResult(false, 'Please log in before subscribing.');
         return;
       }
-      final storeId = _storeProductIdMap[tier['id'] as String];
+      final storeId = _iosStoreProductIdMap[tier['id'] as String];
       if (storeId == null) {
         _showPurchaseResult(false, 'Invalid product configuration.');
         return;

@@ -120,16 +120,31 @@ exports.handleNotification = async (req, res) => {
 
       case 'CANCEL':
       case 'EXPIRED': {
-        // 取消/过期：合约保留剩余时间直到到期，仅标记订单状态
+        // 取消/过期：立即标记合约为已取消，状态变为 Not Active，并标记订单完成
         const order = await UserOrder.findOne({
           where: { payment_network_id: original_transaction_id },
         });
         if (order) {
+          // 标记订单完成
           await UserOrder.update(
             { order_status: 'complete' },
             { where: { payment_network_id: original_transaction_id } }
           );
-          console.log(`📴 [AppleNotif] 订阅 ${notification_type}，订单标记 complete`);
+          // 立即标记该用户的对应付费合约为已取消，前端将显示 Not Active
+          const { MiningContract } = require('../models');
+          const cancelled = await MiningContract.update(
+            { is_cancelled: 1, contract_end_time: new Date() },
+            {
+              where: {
+                user_id: order.user_id,
+                contract_type: 'paid contract',
+                is_cancelled: 0,
+              },
+            }
+          );
+          console.log(`📴 [AppleNotif] 订阅 ${notification_type}，合约已标记取消 (rows=${cancelled[0]})`);
+        } else {
+          console.warn(`⚠️ [AppleNotif] ${notification_type}: 找不到 original_tx=${original_transaction_id} 对应的订单`);
         }
         break;
       }

@@ -20,6 +20,8 @@ class ContractsScreenState extends State<ContractsScreen>
   final _storageService = StorageService();
   final _apiService = ApiService();
   final bool _isPageVisible = true;
+  final List<Map<String, dynamic>> _activePaidContracts = [];
+  final List<Map<String, dynamic>> _expiredPaidContracts = [];
 
   // 合约状态
   bool _isLoadingContracts = true;
@@ -32,9 +34,7 @@ class ContractsScreenState extends State<ContractsScreen>
   int _dailyCheckInRemainingSeconds = 0;
   int _adRewardRemainingSeconds = 0;
   int _inviteFriendRemainingSeconds = 0;
-  final double _inviteFriendHashrate = 0;
   int _bindReferrerRemainingSeconds = 0;
-  final double _bindReferrerHashrate = 0;
   int _userLevel = 1; // 用户矿工等级
   Timer? _contractTimer;
   Timer? _refreshTimer;
@@ -192,6 +192,27 @@ class ContractsScreenState extends State<ContractsScreen>
           _bindReferrerRemainingSeconds = data['bindReferrerReward']['remainingSeconds'] ?? 0;
           // hashrate现在是字符串（如"5.5Gh/s"），不需要解析
 
+          _activePaidContracts
+            ..clear()
+            ..addAll(
+              List<Map<String, dynamic>>.from(
+                data['paidContracts']?['active'] ?? const [],
+              ),
+            )
+            // 已取消的合约也显示在 All tab（Not Active），不归入 Expired
+            ..addAll(
+              List<Map<String, dynamic>>.from(
+                data['paidContracts']?['cancelled'] ?? const [],
+              ),
+            );
+          _expiredPaidContracts
+            ..clear()
+            ..addAll(
+              List<Map<String, dynamic>>.from(
+                data['paidContracts']?['expired'] ?? const [],
+              ),
+            );
+
           _isLoadingContracts = false;
         });
 
@@ -203,6 +224,9 @@ class ContractsScreenState extends State<ContractsScreen>
         );
         print(
           '⏱️ 剩余时间: InviteFriend=$_inviteFriendRemainingSeconds秒, BindReferrer=$_bindReferrerRemainingSeconds秒',
+        );
+        print(
+          '💳 付费合约: Active=${_activePaidContracts.length}, Expired=${_expiredPaidContracts.length}',
         );
       } else {
         print('❌ API响应失败或数据为空');
@@ -237,12 +261,16 @@ class ContractsScreenState extends State<ContractsScreen>
         actions: [
           TextButton.icon(
             onPressed: () {
-              Navigator.push(
+              Navigator.push<bool>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const PaidContractsScreen(),
                 ),
-              );
+              ).then((purchased) {
+                if (purchased == true) {
+                  refreshContracts();
+                }
+              });
             },
             icon: Icon(
               Icons.add_shopping_cart,
@@ -284,6 +312,11 @@ class ContractsScreenState extends State<ContractsScreen>
   Widget _buildExpiredTab() {
     // 收集所有已过期的合约
     List<Widget> expiredContracts = [];
+
+    for (final contract in _expiredPaidContracts) {
+      expiredContracts.add(_buildPaidContractCard(contract, isExpired: true));
+      expiredContracts.add(const SizedBox(height: 12));
+    }
 
     // Bind Referrer Reward - 存在但不活跃（仅一次性任务，过期后只在这里显示）
     if (_bindReferrerExists && !_isBindReferrerActive) {
@@ -564,7 +597,11 @@ class ContractsScreenState extends State<ContractsScreen>
           // 3D矿机动画 - 居中显示，在任务队列上方
           Center(
             child: MiningMachineAnimation(
-              isActive: _isDailyCheckInActive || _isAdRewardActive || _isInviteFriendActive || _isBindReferrerActive,
+              isActive: _isDailyCheckInActive ||
+                  _isAdRewardActive ||
+                  _isInviteFriendActive ||
+                  _isBindReferrerActive ||
+                  _activePaidContracts.isNotEmpty,
               size: 200, // 增大尺寸至200
               userLevel: _userLevel, // 传递用户矿工等级
             ),
@@ -589,6 +626,169 @@ class ContractsScreenState extends State<ContractsScreen>
             const SizedBox(height: 12),
             _buildBindReferrerCard(),
           ],
+
+          if (_activePaidContracts.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text(
+              'Subscription Contract Queue',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            ..._activePaidContracts.asMap().entries.expand((entry) => [
+              _buildPaidContractCard(entry.value, queueIndex: entry.key + 1),
+              const SizedBox(height: 12),
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaidContractCard(
+    Map<String, dynamic> contract, {
+    int? queueIndex,
+    bool isExpired = false,
+  }) {
+    final String title = contract['planName']?.toString() ?? 'Paid Contract';
+    final String statusText = contract['statusText']?.toString() ??
+        (isExpired ? 'Expired' : 'Mining');
+    final String hashrate =
+        contract['displayHashrate']?.toString() ?? '0Gh/s';
+
+    // cancelled 状态：在 All tab 展示，但用灰色表示 Not Active
+    final bool isCancelled = contract['status']?.toString() == 'cancelled';
+    final String remainingText = (isExpired || isCancelled)
+        ? 'Ended ${contract['endedAtText'] ?? ''}'.trim()
+        : (contract['remainingFormatted']?.toString() ?? '00h 00m 00s');
+    final Color accentColor =
+        (isExpired || isCancelled) ? const Color(0xFF8E8E93) : const Color(0xFF50C878);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: accentColor.withOpacity(0.65),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accentColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  (isExpired || isCancelled) ? Icons.inventory_2_outlined : Icons.queue_play_next,
+                  color: accentColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      queueIndex != null ? 'Queue #$queueIndex' : statusText,
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    hashrate,
+                    style: TextStyle(
+                      color: accentColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    contract['priceLabel']?.toString() ?? '',
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildPaidMetaItem('Status', statusText, accentColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildPaidMetaItem(
+                  (isExpired || isCancelled) ? 'Ended' : 'Remaining',
+                  remainingText,
+                  (isExpired || isCancelled) ? AppColors.textSecondary : accentColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaidMetaItem(String label, String value, Color valueColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );

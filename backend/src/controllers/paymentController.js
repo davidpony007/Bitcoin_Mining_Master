@@ -8,12 +8,17 @@ const paidContractService = require('../services/paidContractService');
 // key = Google Play Console / App Store 中的商品ID
 // value = 内部合约商品ID
 const PRODUCT_MAP = {
-  // Google Play Console 当前商品ID（p04.99 格式）
+  // Google Play Console 商品ID（Android）
   'p04.99': 'p0499',
   'p06.99': 'p0699',
   'p09.99': 'p0999',
   'p19.99': 'p1999',
-  // 兼容旧命名（如后续迁移）
+  // App Store Connect 商品ID（iOS）
+  'appstore04.99': 'p0499',
+  'appstore06.99': 'p0699',
+  'appstore09.99': 'p0999',
+  'appstore19.99': 'p1999',
+  // 兼容旧命名
   mining_starter_monthly: 'p0499',
   mining_standard_monthly: 'p0699',
   mining_advanced_monthly: 'p0999',
@@ -197,7 +202,7 @@ exports.verifyPurchase = async (req, res) => {
     const originalTxId = iosMeta?.originalTransactionId || purchase_token || transaction_id;
     await UserOrder.create({
       user_id,
-      email: user.email,
+      email: user.email || '',   // 设备登录用户可能无邮箱，降级为空字符串
       product_id: resolvedBackendProductId,
       product_name: productMeta.name || store_product_id,
       product_price: String(productMeta.price || 0),

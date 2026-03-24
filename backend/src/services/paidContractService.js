@@ -89,6 +89,8 @@ class PaidContractService {
       }
 
       // 3. 计算合约时间
+      // 注：同一 transaction_id 的去重已在 paymentController 最上层处理（payment_gateway_id UNIQUE），此处无需重复拦截，
+      // 不同产品档位（如同时持有 $4.99 和 $6.99）或订阅升级场景均可正常创建新合约。
       const now = new Date();
       // iOS 自动续期订阅：使用 Apple 提供的到期时间；其余情况按档位默认 30 天
       const endTime = expiresDate instanceof Date && !isNaN(expiresDate)

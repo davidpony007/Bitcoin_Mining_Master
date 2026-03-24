@@ -17,11 +17,12 @@ class AppleInAppPurchaseService {
   StreamSubscription<List<PurchaseDetails>>? _subscription;
 
   // 商品 ID 列表 —— 必须与 App Store Connect 中创建的商品 ID 完全一致
+  // App Store Connect 产品ID: appstore04.99 / appstore06.99 / appstore09.99 / appstore19.99
   static const Set<String> _productIds = {
-    'p04.99', // $4.99 - Starter Plan
-    'p06.99', // $6.99 - Standard Plan
-    'p09.99', // $9.99 - Advanced Plan
-    'p19.99', // $19.99 - Premium Plan
+    'appstore04.99', // $4.99 - Starter Plan
+    'appstore06.99', // $6.99 - Standard Plan
+    'appstore09.99', // $9.99 - Advanced Plan
+    'appstore19.99', // $19.99 - Premium Plan
   };
 
   // 商品详情列表
@@ -37,10 +38,15 @@ class AppleInAppPurchaseService {
   Future<bool> init() async {
     try {
       final available = await _iap.isAvailable();
+      print('🔍 [IAP] isAvailable=$available');
       if (!available) {
         print('❌ App Store In-App Purchase 不可用');
         return false;
       }
+
+      // 先取消旧订阅，防止多次 init 造成重复监听
+      await _subscription?.cancel();
+      _subscription = null;
 
       // 监听购买状态流
       _subscription = _iap.purchaseStream.listen(
@@ -61,22 +67,25 @@ class AppleInAppPurchaseService {
   /// 加载 App Store 商品列表
   Future<void> loadProducts() async {
     try {
+      print('🔍 [IAP] 开始查询商品, IDs: $_productIds');
       final ProductDetailsResponse response =
           await _iap.queryProductDetails(_productIds);
 
+      print('🔍 [IAP] 查询完成: found=${response.productDetails.length}, notFoundIDs=${response.notFoundIDs}, error=${response.error}');
+
       if (response.error != null) {
-        print('❌ iOS 商品查询失败: ${response.error}');
+        print('❌ [IAP] iOS 商品查询失败 code=${response.error?.code} msg=${response.error?.message} src=${response.error?.source}');
         return;
       }
 
       if (response.notFoundIDs.isNotEmpty) {
-        print('⚠️ App Store 中未找到的商品: ${response.notFoundIDs}');
+        print('⚠️ [IAP] App Store 中未找到的商品 (ID不匹配或商品未配置): ${response.notFoundIDs}');
       }
 
       products = response.productDetails;
-      print('✅ 加载了 ${products.length} 个 iOS 商品');
+      print('✅ [IAP] 加载了 ${products.length} 个 iOS 商品');
       for (final p in products) {
-        print('📦 iOS 商品: ${p.id} - ${p.price} - ${p.title}');
+        print('📦 [IAP] iOS 商品: id=${p.id} price=${p.price} title=${p.title}');
       }
     } catch (e) {
       print('❌ iOS 商品加载异常: $e');
@@ -110,8 +119,16 @@ class AppleInAppPurchaseService {
       // 非消耗型或非自动续期订阅使用 buyNonConsumable
       await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     } catch (e) {
+      final errStr = e.toString();
       print('❌ iOS 购买失败: $e');
-      onPurchaseUpdate?.call(false, 'Purchase failed: $e');
+      // storekit_duplicate_product_object：该商品已有待处理的交易（用户上次购买流程未完成）。
+      // StoreKit 会通过 purchaseStream 自动重放该交易并完成，无需用户再次操作，
+      // 此处仅保持 loading 状态，等待回调即可，不通知失败。
+      if (errStr.contains('storekit_duplicate_product_object')) {
+        print('⚠️ [IAP] 检测到重复交易，等待 StoreKit 自动完成...');
+        return; // 不调用 onPurchaseUpdate，保持 loading 状态
+      }
+      onPurchaseUpdate?.call(false, 'Purchase failed. Please try again.');
     }
   }
 

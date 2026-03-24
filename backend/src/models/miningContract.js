@@ -51,6 +51,12 @@ const MiningContract = sequelize.define('mining_contracts', {
     type: DataTypes.DECIMAL(18, 18), 
     allowNull: false,
     comment: '算力(hashrate)'
+  },
+  is_cancelled: {
+    type: DataTypes.TINYINT(1),
+    allowNull: false,
+    defaultValue: 0,
+    comment: '是否已取消订阅: 0=正常, 1=用户已取消'
   }
 }, {
   timestamps: false,

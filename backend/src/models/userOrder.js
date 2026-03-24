@@ -13,7 +13,7 @@ const UserOrder = sequelize.define('user_orders', {
   
   // 用户ID
   user_id: { 
-    type: DataTypes.STRING(15), 
+    type: DataTypes.STRING(30), 
     allowNull: false,
     comment: '用户唯一标识符'
   },

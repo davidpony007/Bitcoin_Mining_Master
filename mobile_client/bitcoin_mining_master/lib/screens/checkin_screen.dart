@@ -800,47 +800,51 @@ class _CheckInScreenState extends State<CheckInScreen>
               ]
             : null,
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (isChecked)
-            Icon(Icons.check_circle, color: Colors.white, size: 24)
-          else if (isMilestone)
-            Icon(Icons.emoji_events, color: Colors.amber, size: 22)
-          else if (isToday)
-            Icon(Icons.today, color: AppColors.primary, size: 20)
-          else
-            const SizedBox(height: 24),
-          const SizedBox(height: 4),
-          Text(
-            'Day $day',
-            style: TextStyle(
-              color: textColor,
-              fontSize: 10,
-              fontWeight: isChecked ? FontWeight.bold : FontWeight.normal,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            decoration: BoxDecoration(
-              color: isChecked
-                  ? Colors.white.withOpacity(0.2)
-                  : (isToday
-                        ? AppColors.primary.withOpacity(0.2)
-                        : Colors.transparent),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              '+$points',
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isChecked)
+              Icon(Icons.check_circle, color: Colors.white, size: 24)
+            else if (isMilestone)
+              Icon(Icons.emoji_events, color: Colors.amber, size: 22)
+            else if (isToday)
+              Icon(Icons.today, color: AppColors.primary, size: 20)
+            else
+              const SizedBox(height: 24),
+            const SizedBox(height: 4),
+            Text(
+              'Day $day',
               style: TextStyle(
                 color: textColor,
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
+                fontSize: 10,
+                fontWeight: isChecked ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: isChecked
+                    ? Colors.white.withOpacity(0.2)
+                    : (isToday
+                          ? AppColors.primary.withOpacity(0.2)
+                          : Colors.transparent),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '+$points',
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

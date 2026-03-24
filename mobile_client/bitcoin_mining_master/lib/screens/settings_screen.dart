@@ -106,6 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   /// 更新UTC时间
   void _updateUtcTime() {
+    if (!mounted) return;
     final now = DateTime.now().toUtc();
     setState(() {
       _utcTime =
