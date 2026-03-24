@@ -103,6 +103,7 @@ exports.verifyPurchase = async (req, res) => {
         });
         if (renewalOrder) {
           // 更新现有合约到期时间
+          // ✅ 用 original_transaction_id 精准定位，避免误改用户的其他档位合约
           const newExpiry = verifyResult.expiresDateMs
             ? new Date(parseInt(verifyResult.expiresDateMs))
             : null;
@@ -110,7 +111,7 @@ exports.verifyPurchase = async (req, res) => {
             const { MiningContract } = require('../models');
             await MiningContract.update(
               { contract_end_time: newExpiry },
-              { where: { user_id: user_id, contract_type: 'paid contract' } }
+              { where: { original_transaction_id: originalTxId } }
             );
           }
           // 记录续订交易
@@ -171,7 +172,9 @@ exports.verifyPurchase = async (req, res) => {
       user_id,
       resolvedBackendProductId,
       transaction_id,
-      expiresDate
+      expiresDate,
+      platform,                                      // ios / android
+      iosMeta?.originalTransactionId || (platform === 'android' ? purchase_token : null)
     );
 
     // ── 记录订单 ─────────────────────────────────────────────

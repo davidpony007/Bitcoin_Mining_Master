@@ -59,14 +59,22 @@ class PaidContractService {
   /**
    * 创建付费合约
    * 当用户完成支付后调用，创建挖矿合约
-   * 
+   *
    * @param {string} userId - 用户ID
    * @param {string} productId - 产品ID (p0499, p0699, etc.)
-   * @param {string} orderId - 订单ID（可选，用于关联订单）
-   * @param {Date|null} expiresDate - iOS 自动续期订阅的到期时间（由 Apple 收据提供）；
-   *                                  为 null 时使用档位默认 30 天
+   * @param {string|null} orderId - 关联订单ID（= payment_gateway_id / transaction_id）
+   * @param {Date|null} expiresDate - iOS 订阅到期时间（Apple 收据提供），null 时按自然月计算
+   * @param {'ios'|'android'|'system'} platform - 支付来源平台
+   * @param {string|null} originalTxId - iOS originalTransactionId 或 Android 初始 purchase_token
    */
-  static async createPaidContract(userId, productId, orderId = null, expiresDate = null) {
+  static async createPaidContract(
+    userId,
+    productId,
+    orderId = null,
+    expiresDate = null,
+    platform = 'system',
+    originalTxId = null
+  ) {
     try {
       // 1. 验证用户存在
       const user = await UserInformation.findOne({
@@ -113,11 +121,16 @@ class PaidContractService {
       const contract = await MiningContract.create({
         user_id: userId,
         contract_type: 'paid contract',
+        product_id: productId,
+        platform,
         contract_creation_time: now,
         contract_end_time: endTime,
         contract_duration: durationTime,
         base_hashrate: tierHashrate,
-        hashrate: tierHashrate
+        hashrate: tierHashrate,
+        is_cancelled: 0,
+        original_transaction_id: originalTxId || null,
+        order_id: orderId || null
       });
 
       // 5. 计算预期收益（不含任何倍数）
