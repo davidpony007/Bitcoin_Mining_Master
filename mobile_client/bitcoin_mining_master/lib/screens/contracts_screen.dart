@@ -75,6 +75,14 @@ class ContractsScreenState extends State<ContractsScreen>
             _isBindReferrerActive = false;
           }
         }
+
+        // 每秒同步减少付费合约的本地剩余秒数，驱动倒计时跳动
+        for (final contract in _activePaidContracts) {
+          final secs = (contract['_remainingSeconds'] as int?) ?? 0;
+          if (secs > 0) {
+            contract['_remainingSeconds'] = secs - 1;
+          }
+        }
       });
     });
 
@@ -197,14 +205,22 @@ class ContractsScreenState extends State<ContractsScreen>
             ..addAll(
               List<Map<String, dynamic>>.from(
                 data['paidContracts']?['active'] ?? const [],
-              ),
+              ).map((c) => Map<String, dynamic>.from(c)).toList(),
             )
             // 已取消的合约也显示在 All tab（Not Active），不归入 Expired
             ..addAll(
               List<Map<String, dynamic>>.from(
                 data['paidContracts']?['cancelled'] ?? const [],
-              ),
+              ).map((c) => Map<String, dynamic>.from(c)).toList(),
             );
+          // 初始化各合约的本地倒计时秒数（供每秒 Timer 驱动 UI 倒计时跳动）
+          for (final contract in _activePaidContracts) {
+            if (contract['status'] != 'cancelled') {
+              contract['_remainingSeconds'] = _parseFormattedDuration(
+                contract['remainingFormatted']?.toString() ?? '',
+              );
+            }
+          }
           _expiredPaidContracts
             ..clear()
             ..addAll(
@@ -250,6 +266,16 @@ class ContractsScreenState extends State<ContractsScreen>
     final seconds = totalSeconds % 60;
 
     return '${hours.toString().padLeft(2, '0')}h ${minutes.toString().padLeft(2, '0')}m ${seconds.toString().padLeft(2, '0')}s';
+  }
+
+  /// 将 "00h 04m 28s" 格式的字符串解析为总秒数
+  int _parseFormattedDuration(String formatted) {
+    final match = RegExp(r'(\d+)h\s*(\d+)m\s*(\d+)s').firstMatch(formatted);
+    if (match == null) return 0;
+    final h = int.tryParse(match.group(1) ?? '0') ?? 0;
+    final m = int.tryParse(match.group(2) ?? '0') ?? 0;
+    final s = int.tryParse(match.group(3) ?? '0') ?? 0;
+    return h * 3600 + m * 60 + s;
   }
 
   @override
@@ -638,10 +664,10 @@ class ContractsScreenState extends State<ContractsScreen>
               ),
             ),
             const SizedBox(height: 12),
-            ..._activePaidContracts.asMap().entries.expand((entry) => [
-              _buildPaidContractCard(entry.value, queueIndex: entry.key + 1),
+            ..._activePaidContracts.map((contract) => [
+              _buildPaidContractCard(contract),
               const SizedBox(height: 12),
-            ]),
+            ]).expand((w) => w),
           ],
         ],
       ),
@@ -650,7 +676,6 @@ class ContractsScreenState extends State<ContractsScreen>
 
   Widget _buildPaidContractCard(
     Map<String, dynamic> contract, {
-    int? queueIndex,
     bool isExpired = false,
   }) {
     final String title = contract['planName']?.toString() ?? 'Paid Contract';
@@ -663,7 +688,7 @@ class ContractsScreenState extends State<ContractsScreen>
     final bool isCancelled = contract['status']?.toString() == 'cancelled';
     final String remainingText = (isExpired || isCancelled)
         ? 'Ended ${contract['endedAtText'] ?? ''}'.trim()
-        : (contract['remainingFormatted']?.toString() ?? '00h 00m 00s');
+        : _formatDuration((contract['_remainingSeconds'] as int?) ?? 0);
     final Color accentColor =
         (isExpired || isCancelled) ? const Color(0xFF8E8E93) : const Color(0xFF50C878);
 
@@ -710,7 +735,7 @@ class ContractsScreenState extends State<ContractsScreen>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      queueIndex != null ? 'Queue #$queueIndex' : statusText,
+                      statusText,
                       style: TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
