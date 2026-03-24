@@ -31,6 +31,9 @@ class GooglePlayBillingService {
   // 用户ID（需要从外部设置，由 purchase_page 注入）
   String? userId;
 
+  // 本次 App 会话内已提交后端验证的交易 ID（防止 Google Play 多次回调同一笔交易时重复创建合约）
+  final Set<String> _processedTransactionIds = {};
+
   /// 初始化IAP系统
   Future<bool> init() async {
     try {
@@ -127,28 +130,42 @@ class GooglePlayBillingService {
         onPurchaseUpdate?.call(false, 'Processing, please wait...');
         
       } else if (purchaseDetails.status == PurchaseStatus.purchased) {
-        // 购买成功 - 验证收据
-        _verifyAndDeliver(purchaseDetails);
+        // 防止 Google Play 多次回调同一笔交易重复创建合约
+        final txId = purchaseDetails.purchaseID;
+        if (txId != null && _processedTransactionIds.contains(txId)) {
+          print('⚠️ [GP] 跳过重复交易 $txId（本次会话已处理），仅完成确认');
+          if (purchaseDetails.pendingCompletePurchase) {
+            _iap.completePurchase(purchaseDetails);
+          }
+        } else {
+          if (txId != null) _processedTransactionIds.add(txId);
+          // 购买成功 - 验证收据（completePurchase 在验证完成后调用）
+          _verifyAndDeliver(purchaseDetails);
+        }
         
       } else if (purchaseDetails.status == PurchaseStatus.error) {
         // 购买失败
         print('❌ 购买失败: ${purchaseDetails.error}');
         onPurchaseUpdate?.call(false, 'Purchase failed: ${purchaseDetails.error?.message ?? "Unknown error"}');
+        if (purchaseDetails.pendingCompletePurchase) {
+          _iap.completePurchase(purchaseDetails);
+        }
         
       } else if (purchaseDetails.status == PurchaseStatus.canceled) {
         // 用户取消
         print('⚠️ 用户取消购买');
         onPurchaseUpdate?.call(false, 'Purchase cancelled.');
+        if (purchaseDetails.pendingCompletePurchase) {
+          _iap.completePurchase(purchaseDetails);
+        }
       }
-
-      // 标记购买已处理
-      if (purchaseDetails.pendingCompletePurchase) {
-        _iap.completePurchase(purchaseDetails);
-      }
+      // completePurchase 已在各分支内处理（purchased 状态由 _verifyAndDeliver 负责调用）
     }
   }
 
   /// 验证收据并发放奖励
+  /// 按照 Google Play 规范：在后端确认后才调用 completePurchase，
+  /// 网络异常时不关闭交易，让 Google Play 在下次启动时重播以便自动重试。
   Future<void> _verifyAndDeliver(PurchaseDetails purchase) async {
     try {
       print('🔐 验证购买收据...');
@@ -156,6 +173,10 @@ class GooglePlayBillingService {
       if (userId == null || userId!.isEmpty) {
         print('❌ 用户未登录');
         onPurchaseUpdate?.call(false, 'Please log in first.');
+        // 永久性失败，关闭交易避免反复重播
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
         return;
       }
 
@@ -189,14 +210,26 @@ class GooglePlayBillingService {
           print('❌ 验证失败: ${data['message']}');
           onPurchaseUpdate?.call(false, 'Verification failed: ${data["message"]}');
         }
+        // 服务端已处理（无论成功/失败），关闭 Google Play 交易
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
       } else {
         print('❌ 服务器验证失败: ${response.statusCode}');
         onPurchaseUpdate?.call(false, 'Server verification failed. Please contact support.');
+        // 服务端返回错误，关闭交易
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
       }
       
     } catch (e) {
-      print('❌ 验证异常: $e');
+      print('❌ 验证异常（网络错误）: $e');
       onPurchaseUpdate?.call(false, 'Network error. Please check your connection.');
+      // 网络错误：不调用 completePurchase，让 Google Play 重播此交易以便自动重试。
+      // 同时从去重集合中移除该 txId，允许本会话内重试。
+      final txId = purchase.purchaseID;
+      if (txId != null) _processedTransactionIds.remove(txId);
     }
   }
 

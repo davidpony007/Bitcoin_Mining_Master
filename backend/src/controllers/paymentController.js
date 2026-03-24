@@ -168,6 +168,39 @@ exports.verifyPurchase = async (req, res) => {
       console.warn(`⚠️ [paymentController] 用户 ${user_id} 不在 user_information 表，继续创建合约（邮箱置空）`);
     }
 
+    // ── 先写订单记录（payment_gateway_id 有 UNIQUE 约束）────
+    // 利用 DB 唯一约束作为并发互斥锁：并发请求中只有第一个能成功 INSERT，
+    // 其余请求触发 SequelizeUniqueConstraintError，直接返回"已处理"，
+    // 从而确保每笔 transaction_id 只创建一条合约。
+    const originalTxId = iosMeta?.originalTransactionId || purchase_token || transaction_id;
+    let newOrder;
+    try {
+      newOrder = await UserOrder.create({
+        user_id,
+        email: userEmail,
+        product_id: resolvedBackendProductId,
+        product_name: productInfo?.product_name || store_product_id,
+        product_price: String(productInfo?.product_price || 0),
+        hashrate: productInfo?.hashrate_raw || 0,
+        order_creation_time: new Date(),
+        payment_time: new Date(),
+        currency_type: 'USD',
+        payment_gateway_id: transaction_id,
+        payment_network_id: originalTxId,
+        order_status: 'active',
+      });
+    } catch (dupErr) {
+      if (dupErr.name === 'SequelizeUniqueConstraintError') {
+        console.log(`⚠️ [paymentController] 并发重复请求被 UNIQUE 约束拦截: txId=${transaction_id}`);
+        return res.status(200).json({
+          success: true,
+          message: '订单已处理（并发重复请求），合约已激活',
+        });
+      }
+      throw dupErr; // 其他 DB 错误继续向上抛出
+    }
+
+    // 订单写入成功，继续创建合约
     const contract = await paidContractService.createPaidContract(
       user_id,
       resolvedBackendProductId,
@@ -177,27 +210,11 @@ exports.verifyPurchase = async (req, res) => {
       iosMeta?.originalTransactionId || (platform === 'android' ? purchase_token : null)
     );
 
-    // ── 记录订单 ─────────────────────────────────────────────
-    const originalTxId = iosMeta?.originalTransactionId || purchase_token || transaction_id;
-    await UserOrder.create({
-      user_id,
-      email: userEmail,
-      product_id: resolvedBackendProductId,
-      product_name: productInfo?.product_name || store_product_id,
-      product_price: String(productInfo?.product_price || 0),
-      hashrate: productInfo?.hashrate_raw || 0,
-      order_creation_time: new Date(),
-      payment_time: new Date(),
-      currency_type: 'USD',
-      payment_gateway_id: transaction_id,
-      payment_network_id: originalTxId,
-      order_status: 'active',
-    });
-
     return res.status(200).json({
       success: true,
       message: '购买验证成功，合约已激活',
       contractId: contract?.id,
+      orderId: newOrder?.id,
     });
   } catch (err) {
     console.error('❌ [paymentController] verifyPurchase 异常:', err);

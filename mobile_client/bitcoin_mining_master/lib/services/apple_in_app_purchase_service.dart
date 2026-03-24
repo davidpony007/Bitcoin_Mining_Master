@@ -34,6 +34,9 @@ class AppleInAppPurchaseService {
   // 用户 ID（初始化时从外部注入）
   String? userId;
 
+  // 本次 App 会话内已提交后端验证的交易 ID（防止 StoreKit 多次回调同一笔交易时重复创建合约）
+  final Set<String> _processedTransactionIds = {};
+
   /// 初始化 App Store IAP
   Future<bool> init() async {
     try {
@@ -146,7 +149,17 @@ class AppleInAppPurchaseService {
 
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          // 发送到后端验证并激活合约
+          // 防止 StoreKit 多次回调同一笔交易（purchased/restored 可能对同一 purchaseID 重复触发）
+          final txId = purchase.purchaseID;
+          if (txId != null && _processedTransactionIds.contains(txId)) {
+            print('⚠️ [IAP] 跳过重复交易 $txId（本次会话已处理），仅完成 StoreKit 确认');
+            if (purchase.pendingCompletePurchase) {
+              _iap.completePurchase(purchase);
+            }
+            break;
+          }
+          if (txId != null) _processedTransactionIds.add(txId);
+          // 发送到后端验证并激活合约（completePurchase 在验证完成后调用）
           _verifyAndDeliver(purchase);
           break;
 
@@ -154,22 +167,27 @@ class AppleInAppPurchaseService {
           final msg = purchase.error?.message ?? 'Unknown error';
           print('❌ iOS 购买错误: $msg');
           onPurchaseUpdate?.call(false, 'Purchase failed: $msg');
+          // error 状态也需要完成交易，否则 StoreKit 会反复重播
+          if (purchase.pendingCompletePurchase) {
+            _iap.completePurchase(purchase);
+          }
           break;
 
         case PurchaseStatus.canceled:
           print('⚠️ 用户取消 iOS 购买');
           onPurchaseUpdate?.call(false, 'Purchase cancelled.');
+          if (purchase.pendingCompletePurchase) {
+            _iap.completePurchase(purchase);
+          }
           break;
       }
-
-      // 通知 StoreKit 交易已处理
-      if (purchase.pendingCompletePurchase) {
-        _iap.completePurchase(purchase);
-      }
+      // completePurchase 已在各分支内处理，不再统一调用
     }
   }
 
   /// 将收据发送后端验证，成功后激活付费合约
+  /// 按照 Apple 审核规范：在后端确认后才调用 completePurchase，
+  /// 网络异常时不关闭交易，让 StoreKit 在下次启动时自动重播以便重试。
   Future<void> _verifyAndDeliver(PurchaseDetails purchase) async {
     try {
       print('🔐 iOS 验证收据...');
@@ -177,6 +195,10 @@ class AppleInAppPurchaseService {
       if (userId == null || userId!.isEmpty) {
         print('❌ 用户未登录');
         onPurchaseUpdate?.call(false, 'Please log in first.');
+        // 永久性失败（用户未登录），关闭交易避免 StoreKit 反复重播
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
         return;
       }
 
@@ -222,19 +244,31 @@ class AppleInAppPurchaseService {
             'Verification failed: ${data["message"]}',
           );
         }
+        // 服务端已处理（无论成功/失败），关闭 StoreKit 交易
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
       } else {
         print('❌ iOS 服务器验证失败: ${response.statusCode}');
         onPurchaseUpdate?.call(
           false,
           'Server verification failed. Please contact support.',
         );
+        // 服务端返回错误，关闭交易（通知用户联系客服）
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
       }
     } catch (e) {
-      print('❌ iOS 验证异常: $e');
+      print('❌ iOS 验证异常（网络错误）: $e');
       onPurchaseUpdate?.call(
         false,
         'Network error. Please check your connection.',
       );
+      // 网络错误：不调用 completePurchase，让 StoreKit 在下次启动时重播此交易以便自动重试。
+      // 同时从去重集合中移除该 txId，允许本会话内重试。
+      final txId = purchase.purchaseID;
+      if (txId != null) _processedTransactionIds.remove(txId);
     }
   }
 

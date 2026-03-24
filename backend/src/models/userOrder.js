@@ -95,11 +95,12 @@ const UserOrder = sequelize.define('user_orders', {
     comment: '国家代码'
   },
   
-  // 支付网关ID
+  // 支付网关ID（唯一索引：同一笔交易只能有一条订单记录）
   payment_gateway_id: { 
     type: DataTypes.STRING(80), 
     allowNull: false,
-    comment: '支付网关标识符'
+    unique: 'uniq_payment_gateway_id',
+    comment: '支付网关标识符（唯一，防止重复订单）'
   },
   
   // 支付网络ID
@@ -140,9 +141,10 @@ const UserOrder = sequelize.define('user_orders', {
       name: 'idx_order_creation_time',
       fields: ['order_creation_time']
     },
-    // 支付网关ID索引 - 查询特定支付网关的订单
+    // 支付网关ID唯一索引 - 防止同一笔交易重复入库（并发防重核心约束）
     {
-      name: 'idx_payment_gateway_id',
+      name: 'uniq_payment_gateway_id',
+      unique: true,
       fields: ['payment_gateway_id']
     },
     // 用户+状态复合索引 - 查询用户特定状态的订单
