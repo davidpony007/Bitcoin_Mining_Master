@@ -54,6 +54,8 @@ exports.verifyPurchase = async (req, res) => {
     purchase_token,
   } = req.body;
 
+  console.log(`🛒 [paymentController] verifyPurchase 收到请求: user=${user_id} platform=${platform} product=${store_product_id} txId=${transaction_id}`);
+
   // ── 基础参数校验 ──────────────────────────────────────────
   if (!user_id || !platform || !store_product_id || !transaction_id) {
     return res.status(400).json({
@@ -182,13 +184,15 @@ exports.verifyPurchase = async (req, res) => {
       ? new Date(parseInt(iosMeta.expiresDateMs))
       : null;
 
-    // 查询用户邮箱（user_orders.email 为 NOT NULL）
+    // 查询用户邮箱（仅用于订单记录，设备登录用户可能无邮箱）
     const user = await UserInformation.findOne({
       where: { user_id },
       attributes: ['email'],
     });
+    // 用户不在 DB 时不阻断购买（收据已通过 Apple 验证，必须创建合约）
+    const userEmail = user?.email || '';
     if (!user) {
-      return res.status(400).json({ success: false, message: '用户不存在' });
+      console.warn(`⚠️ [paymentController] 用户 ${user_id} 不在 user_information 表，继续创建合约（邮箱置空）`);
     }
 
     const contract = await paidContractService.createPaidContract(
@@ -202,7 +206,7 @@ exports.verifyPurchase = async (req, res) => {
     const originalTxId = iosMeta?.originalTransactionId || purchase_token || transaction_id;
     await UserOrder.create({
       user_id,
-      email: user.email || '',   // 设备登录用户可能无邮箱，降级为空字符串
+      email: userEmail,
       product_id: resolvedBackendProductId,
       product_name: productMeta.name || store_product_id,
       product_price: String(productMeta.price || 0),
