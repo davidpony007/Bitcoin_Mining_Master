@@ -3,14 +3,20 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+
+  // 共享的 FlutterEngine，由 SceneDelegate 使用
+  lazy var flutterEngine: FlutterEngine = FlutterEngine(name: "main_engine")
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    // 启动引擎并注册插件，不调用 super（避免 super 在 UIScene 模式下创建无场景关联的旧式窗口）
+    flutterEngine.run()
+    GeneratedPluginRegistrant.register(with: flutterEngine)
+    return true
   }
-  
+
   // 处理 URL scheme 回调 (Google Sign-In)
   override func application(
     _ app: UIApplication,
@@ -20,8 +26,7 @@ import UIKit
     return super.application(app, open: url, options: options)
   }
 
-  // UIScene lifecycle — required for iOS 13+ / iOS 26+
-  // 当系统需要新建一个 Scene 时回调，返回对应的配置
+  // UIScene lifecycle — iOS 13+ / iOS 26+ 必须
   override func application(
     _ application: UIApplication,
     configurationForConnecting connectingSceneSession: UISceneSession,
