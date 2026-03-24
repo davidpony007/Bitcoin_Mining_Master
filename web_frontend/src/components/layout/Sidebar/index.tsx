@@ -16,6 +16,7 @@ import {
   DatabaseOutlined,
   FileTextOutlined,
   TransactionOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import './styles.css';
 
@@ -91,6 +92,11 @@ const Sidebar: React.FC = () => {
       key: '/transactions',
       icon: <TransactionOutlined />,
       label: '交易记录',
+    },
+    {
+      key: '/paid-products',
+      icon: <AppstoreOutlined />,
+      label: '产品配置',
     },
     {
       key: '/settings',

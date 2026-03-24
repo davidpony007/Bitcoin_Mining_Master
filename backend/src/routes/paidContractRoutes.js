@@ -6,6 +6,29 @@
 const express = require('express');
 const router = express.Router();
 const PaidContractService = require('../services/paidContractService');
+const PaidProductService = require('../services/paidProductService');
+
+/**
+ * GET /api/paid-contracts/products
+ * 获取所有激活的付费产品列表（供 App 展示选购）
+ * 公开接口，无需鉴权
+ */
+router.get('/products', async (req, res) => {
+  try {
+    const products = await PaidProductService.getPublicProductList();
+    res.json({
+      success: true,
+      products
+    });
+  } catch (err) {
+    console.error('❌ 获取付费产品列表失败:', err);
+    res.status(500).json({
+      success: false,
+      message: '服务器错误',
+      error: err.message
+    });
+  }
+});
 
 /**
  * POST /api/paid-contracts/create
@@ -81,7 +104,7 @@ router.get('/list/:userId', async (req, res) => {
  */
 router.get('/tiers', async (req, res) => {
   try {
-    const result = PaidContractService.getContractTiers();
+    const result = await PaidContractService.getContractTiers();
     res.json(result);
 
   } catch (err) {

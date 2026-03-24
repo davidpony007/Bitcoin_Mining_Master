@@ -134,3 +134,22 @@ export const bitcoinTxApi = {
   rebateList: (params: { page?: number; limit?: number; userId?: string; startDate?: string; endDate?: string }) =>
     request.get('/admin/invitation-rebate', { params }),
 };
+
+// ─── Paid Products ────────────────────────────────────────────────────────────
+
+export const paidProductsApi = {
+  /** 获取产品列表（公开接口） */
+  list: () => request.get('/paid-contracts/products'),
+  /** 更新产品字段（管理员接口） */
+  update: (id: number, data: Partial<{
+    display_name: string;
+    description: string;
+    ios_product_id: string;
+    android_product_id: string;
+    hashrate_raw: number;
+    duration_days: number;
+    sort_order: number;
+    is_active: number;
+  }>) => request.put(`/admin/paid-products/${id}`, data),
+};
+

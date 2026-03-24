@@ -1548,5 +1548,39 @@ router.get('/invitation-rebate', authenticateToken, requireAdmin, async (req, re
   }
 });
 
+// ─── 付费产品配置管理（Admin Only） ───────────────────────────────────────────
+
+const PaidProduct = require('../models/paidProductList');
+const PaidProductService = require('../services/paidProductService');
+
+/**
+ * PUT /api/admin/paid-products/:id
+ * 更新付费产品字段（display_name, description, ios_product_id, android_product_id,
+ *                    hashrate_raw, duration_days, sort_order, is_active）
+ */
+router.put('/paid-products/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const allowed = ['display_name', 'description', 'ios_product_id', 'android_product_id',
+      'hashrate_raw', 'duration_days', 'sort_order', 'is_active'];
+    const updates = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: '无有效更新字段' });
+    }
+    const [affected] = await PaidProduct.update(updates, { where: { id } });
+    if (affected === 0) {
+      return res.status(404).json({ success: false, message: '产品不存在' });
+    }
+    PaidProductService.clearCache(); // 清除内存缓存，下次请求重新读 DB
+    res.json({ success: true, message: '产品配置更新成功' });
+  } catch (err) {
+    console.error('❌ 更新付费产品失败:', err);
+    res.status(500).json({ success: false, message: '服务器错误', error: err.message });
+  }
+});
+
 // 导出路由模块，供主应用挂载
 module.exports = router;

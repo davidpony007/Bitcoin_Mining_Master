@@ -13,6 +13,7 @@ const UserOrder = require('../models/userOrder');
 const UserInformation = require('../models/userInformation');
 const db = require('../config/database');
 const subscriptionConfig = require('../config/subscriptionConfig');
+const PaidProductService = require('./paidProductService');
 
 class PaidContractService {
   /**
@@ -79,14 +80,16 @@ class PaidContractService {
         };
       }
 
-      // 2. 验证产品档位
-      const tier = this.CONTRACT_TIERS[productId];
+      // 2. 验证产品档位（从 DB 读取）
+      const tier = await PaidProductService.getProductInfo(productId);
       if (!tier) {
         return {
           success: false,
           message: `无效的产品档位: ${productId}`
         };
       }
+      const tierHashrate = parseFloat(tier.hashrate_raw);
+      const tierDuration = tier.duration_days;
 
       // 3. 计算合约时间
       // 注：同一 transaction_id 的去重已在 paymentController 最上层处理（payment_gateway_id UNIQUE），此处无需重复拦截，
@@ -95,8 +98,8 @@ class PaidContractService {
       // iOS 自动续期订阅：使用 Apple 提供的到期时间；其余情况按档位默认 30 天
       const endTime = expiresDate instanceof Date && !isNaN(expiresDate)
         ? expiresDate
-        : new Date(now.getTime() + tier.duration * 24 * 60 * 60 * 1000);
-      const durationTime = `${tier.duration * 24}:00:00`; // 格式: HH:MM:SS
+        : new Date(now.getTime() + tierDuration * 24 * 60 * 60 * 1000);
+      const durationTime = `${tierDuration * 24}:00:00`; // 格式: HH:MM:SS
 
       // 4. 创建付费合约（固定收益，不受国家/等级系数影响）
       const contract = await MiningContract.create({
@@ -105,21 +108,21 @@ class PaidContractService {
         contract_creation_time: now,
         contract_end_time: endTime,
         contract_duration: durationTime,
-        base_hashrate: tier.hashrate,  // 新字段：付费合约的固定速率
-        hashrate: tier.hashrate  // 兼容字段：固定算力
+        base_hashrate: tierHashrate,
+        hashrate: tierHashrate
       });
 
       // 5. 计算预期收益（不含任何倍数）
-      const durationSeconds = tier.duration * 24 * 60 * 60;
-      const expectedRevenue = tier.hashrate * durationSeconds;
+      const durationSeconds = tierDuration * 24 * 60 * 60;
+      const expectedRevenue = tierHashrate * durationSeconds;
 
       console.log(`✅ 创建付费合约成功:`, {
         userId,
         productId,
-        tier: tier.name,
-        price: `$${tier.price}`,
-        duration: `${tier.duration}天`,
-        hashrate: tier.hashrate,
+        tier: tier.product_name,
+        price: `$${tier.product_price}`,
+        duration: `${tierDuration}天`,
+        hashrate: tierHashrate,
         expectedRevenue,
         startTime: now,
         endTime
@@ -131,10 +134,10 @@ class PaidContractService {
         contract: {
           id: contract.id,
           type: 'paid contract',
-          tier: tier.name,
-          price: tier.price,
-          duration: tier.duration,
-          durationDays: tier.duration,
+          tier: tier.product_name,
+          price: parseFloat(tier.product_price),
+          duration: tierDuration,
+          durationDays: tierDuration,
           startTime: contract.contract_creation_time,
           endTime: contract.contract_end_time,
           hashrate: contract.hashrate,
@@ -165,6 +168,9 @@ class PaidContractService {
         order: [['contract_creation_time', 'DESC']]
       });
 
+      // 提前加载产品列表（带缓存，只查一次 DB）
+      const products = await PaidProductService.getActiveProducts();
+
       return {
         success: true,
         contracts: contracts.map(contract => {
@@ -172,11 +178,11 @@ class PaidContractService {
           const endTime = new Date(contract.contract_end_time);
           const remainingSeconds = Math.max(0, Math.floor((endTime - now) / 1000));
 
-          // 查找对应的档位信息
+          // 查找对应的档位信息（通过 hashrate 匹配 DB 中的 hashrate_raw）
           let tierInfo = null;
-          for (const [key, tier] of Object.entries(this.CONTRACT_TIERS)) {
-            if (Math.abs(tier.hashrate - parseFloat(contract.hashrate)) < 0.000000000000001) {
-              tierInfo = { id: key, ...tier };
+          for (const p of products) {
+            if (Math.abs(parseFloat(p.hashrate_raw) - parseFloat(contract.hashrate)) < 1e-15) {
+              tierInfo = { id: p.product_id, name: p.product_name, price: parseFloat(p.product_price), duration: p.duration_days, displayHashrate: p.hashrate, description: p.description };
               break;
             }
           }
@@ -201,22 +207,23 @@ class PaidContractService {
   }
 
   /**
-   * 获取合约档位配置列表
+   * 获取合约档位配置列表（从 DB 读取）
    */
-  static getContractTiers() {
+  static async getContractTiers() {
+    const products = await PaidProductService.getActiveProducts();
     return {
       success: true,
-      tiers: Object.entries(this.CONTRACT_TIERS).map(([id, tier]) => ({
-        id,
-        name: tier.name,
-        price: tier.price,
-        price: tier.price,
-        duration: tier.duration,
-        hashrate: tier.hashrate,
-        displayHashrate: tier.displayHashrate,
-        description: tier.description,
-        expectedDailyRevenue: tier.hashrate * 86400,  // 24小时
-        expectedTotalRevenue: tier.hashrate * tier.duration * 86400
+      tiers: products.map(p => ({
+        id: p.product_id,
+        name: p.product_name,
+        displayName: p.display_name,
+        price: parseFloat(p.product_price),
+        duration: p.duration_days,
+        hashrate: parseFloat(p.hashrate_raw),
+        displayHashrate: p.hashrate,
+        description: p.description,
+        expectedDailyRevenue: parseFloat(p.hashrate_raw) * 86400,
+        expectedTotalRevenue: parseFloat(p.hashrate_raw) * p.duration_days * 86400
       }))
     };
   }

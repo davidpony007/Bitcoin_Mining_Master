@@ -1,5 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../constants/app_constants.dart';
 import '../services/google_play_billing_service.dart';
 import '../services/apple_in_app_purchase_service.dart';
 import '../services/storage_service.dart';
@@ -16,83 +19,116 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   final AppleInAppPurchaseService _appleService = AppleInAppPurchaseService();
   bool _serviceInitialized = false;
   String? _loadingTierId; // 正在发起购买的套餐内部ID
+  bool _isLoadingProducts = true; // 正在从服务端加载产品列表
 
-  // 内部ID → 商店产品ID 映射
-  // iOS App Store 产品ID（appstore04.99 格式），Android Google Play 产品ID（p04.99 格式）
-  static const Map<String, String> _iosStoreProductIdMap = {
-    'p0499': 'appstore04.99',
-    'p0699': 'appstore06.99',
-    'p0999': 'appstore09.99',
-    'p1999': 'appstore19.99',
-  };
-
-  static const Map<String, String> _androidStoreProductIdMap = {
-    'p0499': 'p04.99',
-    'p0699': 'p06.99',
-    'p0999': 'p09.99',
-    'p1999': 'p19.99',
-  };
-
-  // 付费合约档位配置
-  final List<Map<String, dynamic>> _contractTiers = [
-    {
-      'id': 'p0499',
-      'price': 4.99,
-      'name': 'Starter Plan',
-      'duration': 30,
-      'hashrate': '176.3 Gh/s',
-      'dailyOutput': '0.00000038503 BTC',
-      'totalOutput': '0.00001155091 BTC',
-      'description': 'Perfect for beginners',
-      'color': Color(0xFF4A90E2),
-      'popular': false,
-    },
-    {
-      'id': 'p0699',
-      'price': 6.99,
-      'name': 'Standard Plan',
-      'duration': 30,
-      'hashrate': '305.6 Gh/s',
-      'dailyOutput': '0.00000066727 BTC',
-      'totalOutput': '0.00002001802 BTC',
-      'description': 'Most popular choice',
-      'color': Color(0xFF50C878),
-      'popular': true,
-    },
-    {
-      'id': 'p0999',
-      'price': 9.99,
-      'name': 'Advanced Plan',
-      'duration': 30,
-      'hashrate': '611.2 Gh/s',
-      'dailyOutput': '0.00000133466 BTC',
-      'totalOutput': '0.00004003982 BTC',
-      'description': 'For serious miners',
-      'color': Color(0xFFFF6B35),
-      'popular': false,
-    },
-    {
-      'id': 'p1999',
-      'price': 19.99,
-      'name': 'Premium Plan',
-      'duration': 30,
-      'hashrate': '1326.4 Gh/s',
-      'dailyOutput': '0.00000289630 BTC',
-      'totalOutput': '0.00008688902 BTC',
-      'description': 'Maximum hashrate power',
-      'color': Color(0xFFFFD700),
-      'popular': false,
-    },
+  // 定义色彩和 popular 标记（按 sort_order 位置对应）
+  static const List<Color> _tierColors = [
+    Color(0xFF4A90E2),
+    Color(0xFF50C878),
+    Color(0xFFFF6B35),
+    Color(0xFFFFD700),
   ];
+  static const List<bool> _tierPopular = [false, true, false, false];
+
+  // 从服务端加载的产品列表（替代硬编码的 _contractTiers）
+  List<Map<String, dynamic>> _contractTiers = [];
 
   @override
   void initState() {
     super.initState();
+    _loadProductsFromServer();
     if (Platform.isAndroid) {
       _initBillingService();
     } else if (Platform.isIOS) {
       _initAppleService();
     }
+  }
+
+  /// 从服务端 API 加载产品列表，加载失败时 fallback 到本地默认值
+  Future<void> _loadProductsFromServer() async {
+    try {
+      final url = Uri.parse('${ApiConstants.baseUrl}/paid-contracts/products');
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        if (data['success'] == true && data['products'] is List) {
+          final List<dynamic> raw = data['products'];
+          final tiers = raw.asMap().entries.map((entry) {
+            final i = entry.key;
+            final p = entry.value as Map<String, dynamic>;
+            final rawHashrate = double.tryParse('${p['hashrate_raw'] ?? 0}') ?? 0.0;
+            final duration = (p['duration_days'] as num?)?.toInt() ?? 30;
+            final durationSec = duration * 86400.0;
+            final daily = rawHashrate * 86400;
+            final total = rawHashrate * durationSec;
+            return {
+              'id': p['product_id'] ?? '',
+              'price': double.tryParse('${p['product_price'] ?? 0}') ?? 0.0,
+              'name': p['display_name'] ?? p['product_name'] ?? '',
+              'duration': duration,
+              'hashrate': p['hashrate'] ?? '',
+              'dailyOutput': '${daily.toStringAsFixed(11)} BTC',
+              'totalOutput': '${total.toStringAsFixed(11)} BTC',
+              'description': p['description'] ?? '',
+              'ios_product_id': p['ios_product_id'] ?? '',
+              'android_product_id': p['android_product_id'] ?? '',
+              'color': i < _tierColors.length ? _tierColors[i] : const Color(0xFF4A90E2),
+              'popular': i < _tierPopular.length ? _tierPopular[i] : false,
+            };
+          }).toList();
+          if (mounted) {
+            setState(() {
+              _contractTiers = tiers;
+              _isLoadingProducts = false;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ 从服务端加载产品列表失败，使用内置默认值: $e');
+    }
+    // Fallback: 内置默认产品列表
+    if (mounted) {
+      setState(() {
+        _contractTiers = _defaultContractTiers();
+        _isLoadingProducts = false;
+      });
+    }
+  }
+
+  /// 本地 fallback 产品数据（服务端不可达时使用）
+  List<Map<String, dynamic>> _defaultContractTiers() {
+    return [
+      {
+        'id': 'p0499', 'price': 4.99, 'name': 'Starter Plan', 'duration': 30,
+        'hashrate': '176.3 Gh/s', 'dailyOutput': '0.00000038503 BTC',
+        'totalOutput': '0.00001155091 BTC', 'description': 'Perfect for beginners',
+        'ios_product_id': 'appstore04.99', 'android_product_id': 'p04.99',
+        'color': const Color(0xFF4A90E2), 'popular': false,
+      },
+      {
+        'id': 'p0699', 'price': 6.99, 'name': 'Standard Plan', 'duration': 30,
+        'hashrate': '305.6 Gh/s', 'dailyOutput': '0.00000066727 BTC',
+        'totalOutput': '0.00002001802 BTC', 'description': 'Most popular choice',
+        'ios_product_id': 'appstore06.99', 'android_product_id': 'p06.99',
+        'color': const Color(0xFF50C878), 'popular': true,
+      },
+      {
+        'id': 'p0999', 'price': 9.99, 'name': 'Advanced Plan', 'duration': 30,
+        'hashrate': '611.2 Gh/s', 'dailyOutput': '0.00000133466 BTC',
+        'totalOutput': '0.00004003982 BTC', 'description': 'For serious miners',
+        'ios_product_id': 'appstore09.99', 'android_product_id': 'p09.99',
+        'color': const Color(0xFFFF6B35), 'popular': false,
+      },
+      {
+        'id': 'p1999', 'price': 19.99, 'name': 'Premium Plan', 'duration': 30,
+        'hashrate': '1326.4 Gh/s', 'dailyOutput': '0.00000289630 BTC',
+        'totalOutput': '0.00008688902 BTC', 'description': 'Maximum hashrate power',
+        'ios_product_id': 'appstore19.99', 'android_product_id': 'p19.99',
+        'color': const Color(0xFFFFD700), 'popular': false,
+      },
+    ];
   }
 
   Future<void> _initBillingService() async {
@@ -218,7 +254,15 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             const SizedBox(height: 24),
 
             // 合约列表
-            ..._contractTiers.map((tier) => _buildContractCard(tier)),
+            if (_isLoadingProducts)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+                ),
+              )
+            else
+              ..._contractTiers.map((tier) => _buildContractCard(tier)),
 
             const SizedBox(height: 24),
 
@@ -557,8 +601,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         _showPurchaseResult(false, 'Please log in before subscribing.');
         return;
       }
-      final storeId = _androidStoreProductIdMap[tier['id'] as String];
-      if (storeId == null) {
+      final storeId = tier['android_product_id'] as String? ?? '';
+      if (storeId.isEmpty) {
         _showPurchaseResult(false, 'Invalid product configuration.');
         return;
       }
@@ -577,8 +621,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         _showPurchaseResult(false, 'Please log in before subscribing.');
         return;
       }
-      final storeId = _iosStoreProductIdMap[tier['id'] as String];
-      if (storeId == null) {
+      final storeId = tier['ios_product_id'] as String? ?? '';
+      if (storeId.isEmpty) {
         _showPurchaseResult(false, 'Invalid product configuration.');
         return;
       }

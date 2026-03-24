@@ -3,35 +3,7 @@
 const axios = require('axios');
 const { UserOrder, UserInformation } = require('../models');
 const paidContractService = require('../services/paidContractService');
-
-// Store product ID → backend product ID 映射
-// key = Google Play Console / App Store 中的商品ID
-// value = 内部合约商品ID
-const PRODUCT_MAP = {
-  // Google Play Console 商品ID（Android）
-  'p04.99': 'p0499',
-  'p06.99': 'p0699',
-  'p09.99': 'p0999',
-  'p19.99': 'p1999',
-  // App Store Connect 商品ID（iOS）
-  'appstore04.99': 'p0499',
-  'appstore06.99': 'p0699',
-  'appstore09.99': 'p0999',
-  'appstore19.99': 'p1999',
-  // 兼容旧命名
-  mining_starter_monthly: 'p0499',
-  mining_standard_monthly: 'p0699',
-  mining_advanced_monthly: 'p0999',
-  mining_premium_monthly: 'p1999',
-};
-
-// 商品信息（用于记录订单）
-const PRODUCT_INFO = {
-  p0499: { name: 'contract_4.99',  price: 4.99,  hashrate: 0.000000000004456  },
-  p0699: { name: 'contract_6.99',  price: 6.99,  hashrate: 0.000000000007723  },
-  p0999: { name: 'contract_9.99',  price: 9.99,  hashrate: 0.000000000015447  },
-  p1999: { name: 'contract_19.99', price: 19.99, hashrate: 0.000000000033522  },
-};
+const PaidProductService = require('../services/paidProductService');
 
 /**
  * POST /api/payment/verify-purchase
@@ -64,9 +36,9 @@ exports.verifyPurchase = async (req, res) => {
     });
   }
 
-  // 确定 backend_product_id（优先使用客户端传来的，否则自动推导）
+  // 确定 backend_product_id（优先使用客户端传来的，否则从 DB 产品表推导）
   const resolvedBackendProductId =
-    backend_product_id || PRODUCT_MAP[store_product_id];
+    backend_product_id || (await PaidProductService.resolveProductId(store_product_id));
 
   if (!resolvedBackendProductId) {
     return res.status(400).json({
@@ -74,6 +46,9 @@ exports.verifyPurchase = async (req, res) => {
       message: `未知的商品ID: ${store_product_id}`,
     });
   }
+
+  // 提前加载产品元信息（供后续订单记录使用）
+  const productInfo = await PaidProductService.getProductInfo(resolvedBackendProductId);
 
   if (!['android', 'ios'].includes(platform)) {
     return res.status(400).json({
@@ -140,14 +115,13 @@ exports.verifyPurchase = async (req, res) => {
           }
           // 记录续订交易
           const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email'] });
-          const productMeta = PRODUCT_INFO[resolvedBackendProductId] || {};
           await UserOrder.create({
             user_id,
             email: renewUser?.email || '',
             product_id: resolvedBackendProductId,
-            product_name: productMeta.name || store_product_id,
-            product_price: String(productMeta.price || 0),
-            hashrate: productMeta.hashrate || 0,
+            product_name: productInfo?.product_name || store_product_id,
+            product_price: String(productInfo?.product_price || 0),
+            hashrate: productInfo?.hashrate_raw || 0,
             order_creation_time: new Date(),
             payment_time: new Date(),
             currency_type: 'USD',
@@ -176,8 +150,6 @@ exports.verifyPurchase = async (req, res) => {
     // if (platform === 'android' && !purchase_token) { ... }
 
     // ── 创建付费合约 ─────────────────────────────────────────
-    const productMeta = PRODUCT_INFO[resolvedBackendProductId] || {};
-
     // iOS 自动续期：使用 Apple 收据中的到期时间
     const iosMeta = req._iosSubscriptionMeta;
     const expiresDate = iosMeta?.expiresDateMs
@@ -208,9 +180,9 @@ exports.verifyPurchase = async (req, res) => {
       user_id,
       email: userEmail,
       product_id: resolvedBackendProductId,
-      product_name: productMeta.name || store_product_id,
-      product_price: String(productMeta.price || 0),
-      hashrate: productMeta.hashrate || 0,
+      product_name: productInfo?.product_name || store_product_id,
+      product_price: String(productInfo?.product_price || 0),
+      hashrate: productInfo?.hashrate_raw || 0,
       order_creation_time: new Date(),
       payment_time: new Date(),
       currency_type: 'USD',

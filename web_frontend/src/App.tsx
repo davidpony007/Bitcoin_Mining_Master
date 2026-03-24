@@ -16,6 +16,7 @@ import DataCenter from './pages/DataCenter';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
 import Transactions from './pages/Transactions';
+import PaidProducts from './pages/PaidProducts';
 
 const App: React.FC = () => {
   return (
@@ -39,6 +40,7 @@ const App: React.FC = () => {
           <Route path="datacenter" element={<DataCenter />} />
           <Route path="reports" element={<Reports />} />
           <Route path="transactions" element={<Transactions />} />
+          <Route path="paid-products" element={<PaidProducts />} />
           <Route path="settings" element={<Settings />} />
       </Route>
       
