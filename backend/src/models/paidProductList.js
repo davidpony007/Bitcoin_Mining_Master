@@ -33,12 +33,12 @@ const PaidProduct = sequelize.define('paid_products_list_config', {
     allowNull: false,
     comment: '显示算力值，如 176.3 Gh/s'
   },
-  // 合约时长描述，如 720 hours
+  // 合约时长描述，如 1 month
   product_contract_duration: {
     type: DataTypes.STRING(20),
     allowNull: false,
-    defaultValue: '720 hours',
-    comment: '合约时长描述'
+    defaultValue: '1 month',
+    comment: '合约时长描述（面向用户展示）'
   },
   // App Store 商品ID，如 appstore04.99
   ios_product_id: {
@@ -64,19 +64,26 @@ const PaidProduct = sequelize.define('paid_products_list_config', {
     allowNull: true,
     comment: '产品描述'
   },
-  // 实际每秒BTC产出（用于计算，不对外展示）
+  // 实际每秒BTC产出（用于计算，不对外展示）精度与其他BTC字段（DECIMAL(20,18)）保持一致
   hashrate_raw: {
-    type: DataTypes.DECIMAL(20, 12),
+    type: DataTypes.DECIMAL(20, 18),
     allowNull: false,
     defaultValue: 0,
-    comment: '实际每秒BTC产出，用于挖矿计算'
+    comment: '实际每秒BTC产出，用于挖矿计算（精度18位，与BTC字段对齐）'
   },
-  // 合约时长（天）
+  // 合约时长（天，仅供显示/日志用，实际到期按 duration_months 自然月计算）
   duration_days: {
     type: DataTypes.INTEGER,
     allowNull: false,
     defaultValue: 30,
-    comment: '合约时长（天）'
+    comment: '合约时长天数（参考值，实际到期以 duration_months 自然月为准）'
+  },
+  // 合约时长（自然月数）
+  duration_months: {
+    type: DataTypes.TINYINT,
+    allowNull: false,
+    defaultValue: 1,
+    comment: '合约时长（自然月数，按日历月计算到期）'
   },
   // 前端展示排序（升序）
   sort_order: {

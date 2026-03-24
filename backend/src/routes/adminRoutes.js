@@ -1562,7 +1562,7 @@ router.put('/paid-products/:id', authenticateToken, requireAdmin, async (req, re
   try {
     const { id } = req.params;
     const allowed = ['display_name', 'description', 'ios_product_id', 'android_product_id',
-      'hashrate_raw', 'duration_days', 'sort_order', 'is_active'];
+      'hashrate_raw', 'duration_days', 'duration_months', 'sort_order', 'is_active'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];

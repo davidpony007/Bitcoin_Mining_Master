@@ -89,17 +89,25 @@ class PaidContractService {
         };
       }
       const tierHashrate = parseFloat(tier.hashrate_raw);
-      const tierDuration = tier.duration_days;
+      const tierMonths = tier.duration_months || 1; // 自然月数
 
       // 3. 计算合约时间
       // 注：同一 transaction_id 的去重已在 paymentController 最上层处理（payment_gateway_id UNIQUE），此处无需重复拦截，
       // 不同产品档位（如同时持有 $4.99 和 $6.99）或订阅升级场景均可正常创建新合约。
       const now = new Date();
-      // iOS 自动续期订阅：使用 Apple 提供的到期时间；其余情况按档位默认 30 天
-      const endTime = expiresDate instanceof Date && !isNaN(expiresDate)
-        ? expiresDate
-        : new Date(now.getTime() + tierDuration * 24 * 60 * 60 * 1000);
-      const durationTime = `${tierDuration * 24}:00:00`; // 格式: HH:MM:SS
+      // iOS 自动续期订阅：使用 Apple 提供的到期时间；
+      // 安卓/其他：按自然月计算（如 3月8日 → 4月8日，不是固定30天）
+      let endTime;
+      if (expiresDate instanceof Date && !isNaN(expiresDate)) {
+        endTime = expiresDate;
+      } else {
+        endTime = new Date(now);
+        endTime.setMonth(endTime.getMonth() + tierMonths);
+      }
+      // 实际时长（自然月长度可能是28/29/30/31天，取实际差值）
+      const actualSeconds = Math.round((endTime - now) / 1000);
+      const actualHours = Math.round(actualSeconds / 3600);
+      const durationTime = `${actualHours}:00:00`; // 格式: TIME HH:MM:SS
 
       // 4. 创建付费合约（固定收益，不受国家/等级系数影响）
       const contract = await MiningContract.create({
@@ -113,15 +121,14 @@ class PaidContractService {
       });
 
       // 5. 计算预期收益（不含任何倍数）
-      const durationSeconds = tierDuration * 24 * 60 * 60;
-      const expectedRevenue = tierHashrate * durationSeconds;
+      const expectedRevenue = tierHashrate * actualSeconds;
 
       console.log(`✅ 创建付费合约成功:`, {
         userId,
         productId,
         tier: tier.product_name,
         price: `$${tier.product_price}`,
-        duration: `${tierDuration}天`,
+        duration: `${tierMonths}个月`,
         hashrate: tierHashrate,
         expectedRevenue,
         startTime: now,
@@ -136,8 +143,9 @@ class PaidContractService {
           type: 'paid contract',
           tier: tier.product_name,
           price: parseFloat(tier.product_price),
-          duration: tierDuration,
-          durationDays: tierDuration,
+          duration: tierMonths,
+          durationMonths: tierMonths,
+          durationDays: Math.round(actualSeconds / 86400),
           startTime: contract.contract_creation_time,
           endTime: contract.contract_end_time,
           hashrate: contract.hashrate,
@@ -182,7 +190,7 @@ class PaidContractService {
           let tierInfo = null;
           for (const p of products) {
             if (Math.abs(parseFloat(p.hashrate_raw) - parseFloat(contract.hashrate)) < 1e-15) {
-              tierInfo = { id: p.product_id, name: p.product_name, price: parseFloat(p.product_price), duration: p.duration_days, displayHashrate: p.hashrate, description: p.description };
+              tierInfo = { id: p.product_id, name: p.product_name, price: parseFloat(p.product_price), duration: p.duration_months || 1, durationDays: p.duration_days, displayHashrate: p.hashrate, description: p.description };
               break;
             }
           }
@@ -218,12 +226,15 @@ class PaidContractService {
         name: p.product_name,
         displayName: p.display_name,
         price: parseFloat(p.product_price),
-        duration: p.duration_days,
+        duration: p.duration_months || 1,
+        durationMonths: p.duration_months || 1,
+        durationDays: p.duration_days,
         hashrate: parseFloat(p.hashrate_raw),
         displayHashrate: p.hashrate,
         description: p.description,
         expectedDailyRevenue: parseFloat(p.hashrate_raw) * 86400,
-        expectedTotalRevenue: parseFloat(p.hashrate_raw) * p.duration_days * 86400
+        // 预期总收益用平均月天数估算（30.4375 = 365.25/12）
+        expectedTotalRevenue: parseFloat(p.hashrate_raw) * (p.duration_months || 1) * 30.4375 * 86400
       }))
     };
   }

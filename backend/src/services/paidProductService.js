@@ -72,6 +72,7 @@ class PaidProductService {
       hashrate: p.hashrate,
       description: p.description,
       duration_days: p.duration_days,
+      duration_months: p.duration_months || 1,
       product_contract_duration: p.product_contract_duration,
       ios_product_id: p.ios_product_id,
       android_product_id: p.android_product_id,
