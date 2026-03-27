@@ -26,6 +26,7 @@ const MiningContract = sequelize.define('mining_contracts', {
       'Free Ad Reward',
       'Daily Check-in Reward',
       'Invite Friend Reward',
+      'Bind Referrer Reward',
       'paid contract'
     ),
     allowNull: false,
@@ -88,6 +89,20 @@ const MiningContract = sequelize.define('mining_contracts', {
     type: DataTypes.STRING(80),
     allowNull: true,
     comment: '关联 user_orders.payment_gateway_id（首次购买 transaction_id），双向追溯'
+  },
+  // 续订标识：0=首次订阅该档位, 1=续订（手动点击 Renew 购买同档位）
+  is_renewal: {
+    type: DataTypes.TINYINT(1),
+    allowNull: false,
+    defaultValue: 0,
+    comment: '0=首次订阅, 1=续订'
+  },
+  // 续订时关联上一条合约的 ID，首次订阅为 NULL
+  previous_contract_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: '续订时关联的上一条合约ID，首次订阅为 NULL'
   }
 }, {
   timestamps: false,
@@ -100,7 +115,9 @@ const MiningContract = sequelize.define('mining_contracts', {
     { fields: ['contract_end_time'], name: 'idx_contract_end_time' },
     { fields: ['contract_end_time', 'user_id'], name: 'idx_active_contracts' },
     { fields: ['original_transaction_id'], name: 'idx_original_tx_id' },
-    { fields: ['order_id'], name: 'idx_order_id' }
+    { fields: ['order_id'], name: 'idx_order_id' },
+    { fields: ['is_renewal'], name: 'idx_is_renewal' },
+    { fields: ['previous_contract_id'], name: 'idx_previous_contract_id' }
   ],
   comment: '挖矿合约表'
 });

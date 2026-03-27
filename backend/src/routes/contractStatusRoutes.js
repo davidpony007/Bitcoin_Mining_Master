@@ -189,29 +189,57 @@ router.get('/my-contracts/:userId', async (req, res) => {
       }
     );
 
-    // 查询Bind Referrer Reward合约（被推荐人获得的绑定奖励）
-    const bindReferrerContract = await sequelize.query(
+    // 查询Bind Referrer Reward合约（被推荐人获得的绑定奖励，存储在 mining_contracts）
+    // 为兴容旧数据，同时查询 free_contract_records 历史记录
+    let bindReferrerContract = await sequelize.query(
       `SELECT 
         id,
-        free_contract_type,
+        contract_type,
         hashrate,
-        free_contract_creation_time,
-        free_contract_end_time,
-        TIMESTAMPDIFF(SECOND, NOW(), free_contract_end_time) as remaining_seconds,
+        contract_creation_time,
+        contract_end_time,
+        TIMESTAMPDIFF(SECOND, NOW(), contract_end_time) as remaining_seconds,
         CASE 
-          WHEN free_contract_end_time > NOW() THEN 1
+          WHEN contract_end_time > NOW() THEN 1
           ELSE 0
         END as is_active
-       FROM free_contract_records 
+       FROM mining_contracts 
        WHERE user_id = ? 
-       AND free_contract_type = 'Bind Referrer Reward'
-       ORDER BY free_contract_creation_time DESC
+       AND contract_type = 'Bind Referrer Reward'
+       ORDER BY contract_creation_time DESC
        LIMIT 1`,
       {
         replacements: [userId],
         type: sequelize.QueryTypes.SELECT
       }
     );
+
+    // 如果 mining_contracts 中没有，回退到 free_contract_records 历史记录
+    if (bindReferrerContract.length === 0) {
+      const legacyBind = await sequelize.query(
+        `SELECT 
+          id,
+          free_contract_type AS contract_type,
+          hashrate,
+          free_contract_creation_time AS contract_creation_time,
+          free_contract_end_time AS contract_end_time,
+          TIMESTAMPDIFF(SECOND, NOW(), free_contract_end_time) as remaining_seconds,
+          CASE 
+            WHEN free_contract_end_time > NOW() THEN 1
+            ELSE 0
+          END as is_active
+         FROM free_contract_records 
+         WHERE user_id = ? 
+         AND free_contract_type = 'Bind Referrer Reward'
+         ORDER BY free_contract_creation_time DESC
+         LIMIT 1`,
+        {
+          replacements: [userId],
+          type: sequelize.QueryTypes.SELECT
+        }
+      );
+      bindReferrerContract = legacyBind;
+    }
 
     // 查询付费合约：JOIN paid_products_list_config 直接取展示字段，无需硬编码 hashrate 匹配
     const paidContracts = await sequelize.query(
@@ -317,7 +345,7 @@ router.get('/my-contracts/:userId', async (req, res) => {
           isActive: bindReferrerContract[0]?.is_active === 1,
           hashrate: bindReferrerContract.length > 0 ? btcToGhs(bindReferrerContract[0]?.hashrate) : '0Gh/s',
           remainingSeconds: bindReferrerContract[0]?.is_active === 1 ? (bindReferrerContract[0]?.remaining_seconds || 0) : 0,
-          endTime: bindReferrerContract[0]?.free_contract_end_time || null,
+          endTime: bindReferrerContract[0]?.contract_end_time || null,
           contractId: bindReferrerContract[0]?.id || null
         },
         paidContracts: {

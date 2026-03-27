@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-// import 'package:firebase_core/firebase_core.dart'; // 暂时禁用
-// import 'firebase_options.dart'; // 暂时禁用
+import 'package:firebase_core/firebase_core.dart';
 import 'providers/user_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -9,36 +8,38 @@ import 'constants/app_constants.dart';
 import 'services/storage_service.dart';
 import 'services/admob_service.dart';
 import 'services/api_service.dart';
+import 'services/push_notification_service.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 初始化Firebase（暂时禁用）
-  // try {
-  //   await Firebase.initializeApp(
-  //     options: DefaultFirebaseOptions.currentPlatform,
-  //   );
-  // } catch (e) {
-  //   if (e.toString().contains('duplicate-app')) {
-  //     // Firebase已经初始化，忽略错误
-  //     print('Firebase already initialized');
-  //   } else {
-  //     // 其他错误需要抛出
-  //     rethrow;
-  //   }
-  // }
-  
-  // 初始化本地存储服务（3秒超时，避免iOS上挂起）
+
+  // 只初始化本地存储（必须在 runApp 之前，SplashScreen 立即需要用到）
+  // 超时缩短至 1 秒，避免 iOS 上 SharedPreferences 挂起
   try {
-    await StorageService().init().timeout(const Duration(seconds: 3));
-  } catch (_) {
-    // 超时或失败时仍继续启动，StorageService 内部有 null 安全处理
-  }
+    await StorageService().init().timeout(const Duration(seconds: 1));
+  } catch (_) {}
 
-  // 先启动UI，AdMob 在后台异步初始化（不阻塞启动流程）
-  AdMobService.initialize().catchError((_) {});
-
+  // 立即启动 UI，屏幕不再黑屏等待
   runApp(const MyApp());
+
+  // Firebase + 推送 + AdMob 全部在 UI 渲染后异步初始化，不阻塞启动画面
+  _initBackgroundServices();
+}
+
+/// 后台异步初始化所有非必要服务（不会影响 UI 渲染速度）
+Future<void> _initBackgroundServices() async {
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 8));
+  } catch (e) {
+    if (!e.toString().contains('duplicate-app')) {
+      debugPrint('⚠️ Firebase 初始化失败/超时: $e');
+    }
+  }
+  PushNotificationService.initialize().catchError((_) {});
+  AdMobService.initialize().catchError((_) {});
 }
 
 class MyApp extends StatelessWidget {
@@ -98,46 +99,78 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with WidgetsBindingObserver {
   final StorageService _storageService = StorageService();
   final ApiService _apiService = ApiService();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkLoginStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// App 从后台恢复到前台时上报活跃心跳
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      PushNotificationService.reportActive();
+      // 用户回到前台时重新上报 FCM token（token 可能已刷新）
+      PushNotificationService.initialize();
+    }
   }
 
   /// 检查登录状态，决定显示登录页还是主页
   Future<void> _checkLoginStatus() async {
-    await Future.delayed(const Duration(milliseconds: 500)); // 短暂延迟显示启动画面
+    await Future.delayed(const Duration(milliseconds: 300)); // 短暂显示启动画面
 
+    // 1. 检查本地是否有用户ID
+    final userId = _storageService.getUserId();
+
+    // 2. 如果没有用户ID或是OFFLINE用户，显示登录页
+    if (userId == null || userId.isEmpty || userId.startsWith('OFFLINE_')) {
+      print('ℹ️ No user ID in storage, showing login screen');
+      _navigateToLogin();
+      return;
+    }
+
+    // 3. 有本地用户ID → 直接进入主页（乐观导航，无需等待网络确认）
+    // 后台异步检查封号状态，不阻塞启动
+    print('✅ User ID found in storage: $userId, navigating to home');
+    _navigateToHome();
+    _checkBanStatusInBackground(userId);
+  }
+
+  /// 后台异步检查用户封号状态（不阻塞启动）
+  Future<void> _checkBanStatusInBackground(String userId) async {
     try {
-      // 1. 检查本地是否有用户ID
-      final userId = _storageService.getUserId();
-      
-      // 2. 如果没有用户ID或是OFFLINE用户，显示登录页
-      if (userId == null || userId.isEmpty || userId.startsWith('OFFLINE_')) {
-        _navigateToLogin();
-        return;
-      }
-
-      // 3. 检查MySQL数据库中是否存在该用户
-      final response = await _apiService.getUserStatus(userId);
-      
+      final response = await _apiService
+          .getUserStatus(userId)
+          .timeout(const Duration(seconds: 10));
       if (response['success'] == true && response['data'] != null) {
-        // 用户存在于数据库，直接进入主页
-        print('✅ User exists in database: $userId');
-        _navigateToHome();
-      } else {
-        // 用户不存在于数据库，显示登录页
-        print('⚠️ User not found in database, showing login screen');
-        _navigateToLogin();
+        final data = response['data'] as Map<String, dynamic>;
+        if (data['user_status'] == 'banned') {
+          print('🚫 User is banned, logging out');
+          await _storageService.saveUserId('');
+          // 已经进入 HomeScreen，通过导航回到 LoginScreen
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+        }
       }
     } catch (e) {
-      print('❌ Error checking login status: $e');
-      // 出错时显示登录页（安全策略）
-      _navigateToLogin();
+      // 网络错误时不影响主流程
+      print('⚠️ Background ban check failed (ignored): $e');
     }
   }
 
@@ -150,6 +183,8 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _navigateToHome() {
     if (!mounted) return;
+    // 用户成功进入主页时上报活跃心跳
+    PushNotificationService.reportActive();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const HomeScreen()),
     );
@@ -159,13 +194,13 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              AppColors.background,
-              AppColors.surface,
+              Color(0xFF1A237E), // 深蓝色 — 与黑屏明显区分
+              Color(0xFFFF6F00), // 深橙色
             ],
           ),
         ),
@@ -191,6 +226,17 @@ class _SplashScreenState extends State<SplashScreen> {
                   child: Image.asset(
                     'assets/images/bitcoin_chip_logo.png',
                     fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      // 图片加载失败时显示橙色图标兜底，避免黑屏
+                      return Container(
+                        color: AppColors.primary,
+                        child: const Icon(
+                          Icons.currency_bitcoin,
+                          size: 80,
+                          color: Colors.white,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

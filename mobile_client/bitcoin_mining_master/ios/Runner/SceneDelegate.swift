@@ -14,15 +14,31 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     willConnectTo session: UISceneSession,
     options connectionOptions: UIScene.ConnectionOptions
   ) {
-    guard let windowScene = scene as? UIWindowScene,
-          let appDelegate = UIApplication.shared.delegate as? AppDelegate
-    else { return }
-
+    NSLog("[BMM-DEBUG] SceneDelegate.scene willConnectTo called")
+    guard let windowScene = scene as? UIWindowScene else {
+      NSLog("[BMM-DEBUG] GUARD FAILED: scene is not UIWindowScene, type=%@", String(describing: type(of: scene)))
+      return
+    }
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+      NSLog("[BMM-DEBUG] GUARD FAILED: delegate is not AppDelegate, type=%@", String(describing: type(of: UIApplication.shared.delegate)))
+      return
+    }
+    NSLog("[BMM-DEBUG] SceneDelegate: guards passed, creating FlutterViewController")
     // 用 AppDelegate 提供的 FlutterEngine 创建 VC，避免 UIScene 模式下无内容黑屏
     let flutterVC = FlutterViewController(engine: appDelegate.flutterEngine, nibName: nil, bundle: nil)
+    NSLog("[BMM-DEBUG] SceneDelegate: FlutterVC created, creating UIWindow")
     let window = UIWindow(windowScene: windowScene)
     window.rootViewController = flutterVC
     window.makeKeyAndVisible()
     self.window = window
+    NSLog("[BMM-DEBUG] SceneDelegate: window makeKeyAndVisible done")
+  }
+
+  func sceneDidBecomeActive(_ scene: UIScene) {
+    NSLog("[BMM-DEBUG] SceneDelegate.sceneDidBecomeActive")
+  }
+
+  func sceneWillEnterForeground(_ scene: UIScene) {
+    NSLog("[BMM-DEBUG] SceneDelegate.sceneWillEnterForeground")
   }
 }

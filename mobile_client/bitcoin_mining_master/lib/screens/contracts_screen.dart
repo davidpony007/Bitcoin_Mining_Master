@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
+import '../services/apple_in_app_purchase_service.dart';
 import 'paid_contracts_screen.dart';
 import '../widgets/mining_machine_animation.dart';
 
@@ -104,8 +106,34 @@ class ContractsScreenState extends State<ContractsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isPageVisible) {
-      // 应用恢复到前台时立即刷新
+      // 应用恢复到前台时立即刷新合约数据
       _loadContracts();
+      // iOS: 同步订阅真实状态（捕获 Apple 通知丢失导致的状态不同步）
+      if (Platform.isIOS) {
+        _syncIosSubscriptionStatus();
+      }
+    }
+  }
+
+  /// iOS 专属：恢复订阅收据并发到后端同步状态（取消/到期 识别）
+  Future<void> _syncIosSubscriptionStatus() async {
+    try {
+      final token = _storageService.getAuthToken();
+      if (token == null || token.isEmpty) return;
+      // 只有存在活跃付费合约时才需要同步
+      final hasActivePaid = _activePaidContracts.any(
+        (c) => c['platform'] == 'ios' && c['status'] == 'active',
+      );
+      if (!hasActivePaid) return;
+
+      final appleService = AppleInAppPurchaseService();
+      appleService.userId = _storageService.getUserId();
+      await appleService.syncSubscriptionStatus(token: token);
+      // 同步完成后重新拉取合约数据以反映最新状态
+      await Future.delayed(const Duration(milliseconds: 500));
+      _loadContracts();
+    } catch (e) {
+      print('⚠️ [contracts] iOS 订阅状态同步失败: $e');
     }
   }
 
@@ -783,6 +811,44 @@ class ContractsScreenState extends State<ContractsScreen>
               ),
             ],
           ),
+          // 过期合约：显示续订按钮
+          if (isExpired) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final productId = contract['productId']?.toString();
+                  final result = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PaidContractsScreen(
+                        highlightProductId: productId,
+                      ),
+                    ),
+                  );
+                  if (result == true && mounted) {
+                    _loadContracts();
+                  }
+                },
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Renew Subscription'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  elevation: 0,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -31,6 +32,9 @@ class AppleInAppPurchaseService {
   // 购买结果回调
   Function(bool success, String message)? onPurchaseUpdate;
 
+  // 积分奖励回调（首次订阅某档位时触发）
+  Function(int pointsAwarded)? onPointsAwarded;
+
   // 用户 ID（初始化时从外部注入）
   String? userId;
 
@@ -58,8 +62,9 @@ class AppleInAppPurchaseService {
         onError: (error) => print('❌ iOS IAP 流错误: $error'),
       );
 
-      await loadProducts();
-      print('✅ App Store IAP 初始化成功');
+      // 后台异步加载商品，不阻塞 init() 返回，避免用户在商品查询期间点击购买时报"服务不可用"
+      loadProducts();
+      print('✅ App Store IAP 初始化成功（商品后台加载中）');
       return true;
     } catch (e) {
       print('❌ iOS IAP 初始化失败: $e');
@@ -108,11 +113,27 @@ class AppleInAppPurchaseService {
   /// 发起购买
   Future<void> buyProduct(String productId) async {
     try {
-      final product = getProduct(productId);
+      // 如果商品列表尚未加载（init() 后台加载中），按需等待加载完成
+      if (products.isEmpty) {
+        print('🔍 [IAP] 商品列表为空，按需加载中...');
+        await loadProducts();
+      }
+
+      ProductDetails? product = getProduct(productId);
+      if (product == null) {
+        // 尝试使用单个商品 ID 重新查询（兜底处理）
+        print('⚠️ [IAP] 商品 $productId 未在缓存中，尝试单独查询...');
+        final response = await _iap.queryProductDetails({productId});
+        if (response.productDetails.isNotEmpty) {
+          products = [...products, ...response.productDetails];
+          product = response.productDetails.first;
+        }
+      }
+
       if (product == null) {
         onPurchaseUpdate?.call(
           false,
-          'Product not found. Please check your connection and try again.',
+          'Product not found. Please verify your App Store configuration.',
         );
         return;
       }
@@ -233,6 +254,11 @@ class AppleInAppPurchaseService {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           print('✅ iOS 购买验证成功，合约已激活');
+          final int pts = (data['pointsAwarded'] ?? 0) as int;
+          if (pts > 0) {
+            print('🎉 iOS 购买积分奖励: +$pts 积分');
+            onPointsAwarded?.call(pts);
+          }
           onPurchaseUpdate?.call(
             true,
             'Purchase successful! Contract activated. Check "My Contracts" to view.',
@@ -280,6 +306,73 @@ class AppleInAppPurchaseService {
     } catch (e) {
       print('❌ iOS 恢复购买失败: $e');
       onPurchaseUpdate?.call(false, 'Restore failed: $e');
+    }
+  }
+
+  /// 同步 iOS 订阅状态到后端（当 App 恢复前台时调用）
+  /// 通过 restorePurchases 获取当前活跃的订阅收据，发到后端重新验证，
+  /// 识别已关闭自动续期或已过期的订阅并更新合约状态
+  Future<void> syncSubscriptionStatus({String? token}) async {
+    if (userId == null || userId!.isEmpty) return;
+    if (token == null || token.isEmpty) return;
+
+    final completer = Completer<String?>();
+    StreamSubscription<List<PurchaseDetails>>? tempSub;
+
+    // 设置 5 秒超时
+    final timer = Timer(const Duration(seconds: 5), () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+
+    // 临时监听 purchaseStream，捕获 restorePurchases 返回的收据
+    tempSub = _iap.purchaseStream.listen((purchases) {
+      for (final purchase in purchases) {
+        if (purchase.status == PurchaseStatus.restored ||
+            purchase.status == PurchaseStatus.purchased) {
+          final receipt = purchase.verificationData.serverVerificationData;
+          if (receipt.isNotEmpty && !completer.isCompleted) {
+            completer.complete(receipt);
+          }
+        }
+        // 完成 StoreKit 交易，防止重复回调
+        if (purchase.pendingCompletePurchase) {
+          _iap.completePurchase(purchase);
+        }
+      }
+    });
+
+    try {
+      await _iap.restorePurchases();
+      final receiptData = await completer.future;
+      timer.cancel();
+      await tempSub.cancel();
+
+      if (receiptData == null || receiptData.isEmpty) {
+        print('ℹ️ [syncStatus] 无活跃订阅，跳过同步');
+        return;
+      }
+
+      // 发送到后端同步
+      final url = '${ApiConstants.baseUrl}/payment/sync-ios-status';
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'verification_data': receiptData}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ [syncStatus] 订阅状态已同步: ${data['message']}');
+      } else {
+        print('⚠️ [syncStatus] 同步失败: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      timer.cancel();
+      await tempSub.cancel();
+      print('⚠️ [syncStatus] 同步异常: $e');
     }
   }
 

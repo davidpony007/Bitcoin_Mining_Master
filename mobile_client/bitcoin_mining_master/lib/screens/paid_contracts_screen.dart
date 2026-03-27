@@ -8,7 +8,8 @@ import '../services/apple_in_app_purchase_service.dart';
 import '../services/storage_service.dart';
 
 class PaidContractsScreen extends StatefulWidget {
-  const PaidContractsScreen({super.key});
+  final String? highlightProductId; // 续订时高亮指定档位
+  const PaidContractsScreen({super.key, this.highlightProductId});
 
   @override
   State<PaidContractsScreen> createState() => _PaidContractsScreenState();
@@ -146,6 +147,12 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         });
       }
     };
+    _billingService.onPointsAwarded = (int pts) {
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _showPointsReward(pts);
+      });
+    };
     final available = await _billingService.init();
     if (available) {
       await _billingService.loadProducts();
@@ -168,17 +175,55 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         });
       }
     };
+    _appleService.onPointsAwarded = (int pts) {
+      if (!mounted) return;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) _showPointsReward(pts);
+      });
+    };
     final available = await _appleService.init();
     if (mounted) setState(() => _serviceInitialized = available);
   }
 
+  void _showPointsReward(int points) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Text('🎉', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Text(
+              '+$points Points Reward! First-time subscription bonus.',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFF7931A),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+
   void _showPurchaseResult(bool success, String message) {
+    final bool isProcessing = !success && message.toLowerCase().contains('processing');
+    final Color bgColor = success
+        ? const Color(0xFF50C878)
+        : isProcessing
+            ? const Color(0xFFFFC107)
+            : Colors.redAccent;
+    final IconData iconData = success
+        ? Icons.check_circle
+        : isProcessing
+            ? Icons.hourglass_top
+            : Icons.error_outline;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             Icon(
-              success ? Icons.check_circle : Icons.error_outline,
+              iconData,
               color: Colors.white,
               size: 20,
             ),
@@ -186,7 +231,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: success ? const Color(0xFF50C878) : Colors.redAccent,
+        backgroundColor: bgColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 4),
@@ -324,6 +369,9 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   // 合约卡片
   Widget _buildContractCard(Map<String, dynamic> tier) {
     final bool isPopular = tier['popular'] ?? false;
+    final bool isHighlighted =
+        widget.highlightProductId != null &&
+        tier['id'] == widget.highlightProductId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -331,13 +379,16 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         color: const Color(0xFF0F1624),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: tier['color'],
-          width: isPopular ? 2.5 : 2,
+          color: isHighlighted ? const Color(0xFFF7931A) : tier['color'],
+          width: (isPopular || isHighlighted) ? 2.5 : 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: (tier['color'] as Color).withOpacity(isPopular ? 0.4 : 0.2),
-            blurRadius: isPopular ? 12 : 8,
+            color: (isHighlighted
+                    ? const Color(0xFFF7931A)
+                    : tier['color'] as Color)
+                .withOpacity((isPopular || isHighlighted) ? 0.5 : 0.2),
+            blurRadius: (isPopular || isHighlighted) ? 16 : 8,
             offset: const Offset(0, 4),
           ),
         ],
@@ -366,13 +417,35 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
               ),
             ),
 
+          // 续订标签
+          if (isHighlighted)
+            Positioned(
+              top: 12,
+              left: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7931A),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  '🔄 RENEW',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 预留POPULAR标签的空间
-                if (isPopular) const SizedBox(height: 32),
+                // 预留POPULAR/RENEW标签的空间
+                if (isPopular || isHighlighted) const SizedBox(height: 32),
                 
                 // 标题和价格
                 Row(
@@ -613,8 +686,18 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
     } else if (Platform.isIOS) {
       // iOS: Apple In-App Purchase via App Store
       if (!_serviceInitialized) {
-        _showPurchaseResult(false, 'Payment service unavailable. Please check your connection and try again.');
-        return;
+        // 可能 init() 仍在运行，等待最多 3 秒再检查一次
+        setState(() => _loadingTierId = tier['id'] as String);
+        int waited = 0;
+        while (!_serviceInitialized && waited < 30) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          waited++;
+        }
+        if (!_serviceInitialized) {
+          setState(() => _loadingTierId = null);
+          _showPurchaseResult(false, 'Payment service unavailable. Please check your network and try again, or check Settings > Screen Time.');
+          return;
+        }
       }
       final userId = StorageService().getUserId();
       if (userId == null || userId.isEmpty) {

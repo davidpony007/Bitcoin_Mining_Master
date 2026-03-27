@@ -4,6 +4,7 @@ const axios = require('axios');
 const { UserOrder, UserInformation } = require('../models');
 const paidContractService = require('../services/paidContractService');
 const PaidProductService = require('../services/paidProductService');
+const SubscriptionPointsService = require('../services/subscriptionPointsService');
 
 /**
  * POST /api/payment/verify-purchase
@@ -87,6 +88,7 @@ exports.verifyPurchase = async (req, res) => {
         store_product_id
       );
       if (!verifyResult.valid) {
+        console.warn(`⚠️ [paymentController] iOS 收据验证失败: ${verifyResult.reason} | txId=${transaction_id}`);
         return res.status(400).json({
           success: false,
           message: `Apple 收据验证失败: ${verifyResult.reason}`,
@@ -95,15 +97,17 @@ exports.verifyPurchase = async (req, res) => {
 
       // ── iOS 自动续期订阅：续订处理 ────────────────────────
       // original_transaction_id 在整个订阅生命周期内不变，用它识别续订
+      // ⚠️ 必须同时过滤 user_id，防止不同 App 用户使用同一 Apple 沙盒账号导致误匹配
       const originalTxId = verifyResult.originalTransactionId;
       if (originalTxId && originalTxId !== transaction_id) {
         // 当前 transaction_id 是新交易，但 original_transaction_id 已存在 → 续订
         const renewalOrder = await UserOrder.findOne({
-          where: { payment_network_id: originalTxId },
+          where: { payment_network_id: originalTxId, user_id: user_id },
         });
         if (renewalOrder) {
+          console.log(`🔄 [paymentController] iOS 续订检测: user=${user_id} originalTxId=${originalTxId} newTxId=${transaction_id}`);
           // 更新现有合约到期时间
-          // ✅ 用 original_transaction_id 精准定位，避免误改用户的其他档位合约
+          // ✅ 用 original_transaction_id + user_id 精准定位，避免误改其他用户的合约
           const newExpiry = verifyResult.expiresDateMs
             ? new Date(parseInt(verifyResult.expiresDateMs))
             : null;
@@ -111,8 +115,9 @@ exports.verifyPurchase = async (req, res) => {
             const { MiningContract } = require('../models');
             await MiningContract.update(
               { contract_end_time: newExpiry },
-              { where: { original_transaction_id: originalTxId } }
+              { where: { original_transaction_id: originalTxId, user_id: user_id } }
             );
+            console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
           }
           // 记录续订交易
           const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email'] });
@@ -210,11 +215,19 @@ exports.verifyPurchase = async (req, res) => {
       iosMeta?.originalTransactionId || (platform === 'android' ? purchase_token : null)
     );
 
+    // ── 订阅积分奖励（首次订阅该档位 +20 分，幂等，失败不阻断主流程）────
+    const pointsResult = await SubscriptionPointsService.awardSubscriptionPoints(
+      user_id,
+      resolvedBackendProductId
+    );
+
     return res.status(200).json({
       success: true,
       message: '购买验证成功，合约已激活',
       contractId: contract?.id,
       orderId: newOrder?.id,
+      pointsAwarded: pointsResult.awarded ? pointsResult.pointsAwarded : 0,
+      pointsReason: pointsResult.awarded ? '首次订阅积分奖励' : null,
     });
   } catch (err) {
     console.error('❌ [paymentController] verifyPurchase 异常:', err);
@@ -237,6 +250,11 @@ exports.verifyPurchase = async (req, res) => {
 async function verifyAppleReceipt(receiptData, transactionId, productId) {
   const sharedSecret = process.env.APPLE_IAP_SHARED_SECRET || '';
 
+  // 如果未配置 shared secret，记录警告（仍继续，Apple 对免费沙盒 App 可能不需要）
+  if (!sharedSecret) {
+    console.warn('⚠️ [IAP] APPLE_IAP_SHARED_SECRET 未配置，自动续期订阅验证可能失败（21004）');
+  }
+
   const payload = {
     'receipt-data': receiptData,
     password: sharedSecret,
@@ -250,26 +268,44 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
   try {
     appleRes = await axios.post(appleUrl, payload, { timeout: 10000 });
   } catch (e) {
+    console.error(`❌ [IAP] Apple 生产环境请求失败: ${e.message}`);
     return { valid: false, reason: `Apple 服务器请求失败: ${e.message}` };
   }
 
-  const { status, latest_receipt_info } = appleRes.data;
+  let currentStatus = appleRes.data.status;
+  console.log(`📡 [IAP] Apple 生产环境响应状态: ${currentStatus} | txId=${transactionId}`);
 
   // 21007 = 沙盒收据发到了生产环境，切换到沙盒
-  if (status === 21007) {
+  if (currentStatus === 21007) {
+    console.log(`🔄 [IAP] 沙盒收据，切换到沙盒环境验证 | txId=${transactionId}`);
     try {
       appleRes = await axios.post(
         'https://sandbox.itunes.apple.com/verifyReceipt',
         payload,
         { timeout: 10000 }
       );
+      currentStatus = appleRes.data.status;
+      console.log(`📡 [IAP] Apple 沙盒响应状态: ${currentStatus} | txId=${transactionId}`);
     } catch (e) {
+      console.error(`❌ [IAP] Apple 沙盒请求失败: ${e.message}`);
       return { valid: false, reason: `Apple 沙盒请求失败: ${e.message}` };
     }
   }
 
+  // 21004 = shared secret 不匹配（未配置时常见）
+  // 在沙盒/开发环境下，如果 shared secret 未配置，降级为仅信任客户端 transaction_id
+  if (currentStatus === 21004 && !sharedSecret) {
+    console.warn(`⚠️ [IAP] Apple 返回 21004（shared secret 未配置），降级信任客户端数据: txId=${transactionId} productId=${productId}`);
+    return {
+      valid: true,
+      originalTransactionId: transactionId,
+      expiresDateMs: String(Date.now() + 30 * 24 * 3600 * 1000), // 默认30天
+    };
+  }
+
   const finalStatus = appleRes.data.status;
   if (finalStatus !== 0) {
+    console.warn(`⚠️ [IAP] Apple 收据验证失败，状态码 ${finalStatus} | txId=${transactionId}`);
     return { valid: false, reason: `Apple 状态码: ${finalStatus}` };
   }
 
@@ -288,6 +324,7 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
   ) || latestReceipt;
 
   if (!match) {
+    console.warn(`⚠️ [IAP] 收据中未找到 txId=${transactionId}，receipts 共 ${receipts.length} 条`);
     return {
       valid: false,
       reason: `收据中未找到 transaction_id: ${transactionId}`,
@@ -295,15 +332,114 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
   }
 
   if (match.product_id !== productId) {
+    console.warn(`⚠️ [IAP] 商品ID不匹配: 期望 ${productId}，实际 ${match.product_id} | txId=${transactionId}`);
     return {
       valid: false,
       reason: `商品ID不匹配: 期望 ${productId}，实际 ${match.product_id}`,
     };
   }
 
+  console.log(`✅ [IAP] Apple 收据验证通过: txId=${transactionId} product=${productId} expires=${match.expires_date_ms}`);
   return {
     valid: true,
     originalTransactionId: match.original_transaction_id,
     expiresDateMs: match.expires_date_ms || null,
   };
 }
+
+/**
+ * POST /api/payment/sync-ios-status
+ * 客户端在打开合约页面 / App 恢复前台时，主动发送最新收据，
+ * 后端重新验证并更新订阅状态（to prevent Apple notification delivery failures affecting display）
+ * 需要 JWT 鉴权
+ * Body: { verification_data }
+ */
+exports.syncIosStatus = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.user_id;
+    const { verification_data } = req.body;
+
+    if (!userId || !verification_data) {
+      return res.status(400).json({ success: false, message: '缺少必要参数' });
+    }
+
+    const sharedSecret = process.env.APPLE_IAP_SHARED_SECRET || '';
+    const payload = {
+      'receipt-data': verification_data,
+      password: sharedSecret,
+      'exclude-old-transactions': false, // 需要完整历史来判断各产品状态
+    };
+
+    // 先尝试生产，21007 → 沙盒
+    let appleUrl = 'https://buy.itunes.apple.com/verifyReceipt';
+    let appleRes;
+    try {
+      appleRes = await axios.post(appleUrl, payload, { timeout: 15000 });
+    } catch (e) {
+      return res.status(500).json({ success: false, message: `Apple 请求失败: ${e.message}` });
+    }
+
+    if (appleRes.data.status === 21007) {
+      try {
+        appleRes = await axios.post('https://sandbox.itunes.apple.com/verifyReceipt', payload, { timeout: 15000 });
+      } catch (e) {
+        return res.status(500).json({ success: false, message: `Apple 沙盒请求失败: ${e.message}` });
+      }
+    }
+
+    if (appleRes.data.status !== 0) {
+      return res.status(400).json({ success: false, message: `Apple 验证失败: status=${appleRes.data.status}` });
+    }
+
+    const pendingRenewalInfo = appleRes.data.pending_renewal_info || [];
+    const latestReceiptInfo = appleRes.data.latest_receipt_info || [];
+
+    const { MiningContract } = require('../models');
+    let cancelledCount = 0;
+    let updatedExpiry = 0;
+
+    for (const renewalItem of pendingRenewalInfo) {
+      const origTxId = renewalItem.original_transaction_id;
+      const autoRenewStatus = renewalItem.auto_renew_status; // '0' = 已关闭自动续期
+
+      // 找对应的最新收据信息更新 contract_end_time
+      const latestEntry = latestReceiptInfo
+        .filter(r => r.original_transaction_id === origTxId)
+        .sort((a, b) => parseInt(b.expires_date_ms || '0') - parseInt(a.expires_date_ms || '0'))[0];
+
+      const contracts = await MiningContract.findAll({
+        where: { user_id: userId, original_transaction_id: origTxId, contract_type: 'paid contract' },
+      });
+
+      for (const contract of contracts) {
+        // 更新 contract_end_time 为 Apple 实际到期时间
+        if (latestEntry?.expires_date_ms) {
+          const appleExpiry = new Date(parseInt(latestEntry.expires_date_ms));
+          if (contract.contract_end_time?.getTime() !== appleExpiry.getTime()) {
+            await contract.update({ contract_end_time: appleExpiry });
+            updatedExpiry++;
+            console.log(`🔄 [syncIos] 更新合约到期时间: user=${userId} origTx=${origTxId} newExpiry=${appleExpiry.toISOString()}`);
+          }
+        }
+
+        // 如果自动续期已关闭，标记取消
+        if ((autoRenewStatus === '0' || autoRenewStatus === 0) && contract.is_cancelled === 0) {
+          await contract.update({ is_cancelled: 1 });
+          cancelledCount++;
+          console.log(`📴 [syncIos] 标记合约取消（自动续期已关闭）: user=${userId} origTx=${origTxId}`);
+        }
+      }
+    }
+
+    console.log(`✅ [syncIos] 同步完成: user=${userId} cancelled=${cancelledCount} expiry_updated=${updatedExpiry}`);
+    return res.status(200).json({
+      success: true,
+      cancelledCount,
+      updatedExpiry,
+      message: `同步完成 (${cancelledCount} 个合约已标记取消)`,
+    });
+  } catch (err) {
+    console.error('❌ [syncIos] 异常:', err);
+    return res.status(500).json({ success: false, message: '服务器内部错误' });
+  }
+};

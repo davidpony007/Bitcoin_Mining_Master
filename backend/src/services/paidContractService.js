@@ -117,7 +117,16 @@ class PaidContractService {
       const actualHours = Math.round(actualSeconds / 3600);
       const durationTime = `${actualHours}:00:00`; // 格式: TIME HH:MM:SS
 
-      // 4. 创建付费合约（固定收益，不受国家/等级系数影响）
+      // 4. 判断是否为续订：查询该用户同档位的历史合约（无论是否过期、取消）
+      const prevContract = await MiningContract.findOne({
+        where: { user_id: userId, product_id: productId, contract_type: 'paid contract' },
+        order: [['id', 'DESC']],
+        attributes: ['id'],
+      });
+      const isRenewal = prevContract ? 1 : 0;
+      const previousContractId = prevContract ? prevContract.id : null;
+
+      // 5. 创建付费合约（固定收益，不受国家/等级系数影响）
       const contract = await MiningContract.create({
         user_id: userId,
         contract_type: 'paid contract',
@@ -130,7 +139,9 @@ class PaidContractService {
         hashrate: tierHashrate,
         is_cancelled: 0,
         original_transaction_id: originalTxId || null,
-        order_id: orderId || null
+        order_id: orderId || null,
+        is_renewal: isRenewal,
+        previous_contract_id: previousContractId,
       });
 
       // 5. 计算预期收益（不含任何倍数）

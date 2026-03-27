@@ -94,10 +94,9 @@ class ContractRewardService {
       details.invitationContracts = invitationRevenue;
       totalRevenue += invitationRevenue;
 
-      // 5. 计算绑定推荐人合约收益
-      const bindReferrerRevenue = await this.calculateFreeContractRevenue(
+      // 5. 计算绑定推荐人合约收益（从 mining_contracts 读取，应用等级/国家倍数）
+      const bindReferrerRevenue = await this.calculateBindReferrerRevenue(
         userId, 
-        'Bind Referrer Reward', 
         startTime, 
         endTime,
         speedPerSecond
@@ -180,6 +179,49 @@ class ContractRewardService {
       return totalRevenue;
     } catch (error) {
       console.error(`❌ 计算免费合约收益失败 (${contractType}):`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * 计算绑定推荐人合约收益（从 mining_contracts 读取，应用用户当前速率）
+   * 与付费合约不同，bind referrer 应用等级/国家倍数
+   */
+  static async calculateBindReferrerRevenue(userId, startTime, endTime, speedPerSecond) {
+    try {
+      const [contracts] = await pool.query(`
+        SELECT 
+          id,
+          contract_creation_time,
+          contract_end_time
+        FROM mining_contracts
+        WHERE user_id = ?
+          AND contract_type = 'Bind Referrer Reward'
+          AND contract_end_time > ?
+      `, [userId, startTime]);
+
+      let totalRevenue = 0;
+
+      for (const contract of contracts) {
+        const contractStart = new Date(contract.contract_creation_time);
+        const contractEnd = new Date(contract.contract_end_time);
+
+        const effectiveStart = contractStart > startTime ? contractStart : startTime;
+        const effectiveEnd = contractEnd < endTime ? contractEnd : endTime;
+
+        if (effectiveStart >= effectiveEnd) continue;
+
+        const seconds = Math.floor((effectiveEnd - effectiveStart) / 1000);
+        // 使用等级/国家倍数后的 speedPerSecond 计算收益
+        const revenue = speedPerSecond * seconds;
+        totalRevenue += revenue;
+
+        console.log(`  Bind Referrer Reward: ${seconds}秒 × ${speedPerSecond} = ${revenue} BTC`);
+      }
+
+      return totalRevenue;
+    } catch (error) {
+      console.error('❌ 计算绑定推荐人合约收益失败:', error);
       return 0;
     }
   }

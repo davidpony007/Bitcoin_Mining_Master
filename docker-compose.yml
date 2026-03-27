@@ -82,6 +82,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: dev_redis_123
       JWT_SECRET: dev_jwt_secret_key_for_testing
+      APPLE_IAP_SHARED_SECRET: ""  # 填入 App Store Connect → App Information → App-Specific Shared Secret
     ports:
       - "8888:8888"
     volumes:

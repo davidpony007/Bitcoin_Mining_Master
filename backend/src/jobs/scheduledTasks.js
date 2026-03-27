@@ -377,6 +377,12 @@ function startAutoReferralRewards() {
     try {
       console.log('[定时任务] 开始检查并发放邀请奖励...');
       
+      // 防御性检查：确保数据库连接可用
+      if (!pool || typeof pool.query !== 'function') {
+        console.error('[定时任务] 邀请奖励: 数据库连接池不可用，跳过本次执行');
+        return;
+      }
+
       // 查询所有有邀请关系的用户
       const [referrers] = await pool.query(`
         SELECT DISTINCT referrer_user_id as user_id

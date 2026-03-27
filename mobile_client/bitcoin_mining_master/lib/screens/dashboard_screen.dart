@@ -626,10 +626,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     try {
       var userId = _storageService.getUserId();
 
-      // 临时解决方案：如果userId为空，使用默认测试用户ID
       if (userId == null || userId.isEmpty) {
-        userId = 'U2026011910532521846';
-        print('⚠️ Dashboard: 用户ID为空，使用默认测试用户ID');
+        print('⚠️ Dashboard: 用户ID为空，跳过合约加载');
+        return;
       }
 
       print('📊 Dashboard: 加载合约状态 - userId: $userId');

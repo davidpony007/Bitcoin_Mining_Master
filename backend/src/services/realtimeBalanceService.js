@@ -119,18 +119,26 @@ class RealtimeBalanceService {
         totalPerSecond += finalSpeed;
       }
 
-      // === 3. 付费合约，统归 'paid_contract' 类型 ===
+      // === 3. 付费合约（含 Bind Referrer Reward），按 contract_type 区分是否应用倍数 ===
       const paidContracts = await sequelize.query(`
-        SELECT base_hashrate, hashrate
+        SELECT base_hashrate, hashrate, contract_type
         FROM mining_contracts WHERE user_id = ? AND contract_end_time > NOW()
       `, { replacements: [userId], type: sequelize.QueryTypes.SELECT });
 
       for (const contract of paidContracts) {
-        const fixedSpeed = contract.base_hashrate
+        const baseSpeed = contract.base_hashrate
           ? parseFloat(contract.base_hashrate)
           : parseFloat(contract.hashrate);
-        byType['paid_contract'] = (byType['paid_contract'] || 0) + fixedSpeed;
-        totalPerSecond += fixedSpeed;
+        if (contract.contract_type === 'Bind Referrer Reward') {
+          // 绑定推荐人合约：与免费合约一样应用等级/国家倍数
+          const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier;
+          byType['Bind Referrer Reward'] = (byType['Bind Referrer Reward'] || 0) + finalSpeed;
+          totalPerSecond += finalSpeed;
+        } else {
+          // 付费合约：固定收益，不受等级/国家影响
+          byType['paid_contract'] = (byType['paid_contract'] || 0) + baseSpeed;
+          totalPerSecond += baseSpeed;
+        }
       }
 
       return { total: totalPerSecond, byType };
@@ -227,9 +235,9 @@ class RealtimeBalanceService {
         totalPerSecond += finalSpeed;
       }
 
-      // === 3. 计算付费合约收益（固定收益，不受等级/国家影响） ===
+      // === 3. 计算付费合约收益（含 Bind Referrer Reward，按类型区分是否应用倍数） ===
       const paidContracts = await sequelize.query(`
-        SELECT base_hashrate, hashrate
+        SELECT base_hashrate, hashrate, contract_type
         FROM mining_contracts 
         WHERE user_id = ? 
         AND contract_end_time > NOW()
@@ -239,12 +247,17 @@ class RealtimeBalanceService {
       });
 
       for (const contract of paidContracts) {
-        // 付费合约使用固定速率（不应用等级/国家倍数，用户付费购买的是固定收益）
-        const fixedSpeed = contract.base_hashrate 
+        const baseSpeed = contract.base_hashrate 
           ? parseFloat(contract.base_hashrate) 
           : parseFloat(contract.hashrate);
-        
-        totalPerSecond += fixedSpeed;
+        if (contract.contract_type === 'Bind Referrer Reward') {
+          // 绑定推荐人合约：与免费合约一样应用等级/国家倍数
+          const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier;
+          totalPerSecond += finalSpeed;
+        } else {
+          // 付费合约：固定收益，不受等级/国家影响
+          totalPerSecond += baseSpeed;
+        }
       }
 
       return totalPerSecond;

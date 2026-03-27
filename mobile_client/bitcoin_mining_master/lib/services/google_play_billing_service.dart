@@ -27,6 +27,9 @@ class GooglePlayBillingService {
   
   // 购买状态回调
   Function(bool success, String message)? onPurchaseUpdate;
+
+  // 积分奖励回调（首次订阅某档位时触发）
+  Function(int pointsAwarded)? onPointsAwarded;
   
   // 用户ID（需要从外部设置，由 purchase_page 注入）
   String? userId;
@@ -205,6 +208,11 @@ class GooglePlayBillingService {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           print('✅ 购买验证成功，合约已发放');
+          final int pts = (data['pointsAwarded'] ?? 0) as int;
+          if (pts > 0) {
+            print('🎉 Android 购买积分奖励: +$pts 积分');
+            onPointsAwarded?.call(pts);
+          }
           onPurchaseUpdate?.call(true, 'Purchase successful! Contract activated. Check "My Contracts" to view.');
         } else {
           print('❌ 验证失败: ${data['message']}');

@@ -173,6 +173,21 @@ class _PointsScreenState extends State<PointsScreen> {
                   _buildGuideItem('Check in for 30 days\n(cumulative)', 'Extra +60 points, one-time'),
                 ],
               ),
+              const Divider(height: 32, thickness: 1),
+              _buildGuideSection(
+                'Paid Subscription Reward',
+                Icons.workspace_premium_outlined,
+                [
+                  _buildGuideItem(
+                    'Subscribe to any paid plan',
+                    '+20 points per tier',
+                  ),
+                  _buildGuideItem(
+                    'Subscribe to all 4 different tiers\n(Starter / Standard / Advanced / Premium)',
+                    'Up to +80 points total',
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
             ],
           ),

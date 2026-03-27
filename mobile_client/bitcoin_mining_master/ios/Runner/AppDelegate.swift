@@ -11,9 +11,12 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    NSLog("[BMM-DEBUG] AppDelegate.application didFinishLaunching START")
     // 启动引擎并注册插件，不调用 super（避免 super 在 UIScene 模式下创建无场景关联的旧式窗口）
     flutterEngine.run()
+    NSLog("[BMM-DEBUG] AppDelegate: flutterEngine.run() done")
     GeneratedPluginRegistrant.register(with: flutterEngine)
+    NSLog("[BMM-DEBUG] AppDelegate: plugins registered, returning true")
     return true
   }
 

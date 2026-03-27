@@ -8,6 +8,7 @@
  * - 该奖励每个用户只能使用一次，用完后永久失效
  */
 
+const MiningContract = require('../models/miningContract');
 const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const InvitationRelationship = require('../models/invitationRelationship');
@@ -56,14 +57,21 @@ class RefereeMiningContractService {
       }
 
       // 3. 检查是否已经领取过绑定奖励（防止重复领取）
-      const existingBindContract = await FreeContractRecord.findOne({
+      // 同时检查 mining_contracts（新存储）和 free_contract_records（历史数据）
+      const existingInMining = await MiningContract.findOne({
+        where: {
+          user_id: refereeId,
+          contract_type: 'Bind Referrer Reward'
+        }
+      });
+      const existingInFree = !existingInMining && await FreeContractRecord.findOne({
         where: {
           user_id: refereeId,
           free_contract_type: 'Bind Referrer Reward'
         }
       });
 
-      if (existingBindContract) {
+      if (existingInMining || existingInFree) {
         return {
           success: false,
           message: '您已经领取过绑定推荐人奖励，该奖励每个用户只能领取一次',
@@ -77,19 +85,24 @@ class RefereeMiningContractService {
       // 5. 计算当前的速度信息（仅用于返回给前端显示）
       const speedInfo = await LevelService.calculateMiningSpeed(refereeId);
 
-      // 6. 创建绑定推荐人挖矿合约（只存储基础速率）
+      // 6. 创建绑定推荐人挖矿合约（写入 mining_contracts，只存储基础速率）
       const now = new Date();
       const endTime = new Date(now.getTime() + this.BIND_REFERRER_MINING_DURATION);
+      // TIME 格式: '02:00:00'
+      const durationHours = Math.floor(this.BIND_REFERRER_MINING_DURATION / 3600000);
+      const contractDuration = `${String(durationHours).padStart(2, '0')}:00:00`;
 
-      const contract = await FreeContractRecord.create({
+      const contract = await MiningContract.create({
         user_id: refereeId,
-        free_contract_type: 'Bind Referrer Reward',
-        free_contract_creation_time: now,
-        free_contract_end_time: endTime,
-        base_hashrate: BASE_HASHRATE,  // 新字段：纯基础速率
-        has_daily_bonus: 0,  // 标记：不含签到加成
-        mining_status: 'mining',  // 合约创建时立即处于挖矿状态
-        hashrate: BASE_HASHRATE  // 兼容字段
+        contract_type: 'Bind Referrer Reward',
+        product_id: null,
+        platform: 'system',
+        contract_creation_time: now,
+        contract_end_time: endTime,
+        contract_duration: contractDuration,
+        base_hashrate: BASE_HASHRATE,
+        hashrate: BASE_HASHRATE,
+        is_cancelled: 0
       });
 
       console.log(`✅ 创建绑定推荐人挖矿合约: 被邀请人 ${refereeId}, 结束时间 ${endTime}, 基础速率 ${BASE_HASHRATE.toExponential(2)} BTC/s`);
@@ -100,8 +113,8 @@ class RefereeMiningContractService {
         contract: {
           id: contract.id,
           type: 'Bind Referrer Reward',
-          startTime: contract.free_contract_creation_time,
-          endTime: contract.free_contract_end_time,
+          startTime: contract.contract_creation_time,
+          endTime: contract.contract_end_time,
           hashrate: speedInfo.finalSpeedWithoutBonus  // 返回当前计算的速率（用于显示）
         },
         speedInfo: {
@@ -127,12 +140,24 @@ class RefereeMiningContractService {
    */
   static async getContractStatus(userId) {
     try {
-      const contract = await FreeContractRecord.findOne({
+      // 优先从 mining_contracts 查询（新数据），回退到 free_contract_records（历史数据）
+      let contract = await MiningContract.findOne({
         where: {
           user_id: userId,
-          free_contract_type: 'Bind Referrer Reward'
+          contract_type: 'Bind Referrer Reward'
         }
       });
+
+      let isLegacy = false;
+      if (!contract) {
+        contract = await FreeContractRecord.findOne({
+          where: {
+            user_id: userId,
+            free_contract_type: 'Bind Referrer Reward'
+          }
+        });
+        isLegacy = true;
+      }
 
       if (!contract) {
         return {
@@ -142,19 +167,18 @@ class RefereeMiningContractService {
       }
 
       const now = new Date();
-      const endTime = new Date(contract.free_contract_end_time);
+      const endTime = new Date(isLegacy ? contract.free_contract_end_time : contract.contract_end_time);
+      const startTime = isLegacy ? contract.free_contract_creation_time : contract.contract_creation_time;
       const isMining = endTime > now;
       const remainingSeconds = isMining ? Math.max(0, Math.floor((endTime - now) / 1000)) : 0;
-
+      
       return {
         hasContract: true,
         contract: {
           id: contract.id,
           type: 'Bind Referrer Reward',
-          startTime: contract.free_contract_creation_time,
-          endTime: contract.free_contract_end_time,
-          hashrate: contract.hashrate,
-          isMining,
+          startTime,
+          endTime,
           remainingSeconds,
           remainingFormatted: this.formatDuration(remainingSeconds)
         },

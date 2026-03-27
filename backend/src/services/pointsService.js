@@ -21,7 +21,11 @@ class PointsService {
     CUMULATIVE_CHECKIN_30: 'CUMULATIVE_CHECKIN_30', // 累计签到30天
     SUBORDINATE_AD_VIEW: 'SUBORDINATE_AD_VIEW',   // 下级观看广告
     MANUAL_ADD: 'MANUAL_ADD',                     // 手动增加
-    MANUAL_DEDUCT: 'MANUAL_DEDUCT'                // 手动扣除
+    MANUAL_DEDUCT: 'MANUAL_DEDUCT',               // 手动扣除
+    SUBSCRIBE_STARTER_PLAN: 'SUBSCRIBE STARTER PLAN',   // 订阅 Starter Plan 积分奖励
+    SUBSCRIBE_STANDARD_PLAN: 'SUBSCRIBE STANDARD PLAN', // 订阅 Standard Plan 积分奖励
+    SUBSCRIBE_ADVANCED_PLAN: 'SUBSCRIBE ADVANCED PLAN', // 订阅 Advanced Plan 积分奖励
+    SUBSCRIBE_PREMIUM_PLAN: 'SUBSCRIBE PREMIUM PLAN'    // 订阅 Premium Plan 积分奖励
   };
 
   /**
