@@ -33,6 +33,8 @@ class GooglePlayBillingService {
   
   // 用户ID（需要从外部设置，由 purchase_page 注入）
   String? userId;
+  // JWT 鉴权 Token（用于 verify-purchase 接口的 Authorization header）
+  String? authToken;
 
   // 本次 App 会话内已提交后端验证的交易 ID（防止 Google Play 多次回调同一笔交易时重复创建合约）
   final Set<String> _processedTransactionIds = {};
@@ -128,10 +130,12 @@ class GooglePlayBillingService {
       print('📦 购买状态更新: ${purchaseDetails.productID} - ${purchaseDetails.status}');
       
       if (purchaseDetails.status == PurchaseStatus.pending) {
-        // 购买待处理
-        print('⏳ 购买待处理...');
-        onPurchaseUpdate?.call(false, 'Processing, please wait...');
-        
+        // pending 仅出现在特殊支付方式（需线下付款等）或处理中的过渡状态。
+        // 【重要】不调用 onPurchaseUpdate：回调会清空 _loadingTierId，导致后续
+        // purchased 事件到来时 purchasedProductId = null，队列无法激活。
+        // 按钮的加载状态已由 _loadingTierId != null 在 UI 层维持，无需额外 SnackBar。
+        print('⏳ 购买挂起（处理中或需线下付款）: ${purchaseDetails.productID}');
+
       } else if (purchaseDetails.status == PurchaseStatus.purchased) {
         // 防止 Google Play 多次回调同一笔交易重复创建合约
         final txId = purchaseDetails.purchaseID;
@@ -194,7 +198,11 @@ class GooglePlayBillingService {
       print('📡 验证接口: $url');
       final response = await http.post(
         Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (authToken != null && authToken!.isNotEmpty)
+            'Authorization': 'Bearer $authToken',
+        },
         body: jsonEncode({
           'user_id': userId,
           'platform': 'android',

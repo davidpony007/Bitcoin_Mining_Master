@@ -7,7 +7,8 @@ const appleNotificationController = require('../controllers/appleNotificationCon
 const authenticate = require('../middleware/auth');
 
 // POST /api/payment/verify-purchase — 验证 IAP 收据并发放付费合约
-router.post('/verify-purchase', paymentController.verifyPurchase);
+// 需要 JWT 鉴权：防止未登录用户或付费绕过（Android 信任模式下尤关重要）
+router.post('/verify-purchase', authenticate, paymentController.verifyPurchase);
 
 // POST /api/payment/apple-notifications — Apple S2S 服务端通知（续期/取消/到期）
 // 注意：此接口不需要 JWT 鉴权，Apple 通过 shared secret 验证

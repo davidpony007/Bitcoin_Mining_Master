@@ -76,16 +76,15 @@ class PaidContractService {
     originalTxId = null
   ) {
     try {
-      // 1. 验证用户存在
+      // 1. 验证用户存在（仅记录警告，不阻断合约创建）
+      // 设备登录用户可能通过 JWT 鉴权但无 user_information 记录（如数据库迁移/重置后），
+      // 此时 user_id 已通过 JWT 鉴权可信，必须继续创建合约，不能因 user_information
+      // 缺失而静默失败（订单已创建，合约必须同步创建）。
       const user = await UserInformation.findOne({
         where: { user_id: userId }
       });
-
       if (!user) {
-        return {
-          success: false,
-          message: '用户不存在'
-        };
+        console.warn(`⚠️ [paidContractService] 用户 ${userId} 不在 user_information 表，继续创建合约（设备登录用户）`);
       }
 
       // 2. 验证产品档位（从 DB 读取）
@@ -99,16 +98,51 @@ class PaidContractService {
       const tierHashrate = parseFloat(tier.hashrate_raw);
       const tierMonths = tier.duration_months || 1; // 自然月数
 
+      // 2.5 防止重复合约：同一用户 + 同一 original_transaction_id + 同一产品只能有一个合约
+      // 沙盒自动续期会多次触发 createPaidContract，重复的直接返回已有合约
+      if (originalTxId) {
+        const existingContract = await MiningContract.findOne({
+          where: {
+            user_id: userId,
+            product_id: productId,
+            original_transaction_id: originalTxId,
+            contract_type: 'paid contract',
+          },
+        });
+        if (existingContract) {
+          console.log(`⚠️ [paidContractService] 合约已存在，跳过重复创建: user=${userId} product=${productId} origTx=${originalTxId} contractId=${existingContract.id}`);
+          return {
+            success: true,
+            message: '合约已存在（重复请求）',
+            contract: {
+              id: existingContract.id,
+              type: 'paid contract',
+              tier: tier.product_name,
+              startTime: existingContract.contract_creation_time,
+              endTime: existingContract.contract_end_time,
+              hashrate: existingContract.hashrate,
+            },
+            orderId,
+          };
+        }
+      }
+
       // 3. 计算合约时间
       // 注：同一 transaction_id 的去重已在 paymentController 最上层处理（payment_gateway_id UNIQUE），此处无需重复拦截，
       // 不同产品档位（如同时持有 $4.99 和 $6.99）或订阅升级场景均可正常创建新合约。
       const now = new Date();
-      // iOS 自动续期订阅：使用 Apple 提供的到期时间；
-      // 安卓/其他：按自然月计算（如 3月8日 → 4月8日，不是固定30天）
+      // iOS 自动续期订阅：使用 Apple 提供的到期时间，但必须验证在未来（至少 > now + 1 小时）
+      // 沙盒环境下 Apple 收据中的 expiresDateMs 可能是历史续订周期的陈旧值（5 分钟自动续期），
+      // 导致 contract_end_time 被设置为过去时间 → 合约创建即过期或时长显示异常。
+      // 回退策略：如果 Apple 到期时间不可靠，按自然月计算（如 3月8日 → 4月8日）。
+      const ONE_HOUR_MS = 3600 * 1000;
       let endTime;
-      if (expiresDate instanceof Date && !isNaN(expiresDate)) {
+      if (expiresDate instanceof Date && !isNaN(expiresDate) && expiresDate.getTime() > now.getTime() + ONE_HOUR_MS) {
         endTime = expiresDate;
       } else {
+        if (expiresDate instanceof Date && !isNaN(expiresDate)) {
+          console.warn(`⚠️ [paidContractService] Apple expiresDate 已过期或即将过期 (${expiresDate.toISOString()})，回退到自然月计算`);
+        }
         endTime = new Date(now);
         endTime.setMonth(endTime.getMonth() + tierMonths);
       }

@@ -131,8 +131,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _pausedAt = DateTime.now();
       print('📱 Dashboard: 应用进入后台，记录时间: $_pausedAt');
     } else if (state == AppLifecycleState.resumed) {
-      print('📱 Dashboard: 应用恢复前台，立即刷新数据');
-      // 先用本地时间估算后台期间流逝的秒数，快速修正电池显示
+      print('📱 Dashboard: 应用恢复前台');
+      // 先用本地时间估算后台期间流逝的秒数，快速修正电池显示（无需网络，立即执行）
       if (_pausedAt != null) {
         final elapsedSeconds = DateTime.now().difference(_pausedAt!).inSeconds;
         print('📱 Dashboard: 后台持续 ${elapsedSeconds}s，补算电池时间');
@@ -141,12 +141,14 @@ class _DashboardScreenState extends State<DashboardScreen>
         }
         _pausedAt = null;
       }
-      // 再从服务器同步真实状态（会完全覆盖本地估算）
-      _loadContractAndUpdateBatteries();
-      _loadPointsData();
-      _loadUserLevel();
-      // 恢复前台后立即从后端同步基准余额，消除后台期间的时间漂移
-      context.read<UserProvider>().fetchBitcoinBalance();
+      // 延迟 800ms 再发网络请求：iOS 从后台恢复后网络接口需要短暂时间重建
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        _loadContractAndUpdateBatteries();
+        _loadPointsData();
+        _loadUserLevel();
+        context.read<UserProvider>().fetchBitcoinBalance();
+      });
     }
   }
 
@@ -350,9 +352,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _playDailyCheckInAd() async {
     // 检查今日是否已签到
     final lastCheckInDate = _storageService.getLastCheckInDate();
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
     
-    print('🔍 [Dashboard] 签到检查: lastCheckInDate=$lastCheckInDate, today=$today');
+    print('🔍 [Dashboard] 签到检查: lastCheckInDate=$lastCheckInDate, today=$today (UTC)');
 
     if (lastCheckInDate == today) {
       // 今日已签到，显示提示
@@ -502,7 +504,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       // 检查是否是"今日已签到"的特殊情况
       if (response['alreadyCheckedIn'] == true) {
         print('ℹ️ 检测到后端返回已签到标记，保存今日日期到本地');
-        final today = DateTime.now().toIso8601String().split('T')[0];
+        final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
         await _storageService.saveLastCheckInDate(today);
         final verified = _storageService.getLastCheckInDate();
         print('🔍 保存已签到日期: $today, 验证结果: $verified');
@@ -515,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       
       if (success) {
         // 签到成功,保存今日日期到本地存储
-        final today = DateTime.now().toIso8601String().split('T')[0];
+        final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
         await _storageService.saveLastCheckInDate(today);
         final verified = _storageService.getLastCheckInDate();
         print('✅ 签到成功! 保存日期: $today, 验证结果: $verified');
@@ -799,6 +801,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Mining Dashboard'),
+        centerTitle: false,
         backgroundColor: AppColors.cardDark,
         actions: [
           IconButton(
@@ -1506,7 +1509,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     // 检查今日是否已签到
                     final lastCheckInDate = _storageService
                         .getLastCheckInDate();
-                    final today = DateTime.now().toIso8601String().split(
+                    final today = DateTime.now().toUtc().toIso8601String().split(
                       'T',
                     )[0];
 

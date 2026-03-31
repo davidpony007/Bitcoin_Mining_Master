@@ -9,26 +9,19 @@ import 'services/storage_service.dart';
 import 'services/admob_service.dart';
 import 'services/api_service.dart';
 import 'services/push_notification_service.dart';
+import 'services/analytics_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 只初始化本地存储（必须在 runApp 之前，SplashScreen 立即需要用到）
-  // 超时缩短至 1 秒，避免 iOS 上 SharedPreferences 挂起
+  // 本地存储（SplashScreen 立即需要）
   try {
     await StorageService().init().timeout(const Duration(seconds: 1));
   } catch (_) {}
 
-  // 立即启动 UI，屏幕不再黑屏等待
-  runApp(const MyApp());
-
-  // Firebase + 推送 + AdMob 全部在 UI 渲染后异步初始化，不阻塞启动画面
-  _initBackgroundServices();
-}
-
-/// 后台异步初始化所有非必要服务（不会影响 UI 渲染速度）
-Future<void> _initBackgroundServices() async {
+  // Firebase 必须在 runApp 之前初始化
+  // 因为 MaterialApp 的 navigatorObservers 构建时就会访问 FirebaseAnalytics.instance
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -38,6 +31,10 @@ Future<void> _initBackgroundServices() async {
       debugPrint('⚠️ Firebase 初始化失败/超时: $e');
     }
   }
+
+  runApp(const MyApp());
+
+  // 推送 + AdMob 不影响 UI，继续异步初始化
   PushNotificationService.initialize().catchError((_) {});
   AdMobService.initialize().catchError((_) {});
 }
@@ -54,13 +51,13 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Bitcoin Mining Master',
         debugShowCheckedModeBanner: false,
-        navigatorObservers: const [],
+        navigatorObservers: [AnalyticsService.instance.observer],
         theme: ThemeData(
           brightness: Brightness.dark,
           primaryColor: AppColors.primary,
           scaffoldBackgroundColor: AppColors.background,
           appBarTheme: AppBarTheme(
-            backgroundColor: AppColors.primary,
+            backgroundColor: const Color(0xFF1C1C1E),
             elevation: 0,
             centerTitle: true,
             titleTextStyle: const TextStyle(
@@ -83,8 +80,6 @@ class MyApp extends StatelessWidget {
             surface: AppColors.surface,
           ),
         ),
-        darkTheme: ThemeData.dark(),
-        themeMode: ThemeMode.dark,
         home: const SplashScreen(), // 启动时显示启动页，检查登录状态
       ),
     );
@@ -194,16 +189,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF1A237E), // 深蓝色 — 与黑屏明显区分
-              Color(0xFFFF6F00), // 深橙色
-            ],
-          ),
-        ),
+        color: AppColors.background,
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

@@ -21,10 +21,15 @@ export const usersApi = {
     request.get('/admin/users/list', { params }),
   /** 用户统计概要 */
   stats: () => request.get('/admin/users/stats'),
+  /** 用户完整画像详情 */
+  detail: (userId: string) => request.get(`/admin/users/${userId}/detail`),
   /** 禁用用户 */
   ban: (userId: string, reason?: string) => request.put(`/admin/users/${userId}/ban`, { reason }),
   /** 解除禁用 */
   unban: (userId: string) => request.put(`/admin/users/${userId}/unban`, {}),
+  /** 手动调整BTC余额 (amount正=增加,负=减少) */
+  adjustBtc: (userId: string, amount: number, reason: string) =>
+    request.post(`/admin/users/${userId}/adjust-btc`, { amount, reason }),
 };
 
 // ─── Orders ───────────────────────────────────────────────────────────────────

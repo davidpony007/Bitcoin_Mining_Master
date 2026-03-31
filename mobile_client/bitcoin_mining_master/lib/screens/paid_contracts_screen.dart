@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -33,6 +34,11 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
 
   // 从服务端加载的产品列表（替代硬编码的 _contractTiers）
   List<Map<String, dynamic>> _contractTiers = [];
+
+  // Restore 状态
+  bool _isRestoring = false;
+  bool _restoreFoundAny = false;
+  Timer? _restoreTimer;
 
   @override
   void initState() {
@@ -135,20 +141,31 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   Future<void> _initBillingService() async {
     final userId = StorageService().getUserId();
     _billingService.userId = userId;
+    _billingService.authToken = StorageService().getAuthToken();
     _billingService.onPurchaseUpdate = (bool success, String message) {
       if (!mounted) return;
+      final purchasedProductId = _loadingTierId; // 在清空前先捕获已购产品ID
       setState(() => _loadingTierId = null);
-      _showPurchaseResult(success, message);
-      if (success) {
+      // 只有用户有主动购买意图（purchasedProductId != null）时才显示 SnackBar
+      // 后台 StoreKit 重播交易（_loadingTierId == null）无论成功还是失败都不弹提示，
+      // 避免无操作时持续弹出错误提示（如旧测试交易回放验证失败）
+      if (purchasedProductId != null) {
+        _showPurchaseResult(success, message);
+      }
+      if (success && purchasedProductId != null) {
+        // 只有用户主动发起购买（_loadingTierId != null）时才关闭页面
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
-            Navigator.pop(context, true);
+            Navigator.pop(context, purchasedProductId);
           }
         });
       }
     };
     _billingService.onPointsAwarded = (int pts) {
       if (!mounted) return;
+      // 只有用户主动购买（_loadingTierId != null）时才显示积分奖励
+      // 后台 StoreKit/Google Play 重播旧交易时不弹积分提示
+      if (_loadingTierId == null) return;
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _showPointsReward(pts);
       });
@@ -163,26 +180,71 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   Future<void> _initAppleService() async {
     final userId = StorageService().getUserId();
     _appleService.userId = userId;
+    _appleService.authToken = StorageService().getAuthToken();
     _appleService.onPurchaseUpdate = (bool success, String message) {
       if (!mounted) return;
+
+      // ── Restore 路径 ──────────────────────────────────────────
+      // restorePurchases() 由用户主动触发时 _loadingTierId=null，
+      // 需单独判断 _isRestoring，不能走下面的 purchasedProductId 路径。
+      if (_isRestoring) {
+        if (success) {
+          _restoreFoundAny = true;
+          _restoreTimer?.cancel();
+          setState(() => _isRestoring = false);
+          _showPurchaseResult(true, 'Subscription restored! Your contract is now active.');
+        }
+        // 失败时保持 _isRestoring=true，等待后续事件或超时
+        return;
+      }
+
+      // ── 正常购买路径 ───────────────────────────────────────────
+      final purchasedProductId = _loadingTierId; // 在清空前先捕获已购产品ID
       setState(() => _loadingTierId = null);
-      _showPurchaseResult(success, message);
-      if (success) {
+      // 只有用户有主动购买意图（purchasedProductId != null）时才显示 SnackBar
+      // 后台 StoreKit 重播交易（_loadingTierId == null）无论成功还是失败都不弹提示，
+      // 避免无操作时持续弹出错误提示（如旧测试交易回放验证失败）
+      if (purchasedProductId != null) {
+        _showPurchaseResult(success, message);
+      }
+      if (success && purchasedProductId != null) {
+        // 只有用户主动发起购买（_loadingTierId != null）时才关闭页面
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
-            Navigator.pop(context, true);
+            Navigator.pop(context, purchasedProductId);
           }
         });
       }
     };
     _appleService.onPointsAwarded = (int pts) {
       if (!mounted) return;
+      // 只有用户主动购买（_loadingTierId != null）时才显示积分奖励
+      // 后台 StoreKit 重播旧交易时不弹积分提示
+      if (_loadingTierId == null) return;
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) _showPointsReward(pts);
       });
     };
     final available = await _appleService.init();
     if (mounted) setState(() => _serviceInitialized = available);
+  }
+
+  void _startRestore() {
+    setState(() {
+      _isRestoring = true;
+      _restoreFoundAny = false;
+    });
+    _appleService.restorePurchases();
+    // 10 秒超时：若无任何已购订阅，StoreKit 不会回调，此处兜底提示用户
+    _restoreTimer?.cancel();
+    _restoreTimer = Timer(const Duration(seconds: 10), () {
+      if (!mounted) return;
+      _appleService.cancelRestore(); // 清理服务层 _isUserRestoring 标志
+      setState(() => _isRestoring = false);
+      if (!_restoreFoundAny) {
+        _showPurchaseResult(false, 'No active subscriptions found to restore.');
+      }
+    });
   }
 
   void _showPointsReward(int points) {
@@ -193,12 +255,12 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             const Text('🎉', style: TextStyle(fontSize: 18)),
             const SizedBox(width: 8),
             Text(
-              '+$points Points Reward! First-time subscription bonus.',
+              '+$points Points！Subscription Reward',
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ],
         ),
-        backgroundColor: const Color(0xFFF7931A),
+        backgroundColor: const Color(0xFF50C878),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 5),
@@ -241,7 +303,13 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
 
   @override
   void dispose() {
+    _restoreTimer?.cancel();
     _billingService.dispose();
+    // 页面销毁前先清除回调，防止单例 AppleInAppPurchaseService 在页面销毁后
+    // 仍触发 onPurchaseUpdate（如 contracts_screen syncSubscriptionStatus 触发
+    // restorePurchases 回调），意外执行 Navigator.pop 导致黑屏
+    _appleService.onPurchaseUpdate = null;
+    _appleService.onPointsAwarded = null;
     _appleService.dispose();
     super.dispose();
   }
@@ -270,21 +338,22 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         actions: Platform.isIOS
             ? [
                 TextButton(
-                  onPressed: _serviceInitialized
-                      ? () {
-                          _appleService.restorePurchases();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Restoring purchases...'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
+                  onPressed: (_serviceInitialized && !_isRestoring && _loadingTierId == null)
+                      ? _startRestore
                       : null,
-                  child: const Text(
-                    'Restore',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
+                  child: _isRestoring
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white70),
+                          ),
+                        )
+                      : const Text(
+                          'Restore',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
                 ),
               ]
             : null,
@@ -387,8 +456,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             color: (isHighlighted
                     ? const Color(0xFFF7931A)
                     : tier['color'] as Color)
-                .withOpacity((isPopular || isHighlighted) ? 0.5 : 0.2),
-            blurRadius: (isPopular || isHighlighted) ? 16 : 8,
+                .withOpacity(0.45),
+            blurRadius: 16,
             offset: const Offset(0, 4),
           ),
         ],
@@ -681,6 +750,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       }
       setState(() => _loadingTierId = tier['id'] as String);
       _billingService.userId = userId;
+      _billingService.authToken = StorageService().getAuthToken();
       await _billingService.buySubscription(storeId);
       // 结果通过 onPurchaseUpdate 回调返回，会自动清除 _loadingTierId
     } else if (Platform.isIOS) {
@@ -709,9 +779,54 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         _showPurchaseResult(false, 'Invalid product configuration.');
         return;
       }
+      // ── 购买前预检查：查询后端该用户是否已有此产品的活跃合约 ──
+      // 活跃合约 → 阻止重复购买；过期/取消/无合约 → 正常续订
       setState(() => _loadingTierId = tier['id'] as String);
+      final productId = tier['id'] as String;
+      // preCheckConfirmedClean：只有在 API 返回 200+success 且明确无活跃合约时才置 true。
+      // 该值传给 buyProduct，控制 storekit_duplicate_product_object 时是否允许 restore 回放。
+      bool preCheckConfirmedClean = false;
+      try {
+        final statusUrl = Uri.parse('${ApiConstants.baseUrl}/contract-status/details/$userId');
+        final statusResp = await http.get(statusUrl).timeout(const Duration(seconds: 8));
+        if (statusResp.statusCode == 200) {
+          final statusData = jsonDecode(statusResp.body) as Map<String, dynamic>;
+          if (statusData['success'] == true) {
+            final paidData = statusData['data']?['paidContracts'] as Map<String, dynamic>? ?? {};
+            final activeList = (paidData['active'] as List<dynamic>?) ?? [];
+            // 检查该 productId 是否已有活跃合约；同时拦截 productId='custom'（DB product_id 为 NULL 的异常数据）
+            final hasActiveForThisPlan = activeList.any(
+              (c) => c['productId'] == productId || c['productId'] == 'custom',
+            );
+            if (hasActiveForThisPlan) {
+              setState(() => _loadingTierId = null);
+              _showPurchaseResult(false, 'You already have an active subscription for this plan.');
+              return;
+            }
+            // API 成功返回且明确无活跃合约 → 允许后续 restore 回放残留交易
+            preCheckConfirmedClean = true;
+          }
+        }
+      } catch (e) {
+        // 预检查失败（网络异常等），preCheckConfirmedClean 保持 false
+        debugPrint('⚠️ 活跃合约预检查失败: $e');
+      }
       _appleService.userId = userId;
-      await _appleService.buyProduct(storeId);
+      _appleService.authToken = StorageService().getAuthToken();
+      // 清除 StoreKit 队列中的残留未完成交易，防止旧交易被直接回放
+      // 导致跳过 Apple 支付确认弹窗、直接显示"订阅成功"
+      await _appleService.clearPendingTransactions();
+      await _appleService.buyProduct(storeId, preCheckConfirmedClean: preCheckConfirmedClean);
+      // 安全超时：buyProduct 返回后若 35 秒内 onPurchaseUpdate 仍未回调
+      // （storekit_duplicate_product_object 后 StoreKit 未重放，或其他异常），
+      // 自动清除 loading 防止永久转圈，让用户可以再次尝试。
+      final capturedTierId = tier['id'] as String;
+      Future.delayed(const Duration(seconds: 90), () {
+        if (mounted && _loadingTierId == capturedTierId) {
+          setState(() => _loadingTierId = null);
+          _showPurchaseResult(false, 'Purchase is taking too long. Please try again.');
+        }
+      });
       // 结果通过 onPurchaseUpdate 回调返回，会自动清除 _loadingTierId
     }
   }

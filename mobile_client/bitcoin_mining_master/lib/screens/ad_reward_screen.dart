@@ -147,7 +147,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
   Future<void> _checkIfAlreadyCheckedIn() async {
     try {
       final lastCheckInDate = _storageService.getLastCheckInDate();
-      final today = DateTime.now().toIso8601String().split('T')[0];
+      final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
       
       if (lastCheckInDate == today) {
         setState(() {
@@ -343,7 +343,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       // 检查是否是「今日已签到」（后端返回400 + alreadyCheckedIn:true）
       if (data['data'] != null && data['data']['alreadyCheckedIn'] == true) {
         print('ℹ️ [AdReward] 今日已签到，保存本地日期并视为成功');
-        final today = DateTime.now().toIso8601String().split('T')[0];
+        final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
         await _storageService.saveLastCheckInDate(today);
         setState(() { _hasCheckedInToday = true; });
         return true; // 已签到视为成功，避免显示错误信息
@@ -353,7 +353,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         print('✅ 签到成功: $data');
         if (data['success'] == true) {
           // 保存签到日期到本地
-          final today = DateTime.now().toIso8601String().split('T')[0];
+          final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
           final saved = await _storageService.saveLastCheckInDate(today);
           print('✅ [AdReward] 签到成功! 保存日期: $today, saved=$saved');
           final verified = _storageService.getLastCheckInDate();

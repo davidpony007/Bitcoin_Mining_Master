@@ -7,6 +7,7 @@ import '../services/storage_service.dart';
 import '../services/admob_service.dart';
 import '../services/user_repository.dart';
 import '../services/api_service.dart';
+import '../services/analytics_service.dart';
 
 /// 签到页面
 class CheckInScreen extends StatefulWidget {
@@ -146,9 +147,9 @@ class _CheckInScreenState extends State<CheckInScreen>
   Future<void> _playCheckInAd() async {
     // 首先检查今日是否已签到
     final lastCheckInDate = _storageService.getLastCheckInDate();
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
     
-    print('🔍 [CheckIn Screen] 签到检查: lastCheckInDate=$lastCheckInDate, today=$today');
+    print('🔍 [CheckIn Screen] 签到检查: lastCheckInDate=$lastCheckInDate, today=$today (UTC)');
 
     if (lastCheckInDate == today) {
       // 今日已签到，显示提示
@@ -311,7 +312,7 @@ class _CheckInScreenState extends State<CheckInScreen>
       // 检查是否是"今日已签到"的特殊情况
       if (response['alreadyCheckedIn'] == true) {
         print('ℹ️ 检测到后端返回已签到标记，保存今日日期到本地');
-        final today = DateTime.now().toIso8601String().split('T')[0];
+        final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
         await _storageService.saveLastCheckInDate(today);
         final verified = _storageService.getLastCheckInDate();
         print('🔍 保存已签到日期: $today, 验证结果: $verified');
@@ -323,8 +324,11 @@ class _CheckInScreenState extends State<CheckInScreen>
       final success = response['success'] == true;
       
       if (success) {
+        // 埋点：签到成功
+        final totalDays = (_status?.totalDays ?? 0) + 1;
+        AnalyticsService.instance.logCheckIn(day: totalDays, points: 10);
         // 签到成功,保存今日日期到本地存储
-        final today = DateTime.now().toIso8601String().split('T')[0];
+        final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
         final saved = await _storageService.saveLastCheckInDate(today);
         print('✅ 签到成功! 保存日期: $today, saved=$saved');
         // 验证是否真的保存成功

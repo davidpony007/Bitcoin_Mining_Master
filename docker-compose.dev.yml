@@ -8,6 +8,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: dev_password_123
       MYSQL_DATABASE: bitcoin_mining_master
+      TZ: UTC
     ports:
       - "3306:3306"
     volumes:
@@ -50,6 +51,7 @@ services:
     environment:
       PORT: 8888
       NODE_ENV: development
+      TZ: UTC
       LOG_LEVEL: info
       JWT_SECRET: f8e3a9c1b2d4e5f67890abcdef123456789012345678901234567890abcd
       DB_HOST: bitcoin_mysql_dev

@@ -242,6 +242,7 @@ router.get('/my-contracts/:userId', async (req, res) => {
     }
 
     // 查询付费合约：JOIN paid_products_list_config 直接取展示字段，无需硬编码 hashrate 匹配
+    // 去重：同一 original_transaction_id 只保留最新一条合约（防止沙盒重复创建导致 Expired 列表重复）
     const paidContracts = await sequelize.query(
       `SELECT
         c.id,
@@ -263,9 +264,13 @@ router.get('/my-contracts/:userId', async (req, res) => {
           ELSE 0
         END AS is_active
        FROM mining_contracts c
+       INNER JOIN (
+         SELECT MAX(id) AS max_id
+         FROM mining_contracts
+         WHERE user_id = ? AND contract_type = 'paid contract'
+         GROUP BY COALESCE(original_transaction_id, CAST(id AS CHAR))
+       ) dedup ON c.id = dedup.max_id
        LEFT JOIN paid_products_list_config p ON c.product_id = p.product_id
-       WHERE c.user_id = ?
-       AND c.contract_type = 'paid contract'
        ORDER BY c.contract_creation_time DESC`,
       {
         replacements: [userId],

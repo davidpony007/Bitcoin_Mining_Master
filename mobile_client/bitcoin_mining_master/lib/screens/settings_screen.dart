@@ -78,13 +78,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // 页面重新激活时刷新等级数据
-      _loadUserLevel();
-      // 应用回到前台时立即重新检查封禁状态（解封/封号立即生效）
-      final userId = _storageService.getUserId();
-      if (userId != null && userId.isNotEmpty) {
-        _checkBanStatus(userId);
-      }
+      // 延迟 800ms 再发请求：iOS 从后台恢复后网络接口需要短暂时间重建
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        _loadUserLevel();
+        final userId = _storageService.getUserId();
+        if (userId != null && userId.isNotEmpty) {
+          _checkBanStatus(userId);
+        }
+      });
     }
   }
 
@@ -689,6 +691,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     );
   }
 
+  /// 打开系统订阅管理页面
+  /// iOS: 跳转苹果订阅管理（App Store → Account → Subscriptions）
+  /// Android: 跳转 Google Play 订阅管理
+  Future<void> _openManageSubscriptions() async {
+    Uri uri;
+    if (Platform.isIOS) {
+      uri = Uri.parse('itms-apps://apps.apple.com/account/subscriptions');
+    } else {
+      uri = Uri.parse('https://play.google.com/store/account/subscriptions');
+    }
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   Future<void> _openStoreReview() async {
     if (Platform.isAndroid) {
       const packageName = 'com.cloudminingtool.bitcoin_mining_app';
@@ -820,6 +837,20 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                     }
                   },
                 ),
+            ]),
+
+            const SizedBox(height: 20),
+
+            // Subscriptions
+            _buildSectionTitle('Subscriptions'),
+            _buildSettingsCard([
+              _buildNavigationItem(
+                icon: Icons.subscriptions_outlined,
+                iconColor: AppColors.primary,
+                title: 'Manage Subscriptions',
+                subtitle: 'View, change or cancel your subscriptions',
+                onTap: _openManageSubscriptions,
+              ),
             ]),
 
             const SizedBox(height: 20),

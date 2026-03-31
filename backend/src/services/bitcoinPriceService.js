@@ -349,7 +349,7 @@ class BitcoinPriceService {
         price = this.currentPrice;
         this.lastUpdate = new Date(); // 设置当前时间
         console.log(`💰 使用默认比特币价格: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
-        console.log(`📅 更新时间: ${this.lastUpdate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+        console.log(`📅 更新时间: ${this.lastUpdate.toISOString()} (UTC)`);
         console.log(`ℹ️ 提示: 可以使用 setManualPrice() 方法手动设置价格`);
         
         // 将默认价格也保存到Redis，避免下次还是null
@@ -380,7 +380,7 @@ class BitcoinPriceService {
       }
       
       console.log(`✅ 比特币价格已更新: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);
-      console.log(`📅 更新时间: ${this.lastUpdate.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`);
+      console.log(`📅 更新时间: ${this.lastUpdate.toISOString()} (UTC)`);
       
       return price;
     } catch (error) {

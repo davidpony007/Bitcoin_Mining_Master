@@ -118,8 +118,8 @@ app.set('trust proxy', 1); // 信任第一层代理
 
 // 注册通用中间件
 app.use(globalLimiter);  // 全局限流：每IP每15分钟200次
-app.use(timeout('10s')); // 请求超时 10 秒，防止接口阻塞
-app.use(bodyParser.json()); // 解析 JSON 请求体，支持 application/json
+app.use(timeout('30s')); // 请求超时 30 秒（payment验证需调用Apple API两次~20s，需大于20s）
+app.use(bodyParser.json({ limit: '50mb' })); // 解析 JSON 请求体，支持大 receipt（IAP 回执最大可达 10MB+）
 app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } })); // 记录 HTTP 请求日志到 winston
 app.use(helmet()); // 增强 HTTP 头安全，防止常见 Web 攻击
 

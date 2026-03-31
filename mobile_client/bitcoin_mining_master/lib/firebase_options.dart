@@ -49,19 +49,21 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBVHN2kw-FmXQZ6Y1Jx4NYQX3rKvHe7Z8w',
-    appId: '1:1026466488683:android:674843e76067f8a3fe2c2e',
+    apiKey: 'AIzaSyCsWI4rXPp1CD381uhND546IvKVKOLQ20M',
+    appId: '1:1026466488683:android:7c1322ea17755a95fe2c2e',
     messagingSenderId: '1026466488683',
     projectId: 'bitcoin-mining-master-24993',
     storageBucket: 'bitcoin-mining-master-24993.firebasestorage.app',
+    androidClientId: '1026466488683-1ps9vc7puchr9don7fmja0vrnngj78kk.apps.googleusercontent.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBVHN2kw-FmXQZ6Y1Jx4NYQX3rKvHe7Z8w',
-    appId: '1:1026466488683:ios:674843e76067f8a3fe2c2e',
+    apiKey: 'AIzaSyAcJ7fMB7YUwRF5_aOIVFaJDKvlMIoC0V4',
+    appId: '1:1026466488683:ios:16a2a89367405e47fe2c2e',
     messagingSenderId: '1026466488683',
     projectId: 'bitcoin-mining-master-24993',
     storageBucket: 'bitcoin-mining-master-24993.firebasestorage.app',
     iosBundleId: 'com.cloudminingtool.bitcoinMiningMaster',
+    iosClientId: '1026466488683-f77ipeggp36cd2cjhd2min348n2ahio7.apps.googleusercontent.com',
   );
 }

@@ -39,14 +39,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
-            ),
-        ],
+      body: Container(
+        color: const Color(0xFF1A1A2E),
+        child: Stack(
+          children: [
+            WebViewWidget(controller: _controller),
+            if (_isLoading)
+              const Center(
+                child: CircularProgressIndicator(color: Color(0xFFFF8C00)),
+              ),
+          ],
+        ),
       ),
     );
   }

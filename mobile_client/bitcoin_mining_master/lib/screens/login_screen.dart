@@ -13,6 +13,7 @@ import '../services/user_repository.dart';
 import '../services/network_service.dart';
 import '../services/device_info_service.dart';
 import '../services/native_device_id_service.dart';
+import '../services/analytics_service.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -130,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final referrerResult = await _handleReferrerCode(userId);
         if (!referrerResult) return;
 
-        _navigateToHome();
+        _navigateToHome(loginMethod: 'apple');
       } else {
         final msg = response['message']?.toString() ?? response['error']?.toString() ?? 'Apple sign-in failed.';
         _showError(msg);
@@ -224,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        _navigateToHome();
+        _navigateToHome(loginMethod: 'google');
       } else {
         final messageValue = response['message'] ?? response['error'];
         String errorMsg = messageValue?.toString() ?? 'Google sign-in failed. Please try again.';
@@ -451,7 +452,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         
         print('✅ 邀请码验证通过，进入应用');
-        _navigateToHome();
+        _navigateToHome(loginMethod: 'google');
       } else {
         // 创建/登录失败 - 网络或服务器错误
         String errorMessage = response['message'] ?? response['error'] ?? 'Server error. Please try again later.';
@@ -698,10 +699,11 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// 导航到主页
-  void _navigateToHome() {
+  /// 导航到主页（loginMethod: 'apple' | 'google' | 'device'）
+  void _navigateToHome({String loginMethod = 'device'}) {
     if (!mounted) return;
-    
+    // 埋点：登录成功
+    AnalyticsService.instance.logLogin(method: loginMethod);
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const HomeScreen()),
     );

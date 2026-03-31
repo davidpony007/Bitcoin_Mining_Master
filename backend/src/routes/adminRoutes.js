@@ -1582,5 +1582,220 @@ router.put('/paid-products/:id', authenticateToken, requireAdmin, async (req, re
   }
 });
 
+// ─── User Detail (完整用户画像) ───────────────────────────────────────────────
+
+/**
+ * GET /api/admin/users/:userId/detail
+ * 获取用户完整信息：基本信息 + 余额状态 + 邀请关系 + 近期交易 + 合约 + 设备 + 提现记录
+ */
+router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+  const conn = await pool.getConnection();
+  try {
+    // 1. 基本信息 + 余额状态
+    const [[user]] = await conn.query(
+      `SELECT ui.user_id, ui.invitation_code, ui.email, ui.google_account,
+              ui.apple_account, ui.apple_id, ui.nickname,
+              ui.device_id, ui.gaid, ui.idfa, ui.att_status, ui.att_consent_updated_at,
+              ui.register_ip, ui.country_code, ui.country_name_cn, ui.country_multiplier,
+              ui.miner_level_multiplier, ui.user_level, ui.user_points, ui.total_ad_views,
+              ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
+              ui.is_banned, ui.banned_at, ui.ban_reason,
+              ui.app_version,
+              us.user_status, us.last_login_time,
+              us.current_bitcoin_balance, us.bitcoin_accumulated_amount,
+              us.total_invitation_rebate, us.total_withdrawal_amount
+       FROM user_information ui
+       LEFT JOIN user_status us ON ui.user_id = us.user_id
+       WHERE ui.user_id = ?`, [userId]
+    );
+    if (!user) return res.status(404).json({ success: false, message: '用户不存在' });
+
+    // 2. 邀请关系：推荐人
+    const [[invRel]] = await conn.query(
+      `SELECT ir.referrer_user_id, ir.referrer_invitation_code, ir.invitation_creation_time,
+              ri.email AS referrer_email
+       FROM invitation_relationship ir
+       LEFT JOIN user_information ri ON ri.user_id = ir.referrer_user_id
+       WHERE ir.user_id = ?`, [userId]
+    );
+
+    // 3. 邀请关系：我邀请的人数 & 列表(全部，最多100条)
+    const [[{ invited_count }]] = await conn.query(
+      `SELECT COUNT(*) AS invited_count FROM invitation_relationship WHERE referrer_user_id = ?`, [userId]
+    );
+    const [invitedList] = await conn.query(
+      `SELECT ir.user_id, ui.email, ir.invitation_creation_time
+       FROM invitation_relationship ir
+       LEFT JOIN user_information ui ON ui.user_id = ir.user_id
+       WHERE ir.referrer_user_id = ?
+       ORDER BY ir.invitation_creation_time DESC LIMIT 100`, [userId]
+    );
+
+    // 4. 近期BTC交易(最新20)
+    const [recentTxs] = await conn.query(
+      `SELECT transaction_type, transaction_amount, balance_after, description,
+              transaction_creation_time, transaction_status
+       FROM bitcoin_transaction_records
+       WHERE user_id = ?
+       ORDER BY transaction_creation_time DESC LIMIT 20`, [userId]
+    );
+
+    // 5. 合约摘要（含过期数）
+    const [[contractStats]] = await conn.query(
+      `SELECT COUNT(*) AS total_contracts,
+              SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
+              SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts,
+              SUM(CASE WHEN (contract_end_time <= NOW() OR is_cancelled = 1) THEN 1 ELSE 0 END) AS expired_contracts
+       FROM mining_contracts WHERE user_id = ?`, [userId]
+    );
+
+    // 6. 订单摘要（退款订单不计入消费）
+    const [[orderStats]] = await conn.query(
+      `SELECT COUNT(*) AS total_orders,
+              COALESCE(SUM(CASE WHEN order_status NOT IN ('refund request in progress','refund successful') THEN CAST(product_price AS DECIMAL(20,8)) ELSE 0 END), 0) AS total_spent,
+              SUM(CASE WHEN order_status IN ('refund request in progress','refund successful') THEN 1 ELSE 0 END) AS refund_count
+       FROM user_orders WHERE user_id = ?`, [userId]
+    );
+
+    // 7. 近期提现(最新5)
+    const [recentWithdrawals] = await conn.query(
+      `SELECT withdrawal_request_amount, received_amount, withdrawal_status,
+              wallet_address, created_at
+       FROM withdrawal_records WHERE user_id = ?
+       ORDER BY created_at DESC LIMIT 5`, [userId]
+    );
+
+    // 8. 累计签到天数
+    const [[{ total_checkin_days }]] = await conn.query(
+      `SELECT COUNT(*) AS total_checkin_days FROM user_check_in WHERE user_id = ?`, [userId]
+    );
+
+    // 9. 实时总挖矿速率（BTC/s）
+    //    免费合约 & 绑定推荐人合约：base_hashrate × country_multiplier × level_multiplier
+    //    付费合约：base_hashrate（不受倍率影响）
+    const countryMul = parseFloat(user.country_multiplier || '1.0');
+    const levelMul   = parseFloat(user.miner_level_multiplier || '1.0');
+
+    const [[{ free_rate }]] = await conn.query(
+      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate) * ? * ?), 0) AS free_rate
+       FROM free_contract_records
+       WHERE user_id = ? AND free_contract_end_time > NOW()`,
+      [countryMul, levelMul, userId]
+    );
+    const [[{ paid_rate }]] = await conn.query(
+      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate)), 0) AS paid_rate
+       FROM mining_contracts
+       WHERE user_id = ? AND contract_end_time > NOW() AND is_cancelled = 0
+         AND contract_type != 'Bind Referrer Reward'`,
+      [userId]
+    );
+    const [[{ referrer_rate }]] = await conn.query(
+      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate) * ? * ?), 0) AS referrer_rate
+       FROM mining_contracts
+       WHERE user_id = ? AND contract_end_time > NOW() AND is_cancelled = 0
+         AND contract_type = 'Bind Referrer Reward'`,
+      [countryMul, levelMul, userId]
+    );
+    const totalMiningRatePerSecond = (parseFloat(free_rate) + parseFloat(paid_rate) + parseFloat(referrer_rate)).toFixed(18);
+
+    res.json({
+      success: true,
+      data: {
+        basic: user,
+        referrer: invRel || null,
+        invitedCount: invited_count,
+        invitedList,
+        recentTxs,
+        contractStats,
+        orderStats,
+        recentWithdrawals,
+        totalCheckinDays: total_checkin_days,
+        totalMiningRatePerSecond,
+      }
+    });
+  } catch (err) {
+    console.error('User detail error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── Adjust BTC Balance (手动增减BTC) ────────────────────────────────────────
+
+/**
+ * POST /api/admin/users/:userId/adjust-btc
+ * 手动调整用户BTC余额
+ * Body: { amount: number (正=增加, 负=减少), reason: string }
+ */
+router.post('/users/:userId/adjust-btc', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { amount, reason } = req.body || {};
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || numAmount === 0) return res.status(400).json({ success: false, message: 'amount 必须为非零数字' });
+  if (!reason || String(reason).trim().length === 0) return res.status(400).json({ success: false, message: '必须填写操作原因' });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 查询当前余额
+    const [[statusRow]] = await conn.query(
+      'SELECT current_bitcoin_balance, bitcoin_accumulated_amount FROM user_status WHERE user_id = ?', [userId]
+    );
+    if (!statusRow) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+
+    const currentBalance = parseFloat(statusRow.current_bitcoin_balance || 0);
+    const newBalance = currentBalance + numAmount;
+
+    if (newBalance < 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `余额不足：当前余额 ${currentBalance.toFixed(18)} BTC，无法扣减 ${Math.abs(numAmount).toFixed(18)} BTC`
+      });
+    }
+
+    // 更新余额
+    const accumulatedUpdate = numAmount > 0
+      ? ', bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?'
+      : '';
+    const accParams = numAmount > 0 ? [newBalance, numAmount, userId] : [newBalance, userId];
+    await conn.query(
+      `UPDATE user_status SET current_bitcoin_balance = ? ${accumulatedUpdate} WHERE user_id = ?`,
+      accParams
+    );
+
+    // 记录交易
+    const txType = numAmount > 0 ? 'admin_add' : 'admin_deduct';
+    const txDesc = `管理员手动${numAmount > 0 ? '增加' : '减少'} BTC：${reason}`;
+    await conn.query(
+      `INSERT INTO bitcoin_transaction_records
+       (user_id, transaction_type, transaction_amount, balance_after, description, transaction_status)
+       VALUES (?, ?, ?, ?, ?, 'success')`,
+      [userId, txType, Math.abs(numAmount), newBalance, txDesc]
+    );
+
+    await conn.commit();
+    res.json({
+      success: true,
+      message: `BTC余额已${numAmount > 0 ? '增加' : '减少'} ${Math.abs(numAmount)} BTC`,
+      data: { previousBalance: currentBalance, adjustment: numAmount, newBalance }
+    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('Adjust BTC error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
 // 导出路由模块，供主应用挂载
 module.exports = router;

@@ -126,6 +126,60 @@ class GooglePlayVerifyService {
   }
 
   /**
+   * 验证Google Play订阅（适用于订阅类商品）
+   * 使用 purchases.subscriptions.get API
+   *
+   * @param {string} packageName - 应用包名（如 com.example.app）
+   * @param {string} subscriptionId - 订阅商品ID（如 p04.99）
+   * @param {string} purchaseToken - 购买token
+   */
+  async verifySubscription(packageName, subscriptionId, purchaseToken) {
+    if (!this.isInitialized) {
+      return { success: false, error: 'Google Play验证服务未初始化' };
+    }
+
+    try {
+      console.log(`🔐 验证订阅: ${packageName} / ${subscriptionId}`);
+
+      const result = await this.androidPublisher.purchases.subscriptions.get({
+        packageName,
+        subscriptionId,
+        token: purchaseToken,
+      });
+
+      const sub = result.data;
+      console.log('📦 订阅信息:', {
+        orderId: sub.orderId,
+        paymentState: sub.paymentState,
+        expiryTimeMillis: sub.expiryTimeMillis,
+        autoRenewing: sub.autoRenewing,
+      });
+
+      // paymentState: 0=等待支付, 1=已付款, 2=免费试用
+      if (sub.paymentState === 1 || sub.paymentState === 2) {
+        const expiryMs = parseInt(sub.expiryTimeMillis || '0', 10);
+        if (expiryMs > 0 && expiryMs < Date.now()) {
+          return { success: false, error: '订阅已过期' };
+        }
+        return {
+          success: true,
+          orderId: sub.orderId,
+          expiryTimeMillis: sub.expiryTimeMillis,
+          autoRenewing: sub.autoRenewing,
+        };
+      }
+
+      return { success: false, error: `订阅状态异常: paymentState=${sub.paymentState}` };
+
+    } catch (error) {
+      console.error('❌ Google Play订阅验证失败:', error.message);
+      if (error.code === 401) return { success: false, error: '服务账号认证失败' };
+      if (error.code === 404) return { success: false, error: '订阅不存在或已过期' };
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * 确认购买（防止退款）
    * Google要求在3天内确认购买，否则会自动退款
    * 

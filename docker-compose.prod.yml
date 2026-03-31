@@ -11,6 +11,7 @@ services:
       MYSQL_DATABASE: bitcoin_mining_master
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: UTC
     ports:
       - "127.0.0.1:3306:3306"  # 只监听本地，通过SSH隧道访问
     volumes:
@@ -18,7 +19,7 @@ services:
       - ./backup:/backup  # 备份目录
     networks:
       - bitcoin_network
-    command: --default-authentication-plugin=mysql_native_password --max-connections=500
+    command: --default-authentication-plugin=mysql_native_password --max-connections=500 --default-time-zone=+00:00
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
       interval: 30s
@@ -52,6 +53,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8888
+      TZ: UTC
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: bitcoin_mining_master

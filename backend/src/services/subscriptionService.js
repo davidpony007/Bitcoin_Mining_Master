@@ -344,15 +344,16 @@ class SubscriptionService {
         replacements: [contract.id]
       });
 
-      // 同步更新 mining_contracts（当前实际使用的合约表），立即标记为已取消
+      // 同步更新 mining_contracts（当前实际使用的合约表），仅取消该档位的合约
+      // ⚠️ 必须按 product_id 过滤，避免同时持有多个档位时误取消其他档位
       await sequelize.query(`
         UPDATE mining_contracts
         SET is_cancelled = 1, contract_end_time = NOW()
-        WHERE user_id = ? AND contract_type = 'paid contract' AND is_cancelled = 0
+        WHERE user_id = ? AND product_id = ? AND contract_type = 'paid contract' AND is_cancelled = 0
       `, {
-        replacements: [contract.user_id]
+        replacements: [contract.user_id, contract.product_id]
       });
-      console.log(`⛔ [Android] mining_contracts 已标记取消，user_id=${contract.user_id}`);
+      console.log(`⛔ [Android] mining_contracts 已标记取消，user_id=${contract.user_id} product_id=${contract.product_id}`);
 
       await this.recordStatusChange(
         subscriptionId,

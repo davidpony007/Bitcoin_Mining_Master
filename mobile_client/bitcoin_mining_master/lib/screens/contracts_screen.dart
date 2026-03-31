@@ -25,6 +25,14 @@ class ContractsScreenState extends State<ContractsScreen>
   final List<Map<String, dynamic>> _activePaidContracts = [];
   final List<Map<String, dynamic>> _expiredPaidContracts = [];
 
+  // 4个固定订阅档位（始终显示于 All tab 的 Subscription Contract Queue）
+  static final List<Map<String, dynamic>> _subscriptionTiers = [
+    {'id': 'p0499', 'name': 'Starter Plan', 'hashrate': '176.3 Gh/s', 'price': r'$4.99', 'color': const Color(0xFF4A90E2)},
+    {'id': 'p0699', 'name': 'Standard Plan', 'hashrate': '305.6 Gh/s', 'price': r'$6.99', 'color': const Color(0xFF50C878)},
+    {'id': 'p0999', 'name': 'Advanced Plan', 'hashrate': '611.2 Gh/s', 'price': r'$9.99', 'color': const Color(0xFFFF6B35)},
+    {'id': 'p1999', 'name': 'Premium Plan', 'hashrate': '1326.4 Gh/s', 'price': r'$19.99', 'color': const Color(0xFFFFD700)},
+  ];
+
   // 合约状态
   bool _isLoadingContracts = true;
   bool _isDailyCheckInActive = false;
@@ -40,6 +48,11 @@ class ContractsScreenState extends State<ContractsScreen>
   int _userLevel = 1; // 用户矿工等级
   Timer? _contractTimer;
   Timer? _refreshTimer;
+  // 乐观保护：订阅成功后，在服务端确认建立合约前，任何 _loadContracts 结果都不得清除该档位的主动条目
+  String? _pendingOptimisticProductId;
+  Timer? _pendingOptimisticTimer;
+  // iOS 订阅状态同步冷却：5 分钟内不重复调用 restorePurchases()，避免频繁触发 StoreKit 事件
+  DateTime? _lastIosSyncTime;
 
   @override
   void initState() {
@@ -100,23 +113,33 @@ class ContractsScreenState extends State<ContractsScreen>
     _tabController.dispose();
     _contractTimer?.cancel();
     _refreshTimer?.cancel();
+    _pendingOptimisticTimer?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isPageVisible) {
-      // 应用恢复到前台时立即刷新合约数据
-      _loadContracts();
-      // iOS: 同步订阅真实状态（捕获 Apple 通知丢失导致的状态不同步）
-      if (Platform.isIOS) {
-        _syncIosSubscriptionStatus();
-      }
+      // 延迟 800ms 再发请求：iOS 从后台恢复后网络接口需要短暂时间重建
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        _loadContracts();
+        if (Platform.isIOS) {
+          _syncIosSubscriptionStatus();
+        }
+      });
     }
   }
 
   /// iOS 专属：恢复订阅收据并发到后端同步状态（取消/到期 识别）
   Future<void> _syncIosSubscriptionStatus() async {
+    // 5 分钟冷却：防止频繁切换后台/前台时反复调用 restorePurchases() 触发 StoreKit 弹窗
+    final now = DateTime.now();
+    if (_lastIosSyncTime != null &&
+        now.difference(_lastIosSyncTime!).inMinutes < 5) {
+      return;
+    }
+    _lastIosSyncTime = now;
     try {
       final token = _storageService.getAuthToken();
       if (token == null || token.isEmpty) return;
@@ -166,6 +189,33 @@ class ContractsScreenState extends State<ContractsScreen>
     _loadContracts();
   }
 
+  /// 订阅成功后立即乐观更新对应档位为 Mining 状态，无需等待 API 响应
+  void _applyOptimisticContractUpdate(String productId) {
+    if (productId.isEmpty) return;
+    // 设置乐观保护：60秒内任body 刷新覆盖（无论哪个 _loadContracts 结果先到）都不得清除该档位
+    _pendingOptimisticProductId = productId;
+    _pendingOptimisticTimer?.cancel();
+    _pendingOptimisticTimer = Timer(const Duration(seconds: 60), () {
+      _pendingOptimisticProductId = null;
+    });
+    setState(() {
+      // 移除同一 productId 的非活跃旧条目（如 cancelled）
+      _activePaidContracts.removeWhere(
+        (c) => c['productId']?.toString() == productId && c['status'] != 'active',
+      );
+      // 若尚无该档位的 active 合约，则立即插入乐观条目
+      if (!_activePaidContracts.any(
+        (c) => c['productId']?.toString() == productId && c['status'] == 'active',
+      )) {
+        _activePaidContracts.add({
+          'productId': productId,
+          'status': 'active',
+          '_remainingSeconds': 30 * 24 * 3600, // 30天占位，后续由API刷新覆盖
+        });
+      }
+    });
+  }
+
   /// 广告奖励领取成功后立即乐观更新 UI，不等待 API 回叁
   /// [addedSeconds] 本次增加的秒数（默认 2 小时 = 7200）
   void activateAdRewardImmediately({int addedSeconds = 7200}) {
@@ -186,6 +236,7 @@ class ContractsScreenState extends State<ContractsScreen>
     try {
       final userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) {
+        if (!mounted) return;
         setState(() {
           _isLoadingContracts = false;
         });
@@ -199,6 +250,8 @@ class ContractsScreenState extends State<ContractsScreen>
 
       final response = await _apiService.getMyContracts(userId);
       print('📦 API响应: $response');
+
+      if (!mounted) return;
 
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
@@ -242,11 +295,46 @@ class ContractsScreenState extends State<ContractsScreen>
               ).map((c) => Map<String, dynamic>.from(c)).toList(),
             );
           // 初始化各合约的本地倒计时秒数（供每秒 Timer 驱动 UI 倒计时跳动）
+          // ⚠️ 直接使用 API 返回的 remainingSeconds 整数字段，而非 remainingFormatted 字符串；
+          //    remainingFormatted 携带 'Xd Xh Xm'（无秒）格式，正则解析会失败并返回 0。
           for (final contract in _activePaidContracts) {
             if (contract['status'] != 'cancelled') {
-              contract['_remainingSeconds'] = _parseFormattedDuration(
-                contract['remainingFormatted']?.toString() ?? '',
-              );
+              final serverSecs = (contract['remainingSeconds'] as num?)?.toInt() ?? 0;
+              final localSecs = (contract['_remainingSeconds'] as int?) ?? -1;
+              // 漂移校正：本地已追踪计时时，只在差值 > 120s 时才用服务端值覆盖，
+              // 避免每次 _loadContracts 触发后计时器出现可见跳变。
+              if (localSecs < 0 || (localSecs - serverSecs).abs() > 120) {
+                contract['_remainingSeconds'] = serverSecs;
+              }
+              // 否则保留本地已连续倒计时的值，不跳变。
+            }
+          }
+
+          // 乐观保护：若服务端尚未包含待确认的主动购买档位，将其保留在列表中
+          final pid = _pendingOptimisticProductId;
+          if (pid != null) {
+            final serverConfirmed = _activePaidContracts.any(
+              (c) => c['productId']?.toString() == pid && c['status'] == 'active',
+            );
+            if (serverConfirmed) {
+              // 服务端已确认，清除保护标志
+              _pendingOptimisticProductId = null;
+              _pendingOptimisticTimer?.cancel();
+            } else {
+              // 服务端尚未包含，将乐观条目加回列表
+              _activePaidContracts
+                ..removeWhere(
+                  (c) => c['productId']?.toString() == pid && c['status'] != 'active',
+                );
+              if (!_activePaidContracts.any(
+                (c) => c['productId']?.toString() == pid && c['status'] == 'active',
+              )) {
+                _activePaidContracts.add({
+                  'productId': pid,
+                  'status': 'active',
+                  '_remainingSeconds': 30 * 24 * 3600,
+                });
+              }
             }
           }
           _expiredPaidContracts
@@ -274,12 +362,14 @@ class ContractsScreenState extends State<ContractsScreen>
         );
       } else {
         print('❌ API响应失败或数据为空');
+        if (!mounted) return;
         setState(() {
           _isLoadingContracts = false;
         });
       }
     } catch (e) {
       print('❌ 加载合约失败: $e');
+      if (!mounted) return;
       setState(() {
         _isLoadingContracts = false;
       });
@@ -312,17 +402,22 @@ class ContractsScreenState extends State<ContractsScreen>
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('Contracts'),
+        centerTitle: false,
         actions: [
           TextButton.icon(
             onPressed: () {
-              Navigator.push<bool>(
+              Navigator.push<String?>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const PaidContractsScreen(),
                 ),
-              ).then((purchased) {
-                if (purchased == true) {
-                  refreshContracts();
+              ).then((productId) {
+                if (productId != null && mounted) {
+                  _applyOptimisticContractUpdate(productId);
+                  // 延迟 2 秒再 fetch，确保后端 DB 已完全写入
+                  Future.delayed(const Duration(seconds: 2), () {
+                    if (mounted) _loadContracts();
+                  });
                 }
               });
             },
@@ -364,10 +459,21 @@ class ContractsScreenState extends State<ContractsScreen>
   }
 
   Widget _buildExpiredTab() {
-    // 收集所有已过期的合约
+    // 已续订（有 active 合约）的档位，即使旧记录仍在 expired 列表，也不再展示
+    final activeProductIds = _activePaidContracts
+        .where((c) => c['status']?.toString() == 'active')
+        .map((c) => c['productId']?.toString())
+        .toSet();
+
+    // 收集所有已过期的合约（排除已续订的档位）
     List<Widget> expiredContracts = [];
 
     for (final contract in _expiredPaidContracts) {
+      final productId = contract['productId']?.toString();
+      if (productId != null && activeProductIds.contains(productId)) {
+        // 该档位已续订，跳过
+        continue;
+      }
       expiredContracts.add(_buildPaidContractCard(contract, isExpired: true));
       expiredContracts.add(const SizedBox(height: 12));
     }
@@ -655,7 +761,7 @@ class ContractsScreenState extends State<ContractsScreen>
                   _isAdRewardActive ||
                   _isInviteFriendActive ||
                   _isBindReferrerActive ||
-                  _activePaidContracts.isNotEmpty,
+                  _activePaidContracts.any((c) => c['status']?.toString() == 'active'),
               size: 200, // 增大尺寸至200
               userLevel: _userLevel, // 传递用户矿工等级
             ),
@@ -681,21 +787,171 @@ class ContractsScreenState extends State<ContractsScreen>
             _buildBindReferrerCard(),
           ],
 
-          if (_activePaidContracts.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text(
-              'Subscription Contract Queue',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+          const SizedBox(height: 20),
+          Text(
+            'Subscription Contract Queue',
+            style: TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ..._subscriptionTiers.map((tier) {
+            final matches = _activePaidContracts.where(
+              (c) =>
+                  c['productId']?.toString() == tier['id'] &&
+                  c['status']?.toString() == 'active',
+            );
+            final activeContract = matches.isEmpty ? null : matches.first;
+            return Column(
+              children: [
+                _buildSubscriptionTierCard(tier, activeContract),
+                const SizedBox(height: 12),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionTierCard(
+    Map<String, dynamic> tier,
+    Map<String, dynamic>? activeContract,
+  ) {
+    final Color accentColor = tier['color'] as Color;
+    final bool isActive = activeContract != null;
+    final Color displayColor = isActive ? accentColor : const Color(0xFF8E8E93);
+    final String statusText = isActive ? 'Mining' : 'Not Active';
+    final String remainingText = isActive
+        ? _formatDuration((activeContract['_remainingSeconds'] as int?) ?? 0)
+        : '--';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: displayColor.withOpacity(0.65),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: displayColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isActive ? Icons.queue_play_next : Icons.lock_outline,
+                  color: displayColor,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tier['name'] as String,
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      statusText,
+                      style: TextStyle(
+                        color: isActive ? accentColor : AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    tier['hashrate'] as String,
+                    style: TextStyle(
+                      color: displayColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    tier['price'] as String,
+                    style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildPaidMetaItem('Status', statusText, displayColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildPaidMetaItem('Remaining', remainingText, displayColor),
+              ),
+            ],
+          ),
+          if (!isActive) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final result = await Navigator.push<String?>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PaidContractsScreen(),
+                    ),
+                  );
+                  if (result != null && mounted) {
+                    _applyOptimisticContractUpdate(result);
+                    // 延迟 2 秒再 fetch，确保后端 DB 已完全写入
+                    Future.delayed(const Duration(seconds: 2), () {
+                      if (mounted) _loadContracts();
+                    });
+                  }
+                },
+                icon: const Icon(Icons.shopping_cart_outlined, size: 16),
+                label: const Text('Buy Contract'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  elevation: 0,
+                ),
               ),
             ),
-            const SizedBox(height: 12),
-            ..._activePaidContracts.map((contract) => [
-              _buildPaidContractCard(contract),
-              const SizedBox(height: 12),
-            ]).expand((w) => w),
           ],
         ],
       ),
@@ -819,7 +1075,7 @@ class ContractsScreenState extends State<ContractsScreen>
               child: ElevatedButton.icon(
                 onPressed: () async {
                   final productId = contract['productId']?.toString();
-                  final result = await Navigator.push<bool>(
+                  final result = await Navigator.push<String?>(
                     context,
                     MaterialPageRoute(
                       builder: (_) => PaidContractsScreen(
@@ -827,8 +1083,12 @@ class ContractsScreenState extends State<ContractsScreen>
                       ),
                     ),
                   );
-                  if (result == true && mounted) {
-                    _loadContracts();
+                  if (result != null && mounted) {
+                    _applyOptimisticContractUpdate(result);
+                    // 延迟 2 秒再 fetch，确保后端 DB 已完全写入
+                    Future.delayed(const Duration(seconds: 2), () {
+                      if (mounted) _loadContracts();
+                    });
                   }
                 },
                 icon: const Icon(Icons.refresh, size: 16),
