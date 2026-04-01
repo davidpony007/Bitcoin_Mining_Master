@@ -22,9 +22,15 @@ const CheckIn: React.FC = () => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [stats, setStats] = useState<any>({});
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_checkin') || '{}'); } catch { return {}; }
+  });
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setColWidths(prev => ({ ...prev, [key]: size.width }));
+    setColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_checkin', JSON.stringify(next));
+      return next;
+    });
   };
 
   const loadList = useCallback(async (p: number, s: string) => {

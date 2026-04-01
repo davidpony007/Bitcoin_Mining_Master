@@ -387,7 +387,7 @@ class UserRepository {
       }
       // 获取登录标识符用于用户去重
       final googleAccount = _storageService.getGoogleEmail();
-      final appleId = _storageService.getAppleId();
+      final appleAccount = _storageService.getAppleAccount();
 
       final response = await _apiService.withdrawBitcoin(
         userId: userId,
@@ -397,7 +397,7 @@ class UserRepository {
         network: network,
         networkFee: networkFee,
         googleAccount: googleAccount,
-        appleId: appleId,
+        appleAccount: appleAccount,
       );
 
       if (response['success'] == true) {

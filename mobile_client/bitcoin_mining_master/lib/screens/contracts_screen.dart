@@ -5,6 +5,7 @@ import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/apple_in_app_purchase_service.dart';
+import '../services/analytics_service.dart';
 import 'paid_contracts_screen.dart';
 import '../widgets/mining_machine_animation.dart';
 

@@ -4,6 +4,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../constants/app_constants.dart';
+import 'analytics_service.dart';
 
 /// iOS App Store 内购服务
 /// 镜像 GooglePlayBillingService，使用统一的 in_app_purchase 插件处理 StoreKit
@@ -378,6 +379,14 @@ class AppleInAppPurchaseService {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           print('✅ iOS 购买验证成功，合约已激活 (产品: ${purchase.productID}, 用户主动: $isUserInitiated)');
+          // 埋点：购买成功（无论用户主动还是续订都上报，方便统计收入）
+          final priceValue = _parsePriceFromProductId(purchase.productID);
+          AnalyticsService.instance.logPurchase(
+            currency: 'USD',
+            value: priceValue,
+            transactionId: purchase.purchaseID ?? purchase.productID,
+            itemName: purchase.productID,
+          );
           if (isUserInitiated) {
             final int pts = (data['pointsAwarded'] ?? 0) as int;
             if (pts > 0) {
@@ -392,12 +401,24 @@ class AppleInAppPurchaseService {
             print('ℹ️ [IAP] 后台交易验证成功（非用户主动购买），静默处理: ${purchase.productID}');
           }
         } else {
-          print('❌ iOS 验证失败: ${data['message']} (产品: ${purchase.productID}, 用户主动: $isUserInitiated)');
+          // 区分 SUBSCRIPTION_EXPIRED（旧订阅重放）与其他验证失败
+          final String errCode = data['code'] as String? ?? '';
+          final String errMsg = data['message'] as String? ?? 'Unknown error';
+          print('❌ iOS 验证失败: $errMsg (产品: ${purchase.productID}, 用户主动: $isUserInitiated, code: $errCode)');
           if (isUserInitiated) {
-            onPurchaseUpdate?.call(
-              false,
-              'Verification failed: ${data["message"]}',
-            );
+            if (errCode == 'SUBSCRIPTION_EXPIRED') {
+              // 旧失效订阅的 StoreKit 残留交易已完成（completePurchase 会在下面调用）
+              // 用户现在可以重新点击 Subscribe 触发真实的 Apple 支付弹窗
+              onPurchaseUpdate?.call(
+                false,
+                'Your previous subscription has expired. Please tap Subscribe again to start a new subscription.',
+              );
+            } else {
+              onPurchaseUpdate?.call(
+                false,
+                'Verification failed: $errMsg',
+              );
+            }
           }
         }
         // 服务端已处理（无论成功/失败），关闭 StoreKit 交易
@@ -439,8 +460,9 @@ class AppleInAppPurchaseService {
     _isCleaningQueue = true;
     try {
       await _iap.restorePurchases();
-      // 等待 StoreKit 将队列中所有残留交易回放到 _onPurchaseUpdate 并完成
-      await Future.delayed(const Duration(milliseconds: 800));
+      // 给 StoreKit 足够时间将队列中所有残留交易回放到 _onPurchaseUpdate 并完成
+      // 800ms 在网络较慢时不够，提高到 2000ms 以提升可靠性
+      await Future.delayed(const Duration(milliseconds: 2000));
     } catch (e) {
       print('⚠️ [IAP] clearPendingTransactions 异常（队列可能已为空）: $e');
     } finally {
@@ -550,5 +572,25 @@ class AppleInAppPurchaseService {
   void dispose() {
     _isUserRestoring = false;
     _subscription?.cancel();
+  }
+
+  /// 从产品 ID 解析价格（用于 Analytics 上报）
+  /// 产品 ID 格式: appstore04.99 / appstore06.99 / appstore09.99 / appstore19.99
+  double _parsePriceFromProductId(String productId) {
+    // 尝试从 productId 中提取数字部分，如 "appstore04.99" → 4.99
+    final match = RegExp(r'(\d+\.\d+)$').firstMatch(productId);
+    if (match != null) {
+      return double.tryParse(match.group(1)!) ?? 0.0;
+    }
+    // 兜底：从已加载的商品详情中查找真实价格
+    try {
+      final product = products.firstWhere((p) => p.id == productId);
+      return double.tryParse(
+            product.rawPrice.toString(),
+          ) ??
+          0.0;
+    } catch (_) {
+      return 0.0;
+    }
   }
 }

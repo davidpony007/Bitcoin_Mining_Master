@@ -180,14 +180,24 @@ class StorageService {
     return _prefs?.getString('google_email');
   }
 
-  /// 保存Apple用户ID（用于用户去重标识）
+  /// 保存Apple用户ID（用于JWT验证，本地保留）
   Future<bool> saveAppleId(String appleId) async {
     return await _prefs?.setString('apple_id', appleId) ?? false;
   }
 
-  /// 获取Apple用户ID
+  /// 获取Apple用户ID（用于JWT验证）
   String? getAppleId() {
     return _prefs?.getString('apple_id');
+  }
+
+  /// 保存Apple账号邮箱（首次登录时由Apple返回）
+  Future<bool> saveAppleAccount(String appleAccount) async {
+    return await _prefs?.setString('apple_account', appleAccount) ?? false;
+  }
+
+  /// 获取Apple账号邮箱
+  String? getAppleAccount() {
+    return _prefs?.getString('apple_account');
   }
 
   /// 保存登出状态（用于区分"从未登录"和"已登出"）

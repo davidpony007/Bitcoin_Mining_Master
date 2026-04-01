@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers/user_provider.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
+import '../services/analytics_service.dart';
 import 'withdrawal_history_screen.dart';
 
 /// 提现页面 - Withdrawal Screen
@@ -1176,6 +1177,12 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         Navigator.pop(context); // 关闭加载对话框
 
         if (success) {
+          // 埋点：提现申请成功
+          AnalyticsService.instance.logWithdrawal(
+            amount: _withdrawAmount,
+            currency: 'BTC',
+            address: _addressController.text,
+          );
           // 刷新钱包交易记录
           context.read<UserProvider>().fetchTransactions();
           // 提现成功，跳转到历史页面，显示pending标签

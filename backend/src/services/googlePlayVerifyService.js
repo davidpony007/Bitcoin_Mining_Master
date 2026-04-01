@@ -166,6 +166,8 @@ class GooglePlayVerifyService {
           orderId: sub.orderId,
           expiryTimeMillis: sub.expiryTimeMillis,
           autoRenewing: sub.autoRenewing,
+          // RTDN webhook 用此字段关联用户（需客户端购买时设置 applicationUserName = userId）
+          obfuscatedExternalAccountId: sub.obfuscatedExternalAccountId || null,
         };
       }
 

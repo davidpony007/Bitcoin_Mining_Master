@@ -58,7 +58,7 @@ router.get('/admin/list', authenticateToken, requireAdmin, async (req, res) => {
       status:         r.withdrawal_status,
       rejectReason:   r.reject_reason || null,
       googleAccount:  r.google_account  || null,
-      appleId:        r.apple_id        || null,
+      appleAccount:    r.apple_account   || null,
       createdAt:      r.created_at,
       updatedAt:      r.updated_at      || null,
     }));
@@ -104,7 +104,7 @@ router.post('/request', authenticateToken, async (req, res) => {
       networkFee,
       network, // 网络类型(Bitcoin, TRC20等)
       googleAccount, // Google登录账号，用于用户去重
-      appleId        // Apple登录ID，用于用户去重
+      appleAccount   // Apple登录账号（邮箱），用于用户去重
     } = req.body;
 
     // 1. 参数验证
@@ -149,10 +149,10 @@ router.post('/request', authenticateToken, async (req, res) => {
 
     // 4. 验证用户账号绑定状态（必须绑定 Google 或 Apple 账号才能提现）
     const [userInfoRows] = await sequelize.query(
-      'SELECT google_account, apple_id FROM user_information WHERE user_id = ? LIMIT 1',
+      'SELECT google_account, apple_account FROM user_information WHERE user_id = ? LIMIT 1',
       { replacements: [userId], transaction }
     );
-    if (!userInfoRows.length || (!userInfoRows[0].google_account && !userInfoRows[0].apple_id)) {
+    if (!userInfoRows.length || (!userInfoRows[0].google_account && !userInfoRows[0].apple_account)) {
       await transaction.rollback();
       return res.status(403).json({
         success: false,
@@ -211,9 +211,9 @@ router.post('/request', authenticateToken, async (req, res) => {
     // 8. 创建提现记录（使用原生SQL避免Sequelize验证问题）
     const [insertResult] = await sequelize.query(
       `INSERT INTO withdrawal_records 
-       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_id, created_at)
+       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_account, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW())`,
-      { replacements: [userId, email, walletAddress, withdrawAmount, fee, receivedAmount, googleAccount || null, appleId || null], transaction }
+      { replacements: [userId, email, walletAddress, withdrawAmount, fee, receivedAmount, googleAccount || null, appleAccount || null], transaction }
     );
     
     const withdrawalId = insertResult;
@@ -402,7 +402,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
         status:         withdrawal.withdrawal_status,
         rejectReason:   withdrawal.reject_reason  || null,
         googleAccount:  withdrawal.google_account || null,
-        appleId:        withdrawal.apple_id       || null,
+        appleAccount:  withdrawal.apple_account  || null,
         createdAt:      withdrawal.created_at     || null,
         updatedAt:      withdrawal.updated_at     || null,
       }

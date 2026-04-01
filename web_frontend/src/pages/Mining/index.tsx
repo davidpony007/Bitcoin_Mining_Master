@@ -34,9 +34,15 @@ const Mining: React.FC = () => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [stats, setStats] = useState<any>({});
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_mining') || '{}'); } catch { return {}; }
+  });
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setColWidths(prev => ({ ...prev, [key]: size.width }));
+    setColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_mining', JSON.stringify(next));
+      return next;
+    });
   };
 
   const loadList = useCallback(async (p: number, s: string, t: string) => {
@@ -74,8 +80,8 @@ const Mining: React.FC = () => {
       title: '状态', dataIndex: 'status', key: 'status', width: 90,
       render: (v: string) => <Tag color={v === 'active' ? 'green' : 'default'}>{v === 'active' ? '活跃' : '已过期'}</Tag>
     },
-    { title: '创建时间', dataIndex: 'contract_creation_time', key: 'contract_creation_time', width: 160, render: v => new Date(v).toLocaleString() },
-    { title: '结束时间', dataIndex: 'contract_end_time', key: 'contract_end_time', width: 160, render: v => new Date(v).toLocaleString() },
+    { title: '创建时间', dataIndex: 'contract_creation_time', key: 'contract_creation_time', width: 160, render: v => new Date(v).toISOString().slice(0, 19).replace('T', ' ') },
+    { title: '结束时间', dataIndex: 'contract_end_time', key: 'contract_end_time', width: 160, render: v => new Date(v).toISOString().slice(0, 19).replace('T', ' ') },
   ];
   const mergedColumns = columns.map((col) => {
     const k = String((col as any).key ?? (col as any).dataIndex ?? '');

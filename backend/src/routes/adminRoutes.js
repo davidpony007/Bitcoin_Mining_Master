@@ -11,6 +11,27 @@ const { QueryTypes } = require('sequelize');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
 const jwt = require('jsonwebtoken');
+const axios = require('axios');
+
+// ─── 实时 BTC 价格缓存（60s TTL，避免每次报表请求都打外部接口）────────────────
+let _btcPriceCache = { price: 0, fetchedAt: 0 };
+async function getLiveBtcPrice() {
+  const TTL_MS = 60 * 1000;
+  if (_btcPriceCache.price > 0 && Date.now() - _btcPriceCache.fetchedAt < TTL_MS) {
+    return _btcPriceCache.price;
+  }
+  try {
+    const r = await axios.get(
+      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
+      { timeout: 5000 }
+    );
+    const price = r.data?.bitcoin?.usd || 0;
+    if (price > 0) _btcPriceCache = { price, fetchedAt: Date.now() };
+    return price || _btcPriceCache.price || 74000;
+  } catch {
+    return _btcPriceCache.price || 74000; // 降级返回缓存 / 硬编码兜底
+  }
+}
 
 // ─── Admin Login ─────────────────────────────────────────────────────────────
 
@@ -173,11 +194,14 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
       `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
     );
     const [rows] = await conn.query(
-      `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
+      `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.nickname,
+              ui.country_code, ui.country_name_cn,
               ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
               ui.is_banned, ui.banned_at, ui.ban_reason,
+              ui.device_id,
               us.user_status, us.last_login_time,
-              us.current_bitcoin_balance, us.bitcoin_accumulated_amount
+              us.current_bitcoin_balance, us.bitcoin_accumulated_amount,
+              us.total_withdrawal_amount, us.total_invitation_rebate
        FROM user_information ui
        LEFT JOIN user_status us ON ui.user_id = us.user_id
        ${where}
@@ -248,7 +272,7 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
 
     const [[{ total }]] = await conn.query(`SELECT COUNT(*) AS total FROM user_orders ${where}`, params);
     const [rows] = await conn.query(
-      `SELECT id, user_id, email, google_account, product_id, product_name, product_price,
+      `SELECT id, user_id, email, google_account, apple_account, product_id, product_name, product_price,
               order_status, order_creation_time, payment_time, currency_type, country_code,
               payment_gateway_id, payment_network_id
        FROM user_orders ${where}
@@ -328,7 +352,7 @@ router.post('/orders/add', authenticateToken, requireAdmin, async (req, res) => 
   const conn = await pool.getConnection();
   try {
     const {
-      user_id, email = '', google_account = null,
+      user_id, email = '', google_account = null, apple_account = null,
       product_id, product_name, product_price,
       payment_gateway_id, payment_network_id,
       currency_type = 'USD', country_code = null,
@@ -338,11 +362,11 @@ router.post('/orders/add', authenticateToken, requireAdmin, async (req, res) => 
       return res.status(400).json({ success: false, message: '必填字段缺失' });
     await conn.query(
       `INSERT INTO user_orders
-         (user_id, email, google_account, product_id, product_name, product_price,
+         (user_id, email, google_account, apple_account, product_id, product_name, product_price,
           payment_gateway_id, payment_network_id, currency_type, country_code,
           order_status, payment_time, hashrate, order_creation_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [user_id, email, google_account, product_id, product_name, product_price,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [user_id, email, google_account, apple_account, product_id, product_name, product_price,
        payment_gateway_id, payment_network_id, currency_type, country_code,
        order_status, payment_time || null]
     );
@@ -881,11 +905,15 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
        WHERE DATE(last_login_time) BETWEEN ? AND ?
        GROUP BY DATE(last_login_time)`, [startDate, endDate]);
 
-    // 3. 订单（订阅单数 + 销售额）
+    // 3. 订单 —— 按 order_status 区分首次订阅(active) 与续订(renewing)
     const [ordRows] = await conn.query(
       `SELECT DATE(order_creation_time) AS d,
-              COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+              SUM(order_status = 'active')   AS new_cnt,
+              SUM(order_status = 'renewing') AS rn_cnt,
+              COALESCE(SUM(CASE WHEN order_status = 'active'
+                THEN CAST(product_price AS DECIMAL(10,2)) ELSE 0 END), 0) AS new_rev,
+              COALESCE(SUM(CASE WHEN order_status = 'renewing'
+                THEN CAST(product_price AS DECIMAL(10,2)) ELSE 0 END), 0) AS rn_rev
        FROM user_orders
        WHERE DATE(order_creation_time) BETWEEN ? AND ?
          AND order_status NOT IN ('refund successful','error')
@@ -932,7 +960,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       `SELECT COALESCE(SUM(received_amount),0) AS totalWithdrawn
        FROM withdrawal_records WHERE withdrawal_status = 'success'`);
 
-    const BTC_PRICE = 74000; // 可在 app_config 中配置
+    const BTC_PRICE = await getLiveBtcPrice();
     const totalBtc       = parseFloat(btcRow.totalBtc || 0);
     const totalWithdrawn = parseFloat(wdRow.totalWithdrawn || 0);
     const summary = {
@@ -940,6 +968,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       totalBtcBalanceUsd: (totalBtc * BTC_PRICE).toFixed(4),
       totalWithdrawn,
       totalWithdrawnUsd: (totalWithdrawn * BTC_PRICE).toFixed(4),
+      btcPrice: BTC_PRICE, // 实时 BTC 美元价格
     };
 
     // 构建 map
@@ -947,7 +976,12 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     nuMap; dauMap; ordMap; cancelMap; adMap; btcSentMap; wdDailyMap; // prevent unused warning
     nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
     dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
-    ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
+    ordRows.forEach(r    => { ordMap[toKey(r.d)]    = {
+      new_cnt: parseInt(r.new_cnt || 0),
+      rn_cnt:  parseInt(r.rn_cnt  || 0),
+      new_rev: parseFloat(r.new_rev || 0),
+      rn_rev:  parseFloat(r.rn_rev  || 0),
+    }; });
     cancelRows.forEach(r => { cancelMap[toKey(r.d)] = parseInt(r.cnt); });
     adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
@@ -971,13 +1005,17 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const totalNewUsers   = nuMap[d]  || 0;
       const dauVal          = dauMap[d] || 0;
       const ord             = ordMap[d] || {};
-      const subOrders       = ord.cnt     || 0;
-      const salesAmount     = parseFloat((ord.revenue || 0).toFixed(2));
-      const subRevenue      = salesAmount;
+      // 首次订阅：order_status='active'；续订：order_status='renewing'
+      const subOrders       = ord.new_cnt || 0;
+      const salesAmount     = parseFloat((ord.new_rev || 0).toFixed(2));
+      // 首次订阅实际收入 = 首次订阅金额 × 0.85（扣除平台抽成）
+      const subRevenue      = parseFloat((salesAmount * 0.85).toFixed(2));
       const cancelCount     = (cancelMap[d] || 0) + parseInt(ad.cancel_count || 0);
-      const renewalCount    = parseInt(ad.renewal_count  || 0);
-      const renewalAmount   = parseFloat(ad.renewal_amount   || 0);
-      const renewalRevenue  = parseFloat(ad.renewal_revenue  || 0);
+      // 续订数/金额：优先用数据库真实数据，daily_ad_stats 仅作历史手动记录补充
+      const renewalCount    = (ord.rn_cnt || 0) + parseInt(ad.renewal_count || 0);
+      const renewalAmount   = parseFloat(((ord.rn_rev || 0) + parseFloat(ad.renewal_amount || 0)).toFixed(2));
+      // 续期收入 = 续期金额 × 0.85（扣除平台抽成）
+      const renewalRevenue  = parseFloat((renewalAmount * 0.85).toFixed(2));
       const adCount         = parseInt(ad.ad_count           || 0);
       const adRevenue       = parseFloat(ad.ad_revenue       || 0);
       const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0);
@@ -1018,11 +1056,12 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     const ttlAdNew = sum('adNewUsers');
     const ttlSub   = sum('subOrders');
     const ttlRev   = parseFloat(sum('salesAmount').toFixed(2));
+    const ttlSubRevenue      = parseFloat(sum('subRevenue').toFixed(2));
     const ttlCancel= sum('cancelCount');
     const ttlAdRevenue       = parseFloat(sum('adRevenue').toFixed(2));
     const ttlAdCount         = sum('adCount');
     const ttlRenewalRevenue  = parseFloat(sum('renewalRevenue').toFixed(2));
-    const ttlTotalRevenue    = parseFloat((ttlRev + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
+    const ttlTotalRevenue    = parseFloat((ttlSubRevenue + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
     const ttlBtcSent         = sum('btcSentAmount');
     const ttlBtcSentValue    = parseFloat(sum('btcSentValue').toFixed(2));
     const ttlWdBtc           = sum('withdrawalBtcAmount');
@@ -1040,7 +1079,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       subOrders: ttlSub,
       subCost:  ttlSub > 0 ? parseFloat((ttlSpend / ttlSub).toFixed(2))  : 0,
       subRate:  ttlNew > 0 ? ((ttlSub / ttlNew) * 100).toFixed(2) + '%'  : '0%',
-      salesAmount: ttlRev, subRevenue: ttlRev,
+      salesAmount: ttlRev, subRevenue: ttlSubRevenue,
       arppu:      ttlSub > 0 ? parseFloat((ttlRev / ttlSub).toFixed(2)) : 0,
       cancelCount: ttlCancel,
       cancelRate:  ttlSub > 0 ? ((ttlCancel / ttlSub) * 100).toFixed(2) + '%' : '0%',

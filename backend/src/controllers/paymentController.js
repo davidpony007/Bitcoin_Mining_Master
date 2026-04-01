@@ -1,7 +1,8 @@
 'use strict';
 
 const axios = require('axios');
-const { UserOrder, UserInformation } = require('../models');
+const { UserOrder, UserInformation, MiningContract } = require('../models');
+const { Op } = require('sequelize');
 const paidContractService = require('../services/paidContractService');
 const PaidProductService = require('../services/paidProductService');
 const SubscriptionPointsService = require('../services/subscriptionPointsService');
@@ -75,11 +76,32 @@ exports.verifyPurchase = async (req, res) => {
       where: { payment_gateway_id: lookupId },
     });
     if (existingOrder) {
-      return res.status(200).json({
-        success: true,
-        message: '订单已处理（重复请求），合约已激活',
-        orderId: existingOrder.id,
+      // 验证该订单对应的合约是否仍活跃（未取消且未过期）
+      // 若合约已取消/过期，不能返回假成功——客户端会误以为合约已激活
+      const activeContract = await MiningContract.findOne({
+        where: {
+          user_id,
+          product_id: existingOrder.product_id || resolvedBackendProductId,
+          is_cancelled: 0,
+          contract_end_time: { [Op.gt]: new Date() },
+        },
       });
+      if (activeContract) {
+        return res.status(200).json({
+          success: true,
+          message: '订单已处理（重复请求），合约已激活',
+          orderId: existingOrder.id,
+        });
+      } else {
+        // 旧订单存在但合约已取消/过期（如沙盒订阅自动到期、用户关闭自动续期）
+        // 该 transaction_id 对应的订阅已失效，需用户重新发起购买以获得新的 transaction_id
+        console.warn(`⚠️ [paymentController] existingOrder found but contract expired/cancelled: user=${user_id} product=${resolvedBackendProductId} txId=${transaction_id}`);
+        return res.status(200).json({
+          success: false,
+          message: 'Your previous subscription has expired. Please tap Subscribe again to purchase a new subscription.',
+          code: 'SUBSCRIPTION_EXPIRED',
+        });
+      }
     }
 
     // ── 平台收据验证 ─────────────────────────────────────────
@@ -127,17 +149,17 @@ exports.verifyPurchase = async (req, res) => {
             console.warn(`⚠️ [paymentController] 续订 expiresDate 已过期或即将过期 (${rawExpiry.toISOString()})，跳过合约时间更新`);
           }
           if (newExpiry) {
-            const { MiningContract } = require('../models');
             await MiningContract.update(
-              { contract_end_time: newExpiry },
+              { contract_end_time: newExpiry, is_renewal: 1 },
               { where: { original_transaction_id: originalTxId, user_id: user_id } }
             );
             console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
           }
-          const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email'] });
+          const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email', 'apple_account'] });
           await UserOrder.create({
             user_id,
             email: renewUser?.email || '',
+            apple_account: renewUser?.apple_account || null,
             product_id: resolvedBackendProductId,
             product_name: productInfo?.product_name || store_product_id,
             product_price: String(productInfo?.product_price || 0),
@@ -168,10 +190,59 @@ exports.verifyPurchase = async (req, res) => {
         expiresDateMs: verifyResult.expiresDateMs,
       };
     }
-    // Android：Google Play Developer API 验证 purchase_token
+    // Android：续订检测 + Google Play Developer API 验证 purchase_token
     if (platform === 'android') {
       if (!purchase_token) {
         return res.status(400).json({ success: false, message: '缺少 purchase_token' });
+      }
+
+      // ── Android 续订检测：查找同用户同档位的活跃合约 ──
+      // Google Play 每次续订都产生新 purchaseToken，但 productId 不变。
+      // 若用户已有该档位的活跃合约，视为续订：延长到期时间，记录续订订单，不创建新合约。
+      // (与 iOS 的 original_transaction_id 续订逻辑对等)
+      const existingActiveAndroidContract = await MiningContract.findOne({
+        where: {
+          user_id,
+          product_id: resolvedBackendProductId,
+          platform: 'android',
+          is_cancelled: 0,
+          contract_end_time: { [Op.gt]: new Date() },
+        },
+        order: [['id', 'DESC']],
+      });
+      if (existingActiveAndroidContract) {
+        // 计算新到期时间（从当前到期时间 + 1 个计费周期）
+        const tierMonths = productInfo?.duration_months || 1;
+        const currentExpiry = new Date(existingActiveAndroidContract.contract_end_time);
+        const newExpiry = new Date(currentExpiry);
+        newExpiry.setMonth(newExpiry.getMonth() + tierMonths);
+        console.log(`🔄 [paymentController] Android 同档位续订: user=${user_id} product=${resolvedBackendProductId} purchaseToken=${purchase_token?.substring(0, 30)} newExpiry=${newExpiry.toISOString()}`);
+        await MiningContract.update(
+          { contract_end_time: newExpiry, original_transaction_id: purchase_token, is_renewal: 1 },
+          { where: { id: existingActiveAndroidContract.id } }
+        );
+        const renewUserAndroid = await UserInformation.findOne({ where: { user_id }, attributes: ['email'] });
+        await UserOrder.create({
+          user_id,
+          email: renewUserAndroid?.email || '',
+          product_id: resolvedBackendProductId,
+          product_name: productInfo?.product_name || store_product_id,
+          product_price: String(productInfo?.product_price || 0),
+          hashrate: productInfo?.hashrate_raw || 0,
+          order_creation_time: new Date(),
+          payment_time: new Date(),
+          currency_type: 'USD',
+          payment_gateway_id: transaction_id,
+          payment_network_id: purchase_token,
+          order_status: 'renewing',
+        });
+        return res.status(200).json({
+          success: true,
+          message: 'Android 订阅续订成功，合约已延期',
+          renewed: true,
+          newExpiry,
+          pointsAwarded: 0,
+        });
       }
       if (!googlePlayVerifyService.isInitialized) {
         // 服务账号密鑰尚未配置，暂时保持兼容性（存档备查）
@@ -202,13 +273,25 @@ exports.verifyPurchase = async (req, res) => {
       ? new Date(parseInt(iosMeta.expiresDateMs))
       : null;
 
-    // 查询用户邮箱（仅用于订单记录，设备登录用户可能无邮箱）
+    // ── 过期收据拦截：iOS 收据中 expiresDateMs 已在过去，说明是已取消/到期的旧订阅被 StoreKit 重放 ──
+    // 不创建注定过期的合约，直接返回错误让客户端提示用户重新订阅
+    if (platform === 'ios' && expiresDate && expiresDate.getTime() < Date.now()) {
+      console.warn(`⚠️ [paymentController] iOS 收据 expiresDate 已过期 (${expiresDate.toISOString()})，拒绝创建过期合约: user=${user_id} product=${resolvedBackendProductId} txId=${transaction_id}`);
+      return res.status(200).json({
+        success: false,
+        message: 'Your previous subscription has expired. Please tap Subscribe again to purchase a new subscription.',
+        code: 'SUBSCRIPTION_EXPIRED',
+      });
+    }
+
+    // 查询用户邮箱和Apple账号（仅用于订单记录，设备登录用户可能无邮箱）
     const user = await UserInformation.findOne({
       where: { user_id },
-      attributes: ['email'],
+      attributes: ['email', 'apple_account'],
     });
     // 用户不在 DB 时不阻断购买（收据已通过 Apple 验证，必须创建合约）
     const userEmail = user?.email || '';
+    const userAppleAccount = user?.apple_account || null;
     if (!user) {
       console.warn(`⚠️ [paymentController] 用户 ${user_id} 不在 user_information 表，继续创建合约（邮箱置空）`);
     }
@@ -223,6 +306,7 @@ exports.verifyPurchase = async (req, res) => {
       newOrder = await UserOrder.create({
         user_id,
         email: userEmail,
+        apple_account: platform === 'ios' ? userAppleAccount : null,
         product_id: resolvedBackendProductId,
         product_name: productInfo?.product_name || store_product_id,
         product_price: String(productInfo?.product_price || 0),

@@ -1,6 +1,9 @@
 /**
- * 订阅服务
- * 处理订阅的创建、更新、状态管理
+ * 订阅服务（RTDN Webhook 专用）
+ * 处理来自 Google Play 实时开发者通知（RTDN）的订阅状态变更
+ *
+ * 数据表：mining_contracts（实际合约表）
+ * 注意：此前代码错误地查询了 paid_contracts 表（不存在），已修正。
  */
 
 const sequelize = require('../config/database');
@@ -9,493 +12,187 @@ const googlePlayVerifyService = require('./googlePlayVerifyService');
 
 class SubscriptionService {
   /**
-   * 创建或更新订阅
-   * @param {string} userId - 用户ID
-   * @param {string} productId - 订阅商品ID
-   * @param {string} subscriptionId - Google订阅ID
-   * @param {string} purchaseToken - 购买令牌
-   * @returns {Promise<Object>}
+   * 将 Android subscriptionId（如 p04.99）映射到后端 product_id（如 p0499）
+   * @private
    */
-  async createOrUpdateSubscription(userId, productId, subscriptionId, purchaseToken) {
+  async _resolveBackendProductId(subscriptionId) {
     try {
-      console.log(`📝 创建/更新订阅: 用户=${userId}, 商品=${productId}`);
-
-      // 获取订阅商品配置
-      const productConfig = config.SUBSCRIPTION_PRODUCTS[productId];
-      if (!productConfig) {
-        throw new Error(`未知的订阅商品: ${productId}`);
-      }
-
-      // 计算下次扣费日期（30天后）
-      const nextBillingDate = new Date();
-      nextBillingDate.setDate(nextBillingDate.getDate() + productConfig.periodDays);
-
-      // 检查是否已存在该订阅
-      const [[existing]] = await sequelize.query(`
-        SELECT * FROM paid_contracts 
-        WHERE subscription_id = ? AND user_id = ?
-        LIMIT 1
-      `, {
-        replacements: [subscriptionId, userId]
-      });
-
-      let contractId;
-
-      if (existing) {
-        // 更新现有订阅
-        console.log(`   更新现有订阅: ${existing.id}`);
-        
-        await sequelize.query(`
-          UPDATE paid_contracts SET
-            subscription_status = 'active',
-            next_billing_date = ?,
-            auto_renewing = TRUE,
-            grace_period_start = NULL,
-            account_hold_start = NULL,
-            updated_at = NOW()
-          WHERE id = ?
-        `, {
-          replacements: [nextBillingDate, existing.id]
-        });
-
-        contractId = existing.id;
-
-        // 记录状态变更
-        if (existing.subscription_status !== 'active') {
-          await this.recordStatusChange(
-            subscriptionId,
-            userId,
-            existing.subscription_status,
-            'active',
-            '订阅续订/恢复'
-          );
-        }
-
-      } else {
-        // 创建新订阅
-        console.log(`   创建新订阅合约`);
-        
-        const [result] = await sequelize.query(`
-          INSERT INTO paid_contracts (
-            user_id,
-            contract_type,
-            contract_creation_time,
-            contract_end_time,
-            hashrate,
-            base_hashrate,
-            status,
-            revenue_btc,
-            total_revenue,
-            is_subscription,
-            subscription_id,
-            subscription_status,
-            next_billing_date,
-            auto_renewing
-          ) VALUES (?, ?, NOW(), NULL, ?, ?, 'active', 0, 0, TRUE, ?, 'active', ?, TRUE)
-        `, {
-          replacements: [
-            userId,
-            productId,
-            productConfig.hashrate,
-            productConfig.hashrate,
-            subscriptionId,
-            nextBillingDate
-          ]
-        });
-
-        contractId = result.insertId || result;
-
-        // 记录状态变更
-        await this.recordStatusChange(
-          subscriptionId,
-          userId,
-          null,
-          'active',
-          '新订阅创建'
-        );
-      }
-
-      // 返回合约信息
-      const [[contract]] = await sequelize.query(`
-        SELECT * FROM paid_contracts WHERE id = ?
-      `, {
-        replacements: [contractId]
-      });
-
-      console.log(`✅ 订阅处理完成: 合约ID=${contractId}`);
-
-      return {
-        success: true,
-        contract: contract,
-        isNew: !existing,
-      };
-
-    } catch (error) {
-      console.error('❌ 创建/更新订阅失败:', error);
-      throw error;
+      const [[row]] = await sequelize.query(
+        `SELECT product_id FROM paid_products_list_config WHERE android_product_id = ? LIMIT 1`,
+        { replacements: [subscriptionId] }
+      );
+      return row?.product_id || null;
+    } catch (e) {
+      console.error('[SubscriptionService] _resolveBackendProductId error:', e.message);
+      return null;
     }
   }
 
   /**
-   * 处理订阅续订
+   * 通过 Google Play Developer API 验证 token 并获取用户 ID
+   * @private
+   * @returns {{ userId: string|null, expiryTimeMillis: string|null }}
+   */
+  async _resolveUserFromToken(subscriptionId, purchaseToken) {
+    const packageName = process.env.ANDROID_PACKAGE_NAME;
+    if (!packageName || !googlePlayVerifyService.isInitialized) {
+      return { userId: null, expiryTimeMillis: null };
+    }
+    try {
+      const result = await googlePlayVerifyService.verifySubscription(packageName, subscriptionId, purchaseToken);
+      return {
+        userId: result?.obfuscatedExternalAccountId || null,
+        expiryTimeMillis: result?.expiryTimeMillis || null,
+      };
+    } catch (e) {
+      console.warn('[SubscriptionService] verifySubscription error:', e.message);
+      return { userId: null, expiryTimeMillis: null };
+    }
+  }
+
+  /**
+   * 查找 mining_contracts 记录
+   * 先用 userId + productId 精确匹配，回退到 original_transaction_id = purchaseToken
+   * @private
+   */
+  async _findContract(userId, backendProductId, purchaseToken) {
+    // 优先：用户 + 产品 + 平台 + 未取消
+    if (userId && backendProductId) {
+      const [[mc]] = await sequelize.query(
+        `SELECT * FROM mining_contracts
+         WHERE user_id = ? AND product_id = ? AND platform = 'android' AND is_cancelled = 0
+         ORDER BY id DESC LIMIT 1`,
+        { replacements: [userId, backendProductId] }
+      );
+      if (mc) return mc;
+    }
+    // 回退：按当前 purchaseToken 查找（仅首次购买时 token 与存储一致）
+    if (purchaseToken) {
+      const [[mc]] = await sequelize.query(
+        `SELECT * FROM mining_contracts WHERE original_transaction_id = ? LIMIT 1`,
+        { replacements: [purchaseToken] }
+      );
+      if (mc) return mc;
+    }
+    return null;
+  }
+
+  /**
+   * 处理订阅续订（RTDN type 1/2/7）
    */
   async handleSubscriptionRenewed(subscriptionId, purchaseToken) {
     try {
-      console.log(`🔄 处理订阅续订: ${subscriptionId}`);
+      console.log(`🔄 [RTDN] 续订通知: subscriptionId=${subscriptionId} token=${purchaseToken?.substring(0, 30)}…`);
 
-      // 查找订阅合约
-      const [[contract]] = await sequelize.query(`
-        SELECT * FROM paid_contracts 
-        WHERE subscription_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, {
-        replacements: [subscriptionId]
-      });
+      const backendProductId = await this._resolveBackendProductId(subscriptionId);
+      if (!backendProductId) {
+        console.log(`⚠️ [RTDN] 续订：未找到 product 映射 subscriptionId=${subscriptionId}`);
+        return { success: false, error: 'product mapping not found' };
+      }
 
+      const { userId, expiryTimeMillis } = await this._resolveUserFromToken(subscriptionId, purchaseToken);
+
+      const contract = await this._findContract(userId, backendProductId, purchaseToken);
       if (!contract) {
-        console.log(`⚠️ 未找到订阅合约: ${subscriptionId}`);
-        return { success: false, error: '订阅不存在' };
+        console.log(`⚠️ [RTDN] 续订：未找到 mining_contracts. userId=${userId} product=${backendProductId} token=${purchaseToken?.substring(0, 30)}`);
+        return { success: false, error: 'contract not found' };
       }
 
-      // 更新下次扣费日期
-      const nextBillingDate = new Date();
-      nextBillingDate.setDate(nextBillingDate.getDate() + 30);
-
-      await sequelize.query(`
-        UPDATE paid_contracts SET
-          subscription_status = 'active',
-          next_billing_date = ?,
-          grace_period_start = NULL,
-          account_hold_start = NULL,
-          auto_renewing = TRUE,
-          updated_at = NOW()
-        WHERE id = ?
-      `, {
-        replacements: [nextBillingDate, contract.id]
-      });
-
-      // 记录续订交易
-      await sequelize.query(`
-        INSERT INTO payment_transactions (
-          user_id,
-          platform,
-          product_id,
-          purchase_token,
-          subscription_id,
-          transaction_type,
-          is_subscription,
-          status,
-          created_at
-        ) VALUES (?, 'android', ?, ?, ?, 'renewal', TRUE, 'completed', NOW())
-      `, {
-        replacements: [
-          contract.user_id,
-          contract.contract_type,
-          purchaseToken,
-          subscriptionId
-        ]
-      });
-
-      // 记录状态变更
-      if (contract.subscription_status !== 'active') {
-        await this.recordStatusChange(
-          subscriptionId,
-          contract.user_id,
-          contract.subscription_status,
-          'active',
-          '订阅自动续订'
-        );
+      // 计算新到期时间（优先使用 Google Play API 返回的精确时间）
+      let newExpiry;
+      if (expiryTimeMillis) {
+        newExpiry = new Date(parseInt(expiryTimeMillis, 10));
+      } else {
+        newExpiry = new Date(contract.contract_end_time);
+        newExpiry.setMonth(newExpiry.getMonth() + 1);
       }
 
-      console.log(`✅ 订阅续订成功`);
-      return { success: true };
-
-    } catch (error) {
-      console.error('❌ 处理续订失败:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * 处理宽限期
-   */
-  async handleGracePeriod(subscriptionId, purchaseToken) {
-    try {
-      console.log(`⚠️ 进入宽限期: ${subscriptionId}`);
-
-      const [[contract]] = await sequelize.query(`
-        SELECT * FROM paid_contracts 
-        WHERE subscription_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, {
-        replacements: [subscriptionId]
-      });
-
-      if (!contract) {
-        return { success: false, error: '订阅不存在' };
-      }
-
-      await sequelize.query(`
-        UPDATE paid_contracts SET
-          subscription_status = 'grace_period',
-          grace_period_start = NOW(),
-          updated_at = NOW()
-        WHERE id = ?
-      `, {
-        replacements: [contract.id]
-      });
-
-      await this.recordStatusChange(
-        subscriptionId,
-        contract.user_id,
-        contract.subscription_status,
-        'grace_period',
-        '扣费失败，进入宽限期'
+      await sequelize.query(
+        `UPDATE mining_contracts
+         SET contract_end_time = ?, original_transaction_id = ?, is_renewal = 1
+         WHERE id = ?`,
+        { replacements: [newExpiry, purchaseToken, contract.id] }
       );
 
-      console.log(`📧 TODO: 发送催费通知给用户: ${contract.user_id}`);
-
+      console.log(`✅ [RTDN] 续订成功: user=${contract.user_id} product=${backendProductId} newExpiry=${newExpiry.toISOString()}`);
       return { success: true };
 
     } catch (error) {
-      console.error('❌ 处理宽限期失败:', error);
+      console.error('❌ [RTDN] 处理续订失败:', error);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * 处理账号冻结
-   */
-  async handleAccountHold(subscriptionId, purchaseToken) {
-    try {
-      console.log(`🔒 账号冻结: ${subscriptionId}`);
-
-      const [[contract]] = await sequelize.query(`
-        SELECT * FROM paid_contracts 
-        WHERE subscription_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, {
-        replacements: [subscriptionId]
-      });
-
-      if (!contract) {
-        return { success: false, error: '订阅不存在' };
-      }
-
-      await sequelize.query(`
-        UPDATE paid_contracts SET
-          subscription_status = 'account_hold',
-          account_hold_start = NOW(),
-          updated_at = NOW()
-        WHERE id = ?
-      `, {
-        replacements: [contract.id]
-      });
-
-      await this.recordStatusChange(
-        subscriptionId,
-        contract.user_id,
-        contract.subscription_status,
-        'account_hold',
-        '宽限期结束，账号冻结'
-      );
-
-      console.log(`⛔ 订阅已冻结，停止挖矿`);
-
-      return { success: true };
-
-    } catch (error) {
-      console.error('❌ 处理账号冻结失败:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * 处理订阅取消
+   * 处理订阅取消 / 撤销（RTDN type 3/12）
    */
   async handleSubscriptionCanceled(subscriptionId, purchaseToken) {
     try {
-      console.log(`❌ 订阅取消: ${subscriptionId}`);
+      console.log(`❌ [RTDN] 取消通知: subscriptionId=${subscriptionId} token=${purchaseToken?.substring(0, 30)}…`);
 
-      const [[contract]] = await sequelize.query(`
-        SELECT * FROM paid_contracts 
-        WHERE subscription_id = ?
-        ORDER BY created_at DESC
-        LIMIT 1
-      `, {
-        replacements: [subscriptionId]
-      });
+      const backendProductId = await this._resolveBackendProductId(subscriptionId);
 
+      // 已取消的订阅 token 在 Play API 侧可能验证失败，忽略错误
+      const { userId } = await this._resolveUserFromToken(subscriptionId, purchaseToken).catch(() => ({ userId: null }));
+
+      const contract = await this._findContract(userId, backendProductId, purchaseToken);
       if (!contract) {
-        return { success: false, error: '订阅不存在' };
+        console.log(`⚠️ [RTDN] 取消：未找到 mining_contracts. userId=${userId} product=${backendProductId} token=${purchaseToken?.substring(0, 30)}`);
+        return { success: false, error: 'contract not found' };
       }
 
-      await sequelize.query(`
-        UPDATE paid_contracts SET
-          subscription_status = 'canceled',
-          auto_renewing = FALSE,
-          contract_end_time = NOW(),
-          updated_at = NOW()
-        WHERE id = ?
-      `, {
-        replacements: [contract.id]
-      });
-
-      // 同步更新 mining_contracts（当前实际使用的合约表），仅取消该档位的合约
-      // ⚠️ 必须按 product_id 过滤，避免同时持有多个档位时误取消其他档位
-      await sequelize.query(`
-        UPDATE mining_contracts
-        SET is_cancelled = 1, contract_end_time = NOW()
-        WHERE user_id = ? AND product_id = ? AND contract_type = 'paid contract' AND is_cancelled = 0
-      `, {
-        replacements: [contract.user_id, contract.product_id]
-      });
-      console.log(`⛔ [Android] mining_contracts 已标记取消，user_id=${contract.user_id} product_id=${contract.product_id}`);
-
-      await this.recordStatusChange(
-        subscriptionId,
-        contract.user_id,
-        contract.subscription_status,
-        'canceled',
-        '用户取消订阅'
+      await sequelize.query(
+        `UPDATE mining_contracts SET is_cancelled = 1 WHERE id = ? AND is_cancelled = 0`,
+        { replacements: [contract.id] }
       );
 
-      // 记录取消交易
-      await sequelize.query(`
-        INSERT INTO payment_transactions (
-          user_id,
-          platform,
-          product_id,
-          purchase_token,
-          subscription_id,
-          transaction_type,
-          is_subscription,
-          status,
-          created_at
-        ) VALUES (?, 'android', ?, ?, ?, 'cancellation', TRUE, 'completed', NOW())
-      `, {
-        replacements: [
-          contract.user_id,
-          contract.contract_type,
-          purchaseToken,
-          subscriptionId
-        ]
-      });
-
-      console.log(`⛔ 订阅已取消，停止挖矿`);
-
+      console.log(`✅ [RTDN] 取消成功: user=${contract.user_id} product=${contract.product_id} contractId=${contract.id}`);
       return { success: true };
 
     } catch (error) {
-      console.error('❌ 处理订阅取消失败:', error);
+      console.error('❌ [RTDN] 处理取消失败:', error);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * 记录订阅状态变更
+   * 处理宽限期（RTDN type 13）
+   * 宽限期内用户仍可使用服务，mining_contracts 保持活跃，仅记录日志
    */
-  async recordStatusChange(subscriptionId, userId, oldStatus, newStatus, reason) {
+  async handleGracePeriod(subscriptionId, purchaseToken) {
     try {
-      await sequelize.query(`
-        INSERT INTO subscription_status_history (
-          subscription_id,
-          user_id,
-          old_status,
-          new_status,
-          reason,
-          changed_at
-        ) VALUES (?, ?, ?, ?, ?, NOW())
-      `, {
-        replacements: [subscriptionId, userId, oldStatus, newStatus, reason]
-      });
+      console.log(`⚠️ [RTDN] 宽限期通知: subscriptionId=${subscriptionId} — 合约继续有效`);
+      // mining_contracts 中没有宽限期字段；不修改合约，让用户在宽限期内正常使用
+      return { success: true };
     } catch (error) {
-      console.error('记录状态变更失败:', error);
+      console.error('❌ [RTDN] 处理宽限期失败:', error);
+      return { success: false, error: error.message };
     }
   }
 
   /**
-   * 检查宽限期是否过期
+   * 处理账号冻结（RTDN type 20）
+   * 账号冻结意味着扣费持续失败，但通常在 30 天后自动取消（届时发送 type 3 通知）。
+   * mining_contracts 没有冻结状态字段；此处仅记录日志，等待 type 3 取消通知到来。
    */
-  async checkGracePeriodExpiry() {
+  async handleAccountHold(subscriptionId, purchaseToken) {
     try {
-      const gracePeriodDays = config.GRACE_PERIOD_DAYS;
-      
-      const [contracts] = await sequelize.query(`
-        SELECT * FROM paid_contracts
-        WHERE subscription_status = 'grace_period'
-        AND grace_period_start IS NOT NULL
-        AND DATEDIFF(NOW(), grace_period_start) >= ?
-      `, {
-        replacements: [gracePeriodDays]
-      });
-
-      for (const contract of contracts) {
-        console.log(`⏰ 宽限期已过: ${contract.subscription_id}`);
-        await this.handleAccountHold(contract.subscription_id, null);
-      }
-
-      return { checked: contracts.length };
+      console.log(`🔒 [RTDN] 账号冻结通知: subscriptionId=${subscriptionId} — 等待取消通知`);
+      // 不修改合约；当账号进入冻结后 Google 会再发 type 3 CANCELED，届时取消合约
+      return { success: true };
     } catch (error) {
-      console.error('检查宽限期失败:', error);
-      throw error;
+      console.error('❌ [RTDN] 处理账号冻结失败:', error);
+      return { success: false, error: error.message };
     }
   }
 
   /**
-   * 检查冻结期是否过期
-   */
-  async checkAccountHoldExpiry() {
-    try {
-      const holdDays = config.ACCOUNT_HOLD_DAYS;
-      
-      const [contracts] = await sequelize.query(`
-        SELECT * FROM paid_contracts
-        WHERE subscription_status = 'account_hold'
-        AND account_hold_start IS NOT NULL
-        AND DATEDIFF(NOW(), account_hold_start) >= ?
-      `, {
-        replacements: [holdDays]
-      });
-
-      for (const contract of contracts) {
-        console.log(`⏰ 冻结期已过，订阅过期: ${contract.subscription_id}`);
-        
-        await sequelize.query(`
-          UPDATE paid_contracts SET
-            subscription_status = 'expired',
-            contract_end_time = NOW(),
-            updated_at = NOW()
-          WHERE id = ?
-        `, {
-          replacements: [contract.id]
-        });
-
-        await this.recordStatusChange(
-          contract.subscription_id,
-          contract.user_id,
-          'account_hold',
-          'expired',
-          '冻结期结束，订阅过期'
-        );
-      }
-
-      return { checked: contracts.length };
-    } catch (error) {
-      console.error('检查冻结期失败:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * 检查订阅是否允许挖矿
+   * 检查订阅是否允许挖矿（保持向后兼容）
    */
   canMine(subscriptionStatus) {
-    return config.MINING_ALLOWED_STATUSES.includes(subscriptionStatus);
+    return config.MINING_ALLOWED_STATUSES?.includes(subscriptionStatus) ?? true;
   }
 }
 
 module.exports = new SubscriptionService();
+

@@ -31,6 +31,13 @@ const UserOrder = sequelize.define('user_orders', {
     allowNull: true,
     comment: '用户Google账号'
   },
+
+  // Apple账号
+  apple_account: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    comment: '用户Apple账号'
+  },
   
   // 产品ID (价格枚举)
   product_id: { 

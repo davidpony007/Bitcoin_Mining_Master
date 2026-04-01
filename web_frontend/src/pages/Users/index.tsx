@@ -33,6 +33,7 @@ interface UserRow {
   user_points: number;
   total_ad_views: number;
   system: string | null;
+  device_id: string | null;
   acquisition_channel: string | null;
   user_status: string | null;
   is_banned: number;
@@ -104,8 +105,9 @@ const inferPlatform = (system: string | null, deviceId: string | null): string |
   return null;
 };
 
+// 统一使用 UTC+00 显示时间，格式 YYYY-MM-DD HH:mm:ss
 const fmtTime = (v: string | null | undefined): string =>
-  v ? new Date(v).toLocaleString('zh-CN') : '-';
+  v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-';
 
 const statusMap: Record<string, { color: string; label: string }> = {
   'active within 3 days': { color: 'green', label: '近3天活跃' },
@@ -142,7 +144,9 @@ const Users: React.FC = () => {
   const [systemFilter, setSystemFilter] = useState<string>('');
   const [acquisitionFilter, setAcquisitionFilter] = useState<string>('');
   const [stats, setStats] = useState<any>({});
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_users') || '{}'); } catch { return {}; }
+  });
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -155,7 +159,11 @@ const Users: React.FC = () => {
   const [btcLoading, setBtcLoading] = useState(false);
 
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setColWidths(prev => ({ ...prev, [key]: size.width }));
+    setColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_users', JSON.stringify(next));
+      return next;
+    });
   };
 
   const loadList = useCallback(async (
@@ -250,7 +258,10 @@ const Users: React.FC = () => {
     { title: '邮箱', dataIndex: 'email', key: 'email', ellipsis: true, width: 180 },
     {
       title: '国家', dataIndex: 'country_code', key: 'country_code', width: 90,
-      render: (v: string, r: UserRow) => v ? <Tooltip title={r.country_name_cn || v}><span>{v}</span></Tooltip> : '-',
+      render: (v: string, r: UserRow) => {
+        const name = r.country_name_cn || v;
+        return name ? <Tooltip title={v}><span>{name}</span></Tooltip> : '-';
+      },
     },
     {
       title: 'BTC余额', dataIndex: 'current_bitcoin_balance', key: 'current_bitcoin_balance', width: 130,
@@ -300,11 +311,11 @@ const Users: React.FC = () => {
     },
     {
       title: '最后登录', dataIndex: 'last_login_time', key: 'last_login_time', width: 150,
-      render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '-',
+      render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
     {
-      title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 120,
-      render: (v: string) => new Date(v).toLocaleDateString('zh-CN'),
+      title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 175,
+      render: (v: string) => new Date(v).toISOString().slice(0, 19).replace('T', ' '),
     },
     {
       title: '操作', key: 'action', width: 220, fixed: 'right' as const,

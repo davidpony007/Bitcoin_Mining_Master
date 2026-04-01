@@ -5,6 +5,7 @@ import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/user_repository.dart';
+import '../services/analytics_service.dart';
 import 'transaction_history_screen.dart';
 
 /// 推荐屏幕 - Invite with rebate earnings
@@ -17,7 +18,7 @@ class ReferralScreen extends StatefulWidget {
   State<ReferralScreen> createState() => ReferralScreenState();
 }
 
-class ReferralScreenState extends State<ReferralScreen> {
+class ReferralScreenState extends State<ReferralScreen> with WidgetsBindingObserver {
   final _storageService = StorageService();
   final _apiService = ApiService();
   final _userRepository = UserRepository();
@@ -39,14 +40,23 @@ class ReferralScreenState extends State<ReferralScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _invitedListScrollController.dispose();
     _rebateListScrollController.dispose();
     super.dispose();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      refreshInvitedFriends();
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadInvitationData();
   }
 
@@ -265,6 +275,7 @@ class ReferralScreenState extends State<ReferralScreen> {
       const String downloadUrl = 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/download.html';
       final String copyText = '🎁 Join Bitcoin Mining Master!\n\nUse my invitation code to get a FREE 2-hour mining contract:\n\n📋 Code: $_invitationCode\n\nDownload now and start earning Bitcoin! 💰\n$downloadUrl';
       Clipboard.setData(ClipboardData(text: copyText));
+      AnalyticsService.instance.logShareReferral(method: 'copy');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Invitation message copied!'),
@@ -320,6 +331,7 @@ $downloadUrl
         subject: 'Join Bitcoin Mining Master - Free Mining Contract!',
         sharePositionOrigin: sharePositionOrigin,
       );
+      AnalyticsService.instance.logShareReferral(method: 'share');
     } catch (e) {
       debugPrint('Share error: $e');
       if (mounted) {

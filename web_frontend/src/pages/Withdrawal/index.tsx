@@ -22,7 +22,7 @@ export interface WithdrawalRecord {
   userId: string;
   email: string;
   googleAccount?: string;
-  appleId?: string;
+  appleAccount?: string;
   walletAddress?: string;
   binanceUid?: string;
   amount: number;
@@ -62,9 +62,15 @@ const Withdrawal: React.FC = () => {
   const [rejectVisible, setRejectVisible] = useState(false);
   const [rejectTarget,  setRejectTarget]  = useState<WithdrawalRecord | null>(null);
   const [rejectForm]                      = Form.useForm();
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_withdrawal') || '{}'); } catch { return {}; }
+  });
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setColWidths(prev => ({ ...prev, [key]: size.width }));
+    setColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_withdrawal', JSON.stringify(next));
+      return next;
+    });
   };
 
   // 批量操作
@@ -202,8 +208,8 @@ const Withdrawal: React.FC = () => {
         : <Text type="secondary">—</Text>,
     },
     {
-      title: 'Apple ID',
-      dataIndex: 'appleId',
+      title: 'Apple 账号',
+      dataIndex: 'appleAccount',
       width: 180,
       ellipsis: true,
       render: (v?: string) => v
@@ -277,7 +283,7 @@ const Withdrawal: React.FC = () => {
       title: '申请时间',
       dataIndex: 'createdAt',
       width: 160,
-      render: (t: string) => t ? new Date(t).toLocaleString('zh-CN') : '—',
+      render: (t: string) => t ? new Date(t).toISOString().slice(0, 19).replace('T', ' ') : '—',
     },
     {
       title: '操作',
@@ -563,9 +569,9 @@ const Withdrawal: React.FC = () => {
                 {selected.googleAccount}
               </Descriptions.Item>
             )}
-            {selected.appleId && (
-              <Descriptions.Item label="Apple ID" span={2}>
-                {selected.appleId}
+            {selected.appleAccount && (
+              <Descriptions.Item label="Apple 账号" span={2}>
+                {selected.appleAccount}
               </Descriptions.Item>
             )}
             {selected.walletAddress && (
@@ -601,11 +607,11 @@ const Withdrawal: React.FC = () => {
             </Descriptions.Item>
 
             <Descriptions.Item label="申请时间">
-              {selected.createdAt ? new Date(selected.createdAt).toLocaleString('zh-CN') : '—'}
+              {selected.createdAt ? new Date(selected.createdAt).toISOString().slice(0, 19).replace('T', ' ') : '—'}
             </Descriptions.Item>
             {selected.updatedAt && (
               <Descriptions.Item label="处理时间">
-                {new Date(selected.updatedAt).toLocaleString('zh-CN')}
+                {new Date(selected.updatedAt).toISOString().slice(0, 19).replace('T', ' ')}
               </Descriptions.Item>
             )}
             {selected.rejectReason && (

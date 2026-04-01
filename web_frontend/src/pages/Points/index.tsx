@@ -41,13 +41,25 @@ const Points: React.FC = () => {
   const [txUserId, setTxUserId] = useState('');
   const [txType, setTxType] = useState('');
   const [stats, setStats] = useState<any>({});
-  const [lbColWidths, setLbColWidths] = useState<Record<string, number>>({});
+  const [lbColWidths, setLbColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_points_lb') || '{}'); } catch { return {}; }
+  });
   const handleLbResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setLbColWidths(prev => ({ ...prev, [key]: size.width }));
+    setLbColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_points_lb', JSON.stringify(next));
+      return next;
+    });
   };
-  const [txColWidths, setTxColWidths] = useState<Record<string, number>>({});
+  const [txColWidths, setTxColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_points_tx') || '{}'); } catch { return {}; }
+  });
   const handleTxResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setTxColWidths(prev => ({ ...prev, [key]: size.width }));
+    setTxColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_points_tx', JSON.stringify(next));
+      return next;
+    });
   };
 
   const loadLeaderboard = useCallback(async (p: number, s: string) => {
@@ -76,7 +88,7 @@ const Points: React.FC = () => {
     { title: '积分', dataIndex: 'user_points', key: 'user_points', width: 100, render: v => <span style={{ color: '#faad14', fontWeight: 'bold' }}>{v}</span> },
     { title: '等级', dataIndex: 'user_level', key: 'user_level', width: 70 },
     { title: '广告观看', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 90 },
-    { title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 120, render: v => new Date(v).toLocaleDateString() },
+    { title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 160, render: v => new Date(v).toISOString().slice(0, 19).replace('T', ' ') },
   ];
   const mergedLbColumns = lbColumns.map((col) => {
     const k = String((col as any).key ?? (col as any).dataIndex ?? '');
@@ -98,7 +110,7 @@ const Points: React.FC = () => {
     },
     { title: '余额', dataIndex: 'balance_after', key: 'balance_after', width: 90 },
     { title: '说明', dataIndex: 'description', key: 'description', ellipsis: true },
-    { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 160, render: v => new Date(v).toLocaleString() },
+    { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 160, render: v => new Date(v).toISOString().slice(0, 19).replace('T', ' ') },
   ];
   const mergedTxColumns = txColumns.map((col) => {
     const k = String((col as any).key ?? (col as any).dataIndex ?? '');

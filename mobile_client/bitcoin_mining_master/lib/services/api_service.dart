@@ -544,7 +544,7 @@ class ApiService {
     required String network,
     required String networkFee,
     String? googleAccount,
-    String? appleId,
+    String? appleAccount,
   }) async {
     try {
       // 显式获取 token 并注入 Authorization header（与拦截器双重保障）
@@ -563,7 +563,7 @@ class ApiService {
           'network': network,
           'networkFee': networkFee,
           if (googleAccount != null) 'googleAccount': googleAccount,
-          if (appleId != null) 'appleId': appleId,
+          if (appleAccount != null) 'appleAccount': appleAccount,
         },
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );

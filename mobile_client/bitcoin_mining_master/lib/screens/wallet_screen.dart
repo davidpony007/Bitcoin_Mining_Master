@@ -18,7 +18,7 @@ class WalletScreen extends StatefulWidget {
 }
 
 class WalletScreenState extends State<WalletScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   final _apiService = ApiService();
@@ -31,6 +31,7 @@ class WalletScreenState extends State<WalletScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // 初始化余额数字递增动画控制器
     _animationController = AnimationController(
@@ -79,9 +80,17 @@ class WalletScreenState extends State<WalletScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     _priceUpdateTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      refreshData();
+    }
   }
 
   /// 加载比特币价格
@@ -99,9 +108,9 @@ class WalletScreenState extends State<WalletScreen>
     }
   }
 
-  /// 启动价格定时更新（每60分钟）
+  /// 启动价格定时更新（每5分钟）
   void _startPriceUpdateTimer() {
-    _priceUpdateTimer = Timer.periodic(const Duration(minutes: 60), (timer) {
+    _priceUpdateTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
       _loadBitcoinPrice();
     });
   }

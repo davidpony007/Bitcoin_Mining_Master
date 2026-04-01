@@ -35,6 +35,7 @@ interface OrderRow {
   user_id: string;
   email: string;
   google_account: string | null;
+  apple_account: string | null;
   product_id: string;
   product_name: string;
   product_price: string;
@@ -57,7 +58,7 @@ const PRODUCTS = [
 ];
 
 const fmtTime = (v: string | null) =>
-  v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-';
+  v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-';
 
 const statusMap: Record<string, { label: string; color: string }> = {
   active:                        { label: '激活中',   color: 'blue'    },
@@ -84,9 +85,15 @@ const Orders: React.FC = () => {
   const [addVisible, setAddVisible]       = useState(false);
   const [selected, setSelected]     = useState<OrderRow | null>(null);
   const [addForm]                   = Form.useForm();
-  const [colWidths, setColWidths]   = useState<Record<string, number>>({});
+  const [colWidths, setColWidths]   = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_orders') || '{}'); } catch { return {}; }
+  });
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: ResizeCallbackData) => {
-    setColWidths(prev => ({ ...prev, [key]: size.width }));
+    setColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_orders', JSON.stringify(next));
+      return next;
+    });
   };
 
   const fetchList = useCallback(async (
@@ -274,6 +281,7 @@ const Orders: React.FC = () => {
             <Descriptions.Item label="ID">{selected.id}</Descriptions.Item>
             <Descriptions.Item label="用户ID">{selected.user_id}</Descriptions.Item>
             <Descriptions.Item label="邮箱" span={2}>{selected.email || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Apple 账号" span={2}>{selected.apple_account || '-'}</Descriptions.Item>
             <Descriptions.Item label="标题" span={2}>{selected.product_name}</Descriptions.Item>
             <Descriptions.Item label="订单号" span={2}>{selected.payment_network_id}</Descriptions.Item>
             <Descriptions.Item label="实付金额">
@@ -304,6 +312,9 @@ const Orders: React.FC = () => {
           </Form.Item>
           <Form.Item name="email" label="邮箱">
             <Input placeholder="选填" />
+          </Form.Item>
+          <Form.Item name="apple_account" label="Apple 账号">
+            <Input placeholder="选填，Apple 登录账号" />
           </Form.Item>
           <Form.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}>
             <Select placeholder="选择产品">

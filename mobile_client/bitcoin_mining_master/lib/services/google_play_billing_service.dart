@@ -113,8 +113,14 @@ class GooglePlayBillingService {
       }
 
       print('🛒 发起订阅购买: ${product.id} - ${product.price}');
-      
-      final purchaseParam = PurchaseParam(productDetails: product);
+
+      // 将 userId 作为 applicationUserName 写入购买参数。
+      // Google Play 会将其存为 obfuscatedExternalAccountId，
+      // RTDN Webhook 可通过 Play Developer API 获取此字段以定位用户合约。
+      final purchaseParam = GooglePlayPurchaseParam(
+        productDetails: product,
+        applicationUserName: userId,
+      );
       // 订阅使用buyNonConsumable
       await _iap.buyNonConsumable(purchaseParam: purchaseParam);
       
@@ -164,6 +170,19 @@ class GooglePlayBillingService {
         onPurchaseUpdate?.call(false, 'Purchase cancelled.');
         if (purchaseDetails.pendingCompletePurchase) {
           _iap.completePurchase(purchaseDetails);
+        }
+
+      } else if (purchaseDetails.status == PurchaseStatus.restored) {
+        // 恢复购买（restorePurchases 触发）：走与新购买相同的验证流程
+        final txId = purchaseDetails.purchaseID;
+        if (txId != null && _processedTransactionIds.contains(txId)) {
+          print('⚠️ [GP] 跳过重复恢复交易 $txId（本次会话已处理）');
+          if (purchaseDetails.pendingCompletePurchase) {
+            _iap.completePurchase(purchaseDetails);
+          }
+        } else {
+          if (txId != null) _processedTransactionIds.add(txId);
+          _verifyAndDeliver(purchaseDetails);
         }
       }
       // completePurchase 已在各分支内处理（purchased 状态由 _verifyAndDeliver 负责调用）
@@ -224,7 +243,16 @@ class GooglePlayBillingService {
           onPurchaseUpdate?.call(true, 'Purchase successful! Contract activated. Check "My Contracts" to view.');
         } else {
           print('❌ 验证失败: ${data['message']}');
-          onPurchaseUpdate?.call(false, 'Verification failed: ${data["message"]}');
+          final String errCode = (data['code'] as String?) ?? '';
+          if (errCode == 'SUBSCRIPTION_EXPIRED') {
+            // 后端明确告知订阅已过期：友好提示，让用户点击「Subscribe」重新订阅
+            onPurchaseUpdate?.call(
+              false,
+              'Your previous subscription has expired. Please tap Subscribe again to start a new subscription.',
+            );
+          } else {
+            onPurchaseUpdate?.call(false, 'Verification failed: ${data["message"]}');
+          }
         }
         // 服务端已处理（无论成功/失败），关闭 Google Play 交易
         if (purchase.pendingCompletePurchase) {

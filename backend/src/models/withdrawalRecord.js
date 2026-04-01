@@ -52,11 +52,11 @@ const WithdrawalRecord = sequelize.define('withdrawal_records', {
     defaultValue: null,
     comment: 'Google账号邮箱，用于用户去重标识'
   },
-  apple_id: {
+  apple_account: {
     type: DataTypes.STRING(255),
     allowNull: true,
     defaultValue: null,
-    comment: 'Apple用户唯一ID(sub)，用于用户去重标识'
+    comment: 'Apple账号邮箱，用于用户去重标识'
   },
   binance_uid: {
     type: DataTypes.STRING(20),

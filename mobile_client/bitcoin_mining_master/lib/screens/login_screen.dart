@@ -126,6 +126,9 @@ class _LoginScreenState extends State<LoginScreen> {
         await _storageService.saveUserId(userId);
         await _storageService.saveInvitationCode(invitationCode);
         await _storageService.saveAppleId(appleId);
+        if (appleEmail != null && appleEmail.isNotEmpty) {
+          await _storageService.saveAppleAccount(appleEmail);
+        }
         await _storageService.saveIsLoggedOut(false);
         // 如果 Apple 返回了邀请码逻辑需要
         final referrerResult = await _handleReferrerCode(userId);

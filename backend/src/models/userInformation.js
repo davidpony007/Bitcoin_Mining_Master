@@ -178,7 +178,7 @@ const UserInformation = sequelize.define('user_information', {
       name: 'idx_device_id'
     },
     {
-      unique: true,  // 唯一约束
+      unique: true,
       fields: ['apple_id'],
       name: 'idx_apple_id_unique'
     },

@@ -1843,8 +1843,14 @@ exports.appleLoginOrCreate = async (req, res) => {
       console.log(`   📱 使用前端提供的国家代码（IP备选）: ${detectedCountry}`);
     }
 
-    // 查找已有该 apple_id 绑定的用户
+    // 查找已有该 apple_id 绑定的用户（首选），再按 apple_account，最后按 ios_device_id
     let user = await UserInformation.findOne({ where: { apple_id: apple_id.trim() } });
+    if (!user && apple_account && apple_account.trim()) {
+      user = await UserInformation.findOne({ where: { apple_account: apple_account.trim() } });
+    }
+    if (!user && ios_device_id && ios_device_id.trim()) {
+      user = await UserInformation.findOne({ where: { android_id: `IOS_${ios_device_id.trim()}` } });
+    }
     let isNewUser = false;
 
     if (user) {
@@ -2072,7 +2078,7 @@ exports.bindAppleAccount = async (req, res) => {
       });
     }
 
-    // 绑定
+    // 绑定 apple_id，同时记录 apple_account
     const updateData = { apple_id: apple_id.trim() };
     if (apple_account && apple_account.trim() !== '') {
       updateData.apple_account = apple_account.trim();

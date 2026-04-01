@@ -101,6 +101,7 @@ interface BtcSummary {
   totalBtcBalanceUsd: string;
   totalWithdrawn: number;
   totalWithdrawnUsd: string;
+  btcPrice?: number;
 }
 
 // ─── 趋势分析 Tab ────────────────────────────────────────────────
@@ -321,18 +322,34 @@ const DailySummaryTab: React.FC = () => {
       {/* 标题 + BTC 汇总 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>【每日统计（当日统计前一天的信息）】</span>
-        {summary && (
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
-            <span>
-              <Text type="secondary">用户总剩余BTC数量：</Text><Text strong>{summary.totalBtcBalance.toFixed(18)}</Text>
-              &nbsp;&nbsp;<Text type="secondary">用户总剩余BTC价值：</Text><Text strong>${summary.totalBtcBalanceUsd}</Text>
-            </span>
-            <span>
-              <Text type="secondary">用户总提现BTC数量：</Text><Text strong>{summary.totalWithdrawn.toFixed(18)}</Text>
-              &nbsp;&nbsp;<Text type="secondary">用户总提现BTC价值：</Text><Text strong>${summary.totalWithdrawnUsd}</Text>
-            </span>
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+          {/* 实时 BTC 价格——红框区域 */}
+          {summary?.btcPrice != null && summary.btcPrice > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'linear-gradient(135deg, #ff6b35 0%, #f7931a 100%)',
+              borderRadius: 8, padding: '6px 14px', boxShadow: '0 2px 8px rgba(247,147,26,0.35)'
+            }}>
+              <span style={{ fontSize: 16 }}>₿</span>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 15, letterSpacing: 0.5 }}>
+                ${summary.btcPrice.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+              <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11 }}>USD 实时</span>
+            </div>
+          )}
+          {summary && (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
+              <span>
+                <Text type="secondary">用户总剩余BTC数量：</Text><Text strong>{summary.totalBtcBalance.toFixed(18)}</Text>
+                &nbsp;&nbsp;<Text type="secondary">用户总剩余BTC价値：</Text><Text strong>${summary.totalBtcBalanceUsd}</Text>
+              </span>
+              <span>
+                <Text type="secondary">用户总提现BTC数量：</Text><Text strong>{summary.totalWithdrawn.toFixed(18)}</Text>
+                &nbsp;&nbsp;<Text type="secondary">用户总提现BTC价値：</Text><Text strong>${summary.totalWithdrawnUsd}</Text>
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 过滤栏 */}

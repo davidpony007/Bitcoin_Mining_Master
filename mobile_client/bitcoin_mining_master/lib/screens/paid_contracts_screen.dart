@@ -6,6 +6,7 @@ import 'dart:convert';
 import '../constants/app_constants.dart';
 import '../services/google_play_billing_service.dart';
 import '../services/apple_in_app_purchase_service.dart';
+import '../services/analytics_service.dart';
 import '../services/storage_service.dart';
 
 class PaidContractsScreen extends StatefulWidget {
@@ -732,6 +733,13 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
 
   // 处理购买 - 直接调起平台支付
   Future<void> _handlePurchase(Map<String, dynamic> tier) async {
+    // 埋点：用户点击订阅（发起购买，还未完成）— 用于计算支付转化率
+    final price = (tier['price'] as num?)?.toDouble() ?? 0.0;
+    AnalyticsService.instance.logInitiatePurchase(
+      contractId: tier['id']?.toString() ?? '',
+      price: price,
+      currency: 'USD',
+    );
     if (Platform.isAndroid) {
       // Android: 调起 Google Play Billing
       if (!_serviceInitialized) {
@@ -747,6 +755,27 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       if (storeId.isEmpty) {
         _showPurchaseResult(false, 'Invalid product configuration.');
         return;
+      }
+      // ── 购买前预检查（Android）：若已有该档位的活跃合约则阻止重复订阅 ──
+      final productId = tier['id'] as String;
+      try {
+        final statusUrl = Uri.parse('${ApiConstants.baseUrl}/contract-status/details/$userId');
+        final statusResp = await http.get(statusUrl).timeout(const Duration(seconds: 8));
+        if (statusResp.statusCode == 200) {
+          final statusData = jsonDecode(statusResp.body) as Map<String, dynamic>;
+          if (statusData['success'] == true) {
+            final paidData = statusData['data']?['paidContracts'] as Map<String, dynamic>? ?? {};
+            final activeList = (paidData['active'] as List<dynamic>?) ?? [];
+            final hasActiveForThisPlan = activeList.any((c) => c['productId'] == productId);
+            if (hasActiveForThisPlan) {
+              _showPurchaseResult(false, 'You already have an active subscription for this plan.');
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Android 活跃合约预检查失败（不阻断购买）: $e');
+        // 预检查失败时不阻断，后端仍会做最终判断
       }
       setState(() => _loadingTierId = tier['id'] as String);
       _billingService.userId = userId;
@@ -796,7 +825,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
             final activeList = (paidData['active'] as List<dynamic>?) ?? [];
             // 检查该 productId 是否已有活跃合约；同时拦截 productId='custom'（DB product_id 为 NULL 的异常数据）
             final hasActiveForThisPlan = activeList.any(
-              (c) => c['productId'] == productId || c['productId'] == 'custom',
+              (c) => c['productId'] == productId,
             );
             if (hasActiveForThisPlan) {
               setState(() => _loadingTierId = null);

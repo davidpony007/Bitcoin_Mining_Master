@@ -230,6 +230,7 @@ exports.handleNotification = async (req, res) => {
               await UserOrder.create({
                 user_id: order.user_id,
                 email: order.email,
+                apple_account: order.apple_account || null,
                 product_id: backendProductId || order.product_id,
                 product_name: order.product_name,
                 product_price: order.product_price,

@@ -32,9 +32,15 @@ const Ads: React.FC = () => {
   const [trend, setTrend] = useState<AdsTrendItem[]>([]);
   const [topUsers, setTopUsers] = useState<AdsTopUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_ads') || '{}'); } catch { return {}; }
+  });
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
-    setColWidths(prev => ({ ...prev, [key]: size.width }));
+    setColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_ads', JSON.stringify(next));
+      return next;
+    });
   };
 
   useEffect(() => {

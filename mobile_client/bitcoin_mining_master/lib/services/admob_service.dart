@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'analytics_service.dart';
 
 /// AdMob广告服务管理类
 /// 负责初始化AdMob SDK、加载和展示激励视频广告
@@ -66,6 +67,18 @@ class AdMobService {
             _isAdLoaded = true;
             _isAdLoading = false;
             onAdLoaded?.call();
+
+            // ad_impression：广告产生收益时上报金额（使 Firebase Revenue 报表有数据）
+            // onPaidEvent 在 google_mobile_ads v5.x 的签名：(Ad, double, PrecisionType, String)
+            _rewardedAd?.onPaidEvent = (Ad ad, double valueMicros, PrecisionType precision, String currencyCode) {
+              AnalyticsService.instance.logCustomEvent('ad_impression', {
+                'ad_unit_id': ad.adUnitId,
+                'ad_format': 'rewarded',
+                'currency': currencyCode,
+                'value': valueMicros / 1000000.0,
+                'precision': precision.index,
+              });
+            };
             
             // 设置广告事件监听
             _rewardedAd?.fullScreenContentCallback = FullScreenContentCallback(
