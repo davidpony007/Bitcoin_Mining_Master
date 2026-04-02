@@ -59,6 +59,11 @@ const Sidebar: React.FC = () => {
       label: '用户管理',
     },
     {
+      key: '/rate-config',
+      icon: <ThunderboltOutlined />,
+      label: '速率配置',
+    },
+    {
       key: '/ads',
       icon: <DollarOutlined />,
       label: '广告数据',
@@ -96,7 +101,7 @@ const Sidebar: React.FC = () => {
     {
       key: '/paid-products',
       icon: <AppstoreOutlined />,
-      label: '产品配置',
+      label: '商品配置',
     },
     {
       key: '/settings',

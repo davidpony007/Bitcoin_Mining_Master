@@ -48,6 +48,13 @@ router.post('/daily', async (req, res) => {
   try {
     // 从请求体中获取user_id
     const userId = req.body.user_id;
+    const deviceCountry = req.body.device_country || null; // 方案B：Flutter设备locale国家
+
+    // 提取请求IP（IP检测作为次优来源）
+    const requestIp = req.headers['x-forwarded-for']?.split(',')[0].trim()
+                   || req.headers['x-real-ip']
+                   || req.ip
+                   || '未知';
     
     if (!userId) {
       return res.status(400).json({
@@ -70,8 +77,8 @@ router.post('/daily', async (req, res) => {
       });
     }
 
-    // 2. 签到成功后，创建挖矿合约
-    const result = await CheckInMiningContractService.checkInAndCreateMiningContract(userId);
+    // 2. 签到成功后，创建挖矿合约（传入IP和设备国家，country_code采用：设备locale > IP > 已存储）
+    const result = await CheckInMiningContractService.checkInAndCreateMiningContract(userId, requestIp, deviceCountry);
 
     // 3. 记录广告观看到 ad_view_record 表
     try {

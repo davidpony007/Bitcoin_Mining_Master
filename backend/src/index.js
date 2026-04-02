@@ -39,8 +39,15 @@ const winston = require('winston'); // 日志管理
 const helmet = require('helmet'); // 安全 HTTP 头
 
 // 引入自定义中间件和路由模块
-// 限流中间件：防止暴力攻击和接口滥用
-const { globalLimiter, authLimiter, withdrawalLimiter } = require('./middleware/rateLimiter');
+// 限流中间件：防止暴力攻击和接口滥用（可选：若 express-rate-limit 未安装则降级为无限流）
+let globalLimiter, authLimiter, withdrawalLimiter;
+try {
+  ({ globalLimiter, authLimiter, withdrawalLimiter } = require('./middleware/rateLimiter'));
+} catch (e) {
+  console.warn('⚠️ [rateLimiter] express-rate-limit 未安装，限流功能已禁用:', e.message);
+  const passthrough = (req, res, next) => next();
+  globalLimiter = authLimiter = withdrawalLimiter = passthrough;
+}
 const errorHandler = require('./middleware/errorHandler'); // 全局错误处理，捕获所有异常
 const userRoutes = require('./routes/userRoutes'); // 用户相关接口路由
 const userInformationRoutes = require('./routes/userInformationRoutes'); // 用户信息接口路由

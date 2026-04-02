@@ -7,7 +7,7 @@ import {
 import {
   SearchOutlined, UserOutlined, TeamOutlined, RiseOutlined,
   PlusCircleOutlined, MinusCircleOutlined, InfoCircleOutlined,
-  DollarOutlined, CrownOutlined, ReloadOutlined,
+  DollarOutlined, CrownOutlined, ReloadOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { usersApi } from '@/services/api/admin';
@@ -44,6 +44,7 @@ interface UserRow {
   bitcoin_accumulated_amount: string | null;
   total_withdrawal_amount: string | null;
   total_invitation_rebate: string | null;
+  mining_rate_per_second: string | null;
 }
 
 interface UserDetail {
@@ -148,6 +149,47 @@ const Users: React.FC = () => {
     try { return JSON.parse(localStorage.getItem('col_widths_users') || '{}'); } catch { return {}; }
   });
 
+  const [inviteColWidths, setInviteColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_users_invite') || '{}'); } catch { return {}; }
+  });
+  const handleInviteResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setInviteColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_users_invite', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const [txColWidths, setTxColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_users_tx') || '{}'); } catch { return {}; }
+  });
+  const handleTxResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setTxColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_users_tx', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const [wdColWidths, setWdColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_users_wd') || '{}'); } catch { return {}; }
+  });
+  const handleWdResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setWdColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_users_wd', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const [btcPrice, setBtcPrice] = useState<number>(0);
+
+  const [sortField, setSortField] = useState<string>('user_creation_time');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  const [countryFilter, setCountryFilter] = useState<string>('');
+  const [levelFilter, setLevelFilter] = useState<string>('');
+  const [countries, setCountries] = useState<{ country_code: string; country_name_cn: string | null }[]>([]);
+
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<UserDetail | null>(null);
@@ -158,6 +200,54 @@ const Users: React.FC = () => {
   const [btcForm] = Form.useForm();
   const [btcLoading, setBtcLoading] = useState(false);
 
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleDelete = (record: UserRow) => {
+    Modal.confirm({
+      title: '确认删除用户？',
+      content: (
+        <div>
+          <p style={{ color: '#ff4d4f', fontWeight: 600 }}>此操作不可逆，将永久删除该用户的所有数据！</p>
+          <p>用户：{record.email || record.user_id}</p>
+        </div>
+      ),
+      okText: '确认删除', okType: 'danger', cancelText: '取消',
+      onOk: async () => {
+        try {
+          const res: any = await usersApi.deleteUser(record.user_id);
+          if (res?.success) { message.success('用户已删除'); loadList(page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); }
+          else message.error(res?.message || '删除失败');
+        } catch { message.error('删除失败'); }
+      },
+    });
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: `确认批量删除 ${selectedRowKeys.length} 个用户？`,
+      content: (
+        <div>
+          <p style={{ color: '#ff4d4f', fontWeight: 600 }}>此操作不可逆，将永久删除所选用户的所有数据！</p>
+        </div>
+      ),
+      okText: '确认删除', okType: 'danger', cancelText: '取消',
+      onOk: async () => {
+        try {
+          setDeleteLoading(true);
+          const res: any = await usersApi.bulkDeleteUsers(selectedRowKeys as string[]);
+          if (res?.success) {
+            message.success(res.message || '批量删除成功');
+            setSelectedRowKeys([]);
+            loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder);
+          } else message.error(res?.message || '删除失败');
+        } catch { message.error('删除失败'); }
+        finally { setDeleteLoading(false); }
+      },
+    });
+  };
+
   const handleResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
     setColWidths(prev => {
       const next = { ...prev, [key]: size.width };
@@ -167,29 +257,43 @@ const Users: React.FC = () => {
   };
 
   const loadList = useCallback(async (
-    p = page, s = search, st = status, sys = systemFilter, acq = acquisitionFilter
+    p = page, s = search, st = status, sys = systemFilter, acq = acquisitionFilter,
+    ctry = countryFilter, lvl = levelFilter, sf = sortField, so = sortOrder
   ) => {
     try {
       setLoading(true);
       const res = await usersApi.list({
         page: p, limit: 20, search: s || undefined,
         status: st || undefined, system: sys || undefined, acquisition: acq || undefined,
+        country: ctry || undefined, level: lvl || undefined,
+        sortBy: sf || undefined, sortOrder: so || undefined,
       });
       if (res?.success) { setList(res.data.list); setTotal(res.data.total); }
     } catch { message.error('加载用户列表失败'); }
     finally { setLoading(false); }
-  }, [page, search, status, systemFilter, acquisitionFilter]);
+  }, [page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder]);
 
   useEffect(() => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
+    usersApi.getBtcPrice().then((res: any) => { if (res?.data?.price > 0) setBtcPrice(res.data.price); });
+    usersApi.countries().then((res: any) => { if (res?.success) setCountries(res.data || []); });
     loadList(1, '', '');
   }, []);
 
-  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter); };
+  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); };
 
   const handleRefresh = () => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
-    loadList(page, search, status, systemFilter, acquisitionFilter);
+    loadList(page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder);
+  };
+
+  const handleTableChange = (_pagination: any, _filters: any, sorter: any) => {
+    const field = sorter.field || 'user_creation_time';
+    const order: 'ASC' | 'DESC' = sorter.order === 'ascend' ? 'ASC' : 'DESC';
+    setSortField(field);
+    setSortOrder(order);
+    setPage(1);
+    loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, field, order);
   };
 
   const openDetail = async (record: UserRow) => {
@@ -250,12 +354,13 @@ const Users: React.FC = () => {
 
   // ─── 表格列 ──────────────────────────────────────────────────────────────
 
+  const getSO = (key: string) => sortField === key ? (sortOrder === 'ASC' ? 'ascend' as const : 'descend' as const) : null;
+
   const columns: ColumnsType<UserRow> = [
     {
       title: 'User ID', dataIndex: 'user_id', key: 'user_id', width: 160, ellipsis: true,
       render: (v: string) => <Text copyable={{ text: v }} style={{ fontSize: 12 }}>{v}</Text>,
     },
-    { title: '邮箱', dataIndex: 'email', key: 'email', ellipsis: true, width: 180 },
     {
       title: '国家', dataIndex: 'country_code', key: 'country_code', width: 90,
       render: (v: string, r: UserRow) => {
@@ -265,7 +370,17 @@ const Users: React.FC = () => {
     },
     {
       title: 'BTC余额', dataIndex: 'current_bitcoin_balance', key: 'current_bitcoin_balance', width: 130,
+      sorter: true, sortOrder: getSO('current_bitcoin_balance'),
       render: (v: string) => <Text style={{ color: '#f7931a', fontWeight: 600 }}>{fmtBtc(v)}</Text>,
+    },
+    {
+      title: 'BTC余额实时价值', key: 'btc_value', width: 140,
+      render: (_: any, r: UserRow) => {
+        const bal = parseFloat(r.current_bitcoin_balance || '0');
+        return btcPrice > 0
+          ? <Text style={{ color: '#faad14', fontWeight: 600 }}>${(bal * btcPrice).toFixed(4)}</Text>
+          : <Text type="secondary">-</Text>;
+      },
     },
     {
       title: '累计挖矿', dataIndex: 'bitcoin_accumulated_amount', key: 'bitcoin_accumulated_amount', width: 130,
@@ -277,14 +392,32 @@ const Users: React.FC = () => {
     },
     {
       title: '邀请返利', dataIndex: 'total_invitation_rebate', key: 'total_invitation_rebate', width: 120,
+      sorter: true, sortOrder: getSO('total_invitation_rebate'),
       render: (v: string) => <Text style={{ color: '#722ed1' }}>{fmtBtc(v)}</Text>,
     },
     {
       title: '等级', dataIndex: 'user_level', key: 'user_level', width: 65,
+      sorter: true, sortOrder: getSO('user_level'),
       render: (v: number) => <Tag color="gold"><CrownOutlined /> {v}</Tag>,
     },
-    { title: '积分', dataIndex: 'user_points', key: 'user_points', width: 70 },
-    { title: '广告观看次数', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 100 },
+    {
+      title: '积分', dataIndex: 'user_points', key: 'user_points', width: 70,
+      sorter: true, sortOrder: getSO('user_points'),
+    },
+    {
+      title: '广告观看次数', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 100,
+      sorter: true, sortOrder: getSO('total_ad_views'),
+    },
+    {
+      title: '实时挖矿速率', dataIndex: 'mining_rate_per_second', key: 'mining_rate_per_second', width: 155,
+      sorter: true, sortOrder: getSO('mining_rate_per_second'),
+      render: (v: string | null) => (
+        <span>
+          <Text style={{ color: '#13c2c2', fontWeight: 600 }}>{v ? parseFloat(v).toFixed(18) : '0.000000000000000000'}</Text>
+          <Text type="secondary" style={{ fontSize: 10, marginLeft: 3 }}>BTC/s</Text>
+        </span>
+      ),
+    },
     {
       title: '平台', dataIndex: 'system', key: 'system', width: 75,
       render: (v: string, r: UserRow) => {
@@ -311,14 +444,16 @@ const Users: React.FC = () => {
     },
     {
       title: '最后登录', dataIndex: 'last_login_time', key: 'last_login_time', width: 150,
+      sorter: true, sortOrder: getSO('last_login_time'),
       render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
     {
       title: '注册时间', dataIndex: 'user_creation_time', key: 'user_creation_time', width: 175,
+      sorter: true, sortOrder: getSO('user_creation_time'),
       render: (v: string) => new Date(v).toISOString().slice(0, 19).replace('T', ' '),
     },
     {
-      title: '操作', key: 'action', width: 220, fixed: 'right' as const,
+      title: '操作', key: 'action', width: 270, fixed: 'right' as const,
       render: (_: any, record: UserRow) => (
         <Space size={4} wrap>
           <Button size="small" icon={<InfoCircleOutlined />} onClick={() => openDetail(record)}>详情</Button>
@@ -334,6 +469,7 @@ const Users: React.FC = () => {
           ) : (
             <Button size="small" danger onClick={() => handleBan(record)}>禁用</Button>
           )}
+          <Button size="small" danger type="primary" icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>删除</Button>
         </Space>
       ),
     },
@@ -440,9 +576,12 @@ const Users: React.FC = () => {
           {recentTxs.length === 0 ? <Empty description="暂无交易记录" /> : (
             <Table size="small" pagination={false} scroll={{ y: 260 }}
               dataSource={recentTxs} rowKey={(_: any, i?: number) => String(i)}
+              components={{ header: { cell: ResizableTitle } }}
               columns={[
                 {
-                  title: '类型', dataIndex: 'transaction_type', width: 110,
+                  title: '类型', dataIndex: 'transaction_type', key: 'tx_type',
+                  width: txColWidths['tx_type'] || 110,
+                  onHeaderCell: () => ({ width: txColWidths['tx_type'] || 110, onResize: handleTxResize('tx_type') }),
                   render: (v: string) => (
                     <Tag color={v === 'admin_add' ? 'green' : v === 'admin_deduct' ? 'red' : 'default'} style={{ fontSize: 11 }}>
                       {txTypeLabel[v] || v}
@@ -450,17 +589,35 @@ const Users: React.FC = () => {
                   ),
                 },
                 {
-                  title: '金额(BTC)', dataIndex: 'transaction_amount', width: 125,
+                  title: '金额(BTC)', dataIndex: 'transaction_amount', key: 'tx_amount',
+                  width: txColWidths['tx_amount'] || 125,
+                  onHeaderCell: () => ({ width: txColWidths['tx_amount'] || 125, onResize: handleTxResize('tx_amount') }),
                   render: (v: string, r: any) => {
                     const isOut = r.transaction_type === 'withdrawal' || r.transaction_type === 'admin_deduct';
                     return <Text style={{ color: isOut ? '#ff4d4f' : '#52c41a' }}>{isOut ? '-' : '+'}{fmtBtc(v)}</Text>;
                   },
                 },
-                { title: '余额(BTC)', dataIndex: 'balance_after', width: 125, render: (v: string | null) => v != null ? fmtBtc(v) : '-' },
-                { title: '描述', dataIndex: 'description', ellipsis: true },
-                { title: '时间', dataIndex: 'transaction_creation_time', width: 148, render: (v: string) => fmtTime(v) },
                 {
-                  title: '状态', dataIndex: 'transaction_status', width: 65,
+                  title: '余额(BTC)', dataIndex: 'balance_after', key: 'tx_balance',
+                  width: txColWidths['tx_balance'] || 125,
+                  onHeaderCell: () => ({ width: txColWidths['tx_balance'] || 125, onResize: handleTxResize('tx_balance') }),
+                  render: (v: string | null) => v != null ? fmtBtc(v) : '-',
+                },
+                {
+                  title: '描述', dataIndex: 'description', key: 'tx_desc', ellipsis: true,
+                  width: txColWidths['tx_desc'] || undefined,
+                  onHeaderCell: () => ({ width: txColWidths['tx_desc'] || 200, onResize: handleTxResize('tx_desc') }),
+                },
+                {
+                  title: '时间', dataIndex: 'transaction_creation_time', key: 'tx_time',
+                  width: txColWidths['tx_time'] || 148,
+                  onHeaderCell: () => ({ width: txColWidths['tx_time'] || 148, onResize: handleTxResize('tx_time') }),
+                  render: (v: string) => fmtTime(v),
+                },
+                {
+                  title: '状态', dataIndex: 'transaction_status', key: 'tx_status',
+                  width: txColWidths['tx_status'] || 65,
+                  onHeaderCell: () => ({ width: txColWidths['tx_status'] || 65, onResize: handleTxResize('tx_status') }),
                   render: (v: string) => <Tag color={v === 'success' ? 'green' : v === 'error' ? 'red' : 'orange'} style={{ fontSize: 11 }}>{v}</Tag>,
                 },
               ]}
@@ -470,15 +627,37 @@ const Users: React.FC = () => {
           <Divider orientation="left" plain style={{ marginTop: 16 }}>近期提现（最新5条）</Divider>
           {recentWithdrawals.length === 0 ? <Empty description="暂无提现记录" /> : (
             <Table size="small" pagination={false} dataSource={recentWithdrawals} rowKey={(_: any, i?: number) => String(i)}
+              components={{ header: { cell: ResizableTitle } }}
               columns={[
-                { title: '申请金额', dataIndex: 'withdrawal_request_amount', width: 110, render: (v: string) => fmtBtc(v) },
-                { title: '到账金额', dataIndex: 'received_amount', width: 110, render: (v: string) => fmtBtc(v) },
                 {
-                  title: '状态', dataIndex: 'withdrawal_status', width: 80,
+                  title: '申请金额', dataIndex: 'withdrawal_request_amount', key: 'wd_req',
+                  width: wdColWidths['wd_req'] || 110,
+                  onHeaderCell: () => ({ width: wdColWidths['wd_req'] || 110, onResize: handleWdResize('wd_req') }),
+                  render: (v: string) => fmtBtc(v),
+                },
+                {
+                  title: '到账金额', dataIndex: 'received_amount', key: 'wd_recv',
+                  width: wdColWidths['wd_recv'] || 110,
+                  onHeaderCell: () => ({ width: wdColWidths['wd_recv'] || 110, onResize: handleWdResize('wd_recv') }),
+                  render: (v: string) => fmtBtc(v),
+                },
+                {
+                  title: '状态', dataIndex: 'withdrawal_status', key: 'wd_status',
+                  width: wdColWidths['wd_status'] || 80,
+                  onHeaderCell: () => ({ width: wdColWidths['wd_status'] || 80, onResize: handleWdResize('wd_status') }),
                   render: (v: string) => <Tag color={v === 'success' ? 'green' : v === 'pending' ? 'orange' : 'red'}>{v}</Tag>,
                 },
-                { title: '钱包地址', dataIndex: 'wallet_address', ellipsis: true },
-                { title: '时间', dataIndex: 'created_at', width: 148, render: (v: string) => fmtTime(v) },
+                {
+                  title: '钱包地址', dataIndex: 'wallet_address', key: 'wd_wallet', ellipsis: true,
+                  width: wdColWidths['wd_wallet'] || undefined,
+                  onHeaderCell: () => ({ width: wdColWidths['wd_wallet'] || 200, onResize: handleWdResize('wd_wallet') }),
+                },
+                {
+                  title: '时间', dataIndex: 'created_at', key: 'wd_time',
+                  width: wdColWidths['wd_time'] || 148,
+                  onHeaderCell: () => ({ width: wdColWidths['wd_time'] || 148, onResize: handleWdResize('wd_time') }),
+                  render: (v: string) => fmtTime(v),
+                },
               ]}
             />
           )}
@@ -503,11 +682,28 @@ const Users: React.FC = () => {
           {invitedCount > 0 && (
             <>
               <Divider orientation="left" plain style={{ marginTop: 16 }}>已邀请用户（共 {invitedCount} 人）</Divider>
-              <Table size="small" pagination={false} dataSource={invitedList} rowKey="user_id"
+              <Table
+                size="small"
+                pagination={false}
+                dataSource={invitedList}
+                rowKey="user_id"
+                components={{ header: { cell: ResizableTitle } }}
                 columns={[
-                  { title: 'User ID', dataIndex: 'user_id', width: 160, render: (v: string) => <Text copyable style={{ fontSize: 11 }}>{v}</Text> },
-                  { title: '邮箱', dataIndex: 'email', ellipsis: true },
-                  { title: '注册时间', dataIndex: 'invitation_creation_time', width: 148, render: (v: string) => fmtTime(v) },
+                  { title: 'User ID', dataIndex: 'user_id', key: 'inv_user_id',
+                    width: inviteColWidths['inv_user_id'] || 180,
+                    render: (v: string) => <Text copyable style={{ fontSize: 11 }}>{v}</Text>,
+                    onHeaderCell: () => ({ width: inviteColWidths['inv_user_id'] || 180, onResize: handleInviteResize('inv_user_id') }),
+                  },
+                  { title: '邮箱', dataIndex: 'email', key: 'inv_email',
+                    ellipsis: true,
+                    width: inviteColWidths['inv_email'] || 220,
+                    onHeaderCell: () => ({ width: inviteColWidths['inv_email'] || 220, onResize: handleInviteResize('inv_email') }),
+                  },
+                  { title: '邀请关系建立时间', dataIndex: 'invitation_creation_time', key: 'inv_time',
+                    width: inviteColWidths['inv_time'] || 175,
+                    render: (v: string) => fmtTime(v),
+                    onHeaderCell: () => ({ width: inviteColWidths['inv_time'] || 175, onResize: handleInviteResize('inv_time') }),
+                  },
                 ]}
               />
             </>
@@ -521,7 +717,22 @@ const Users: React.FC = () => {
 
   return (
     <div className="users-page">
-      <h1 className="page-title">用户管理</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 4 }}>
+        <h1 className="page-title" style={{ margin: 0 }}>用户管理</h1>
+        {btcPrice > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931a 100%)',
+            borderRadius: 8, padding: '4px 12px', boxShadow: '0 2px 8px rgba(247,147,26,0.35)'
+          }}>
+            <span style={{ fontSize: 15 }}>₿</span>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14, letterSpacing: 0.5 }}>
+              ${btcPrice.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </span>
+            <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11 }}>USD 实时</span>
+          </div>
+        )}
+      </div>
 
       <Row gutter={[12, 12]} style={{ marginBottom: 20 }}>
         {[
@@ -548,26 +759,39 @@ const Users: React.FC = () => {
         <Space style={{ marginBottom: 16 }} wrap>
           <Input placeholder="搜索邮箱 / User ID / Google账号" prefix={<SearchOutlined />} style={{ width: 280 }}
             value={search} onChange={e => setSearch(e.target.value)} onPressEnter={handleSearch} />
-          <Select placeholder="系统平台" style={{ width: 130 }} value={systemFilter || undefined} allowClear
-            onChange={(v: string) => { setSystemFilter(v || ''); setPage(1); loadList(1, search, status, v || '', acquisitionFilter); }}>
+          <Select placeholder="系统平台" style={{ width: 120 }} value={systemFilter || undefined} allowClear
+            onChange={(v: string) => { setSystemFilter(v || ''); setPage(1); loadList(1, search, status, v || '', acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); }}>
             <Option value="iOS">iOS</Option>
             <Option value="Android">Android</Option>
           </Select>
-          <Select placeholder="来源渠道" style={{ width: 130 }} value={acquisitionFilter || undefined} allowClear
-            onChange={(v: string) => { setAcquisitionFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, v || ''); }}>
+          <Select placeholder="来源渠道" style={{ width: 120 }} value={acquisitionFilter || undefined} allowClear
+            onChange={(v: string) => { setAcquisitionFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, v || '', countryFilter, levelFilter, sortField, sortOrder); }}>
             <Option value="invited">邀请注册</Option>
             <Option value="organic">自然安装</Option>
             <Option value="paid">付费推广</Option>
           </Select>
-          <Select placeholder="用户状态" style={{ width: 150 }} value={status || undefined} allowClear
-            onChange={(v: string) => { setStatus(v || ''); setPage(1); loadList(1, search, v || '', systemFilter, acquisitionFilter); }}>
+          <Select placeholder="用户状态" style={{ width: 140 }} value={status || undefined} allowClear
+            onChange={(v: string) => { setStatus(v || ''); setPage(1); loadList(1, search, v || '', systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); }}>
             <Option value="active within 3 days">近3天活跃</Option>
             <Option value="no login within 7 days">7天未登录</Option>
             <Option value="normal">正常</Option>
             <Option value="disabled">已禁用</Option>
           </Select>
+          <Select placeholder="国家" style={{ width: 140 }} value={countryFilter || undefined} allowClear showSearch optionFilterProp="children"
+            onChange={(v: string) => { setCountryFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, v || '', levelFilter, sortField, sortOrder); }}>
+            {countries.map(c => <Option key={c.country_code} value={c.country_code}>{c.country_name_cn || c.country_code}</Option>)}
+          </Select>
+          <Select placeholder="等级" style={{ width: 90 }} value={levelFilter || undefined} allowClear
+            onChange={(v: string) => { setLevelFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, v || '', sortField, sortOrder); }}>
+            {[1,2,3,4,5,6,7,8,9,10].map(l => <Option key={l} value={String(l)}>Lv.{l}</Option>)}
+          </Select>
           <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
           <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} title="刷新数据">刷新</Button>
+          {selectedRowKeys.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} loading={deleteLoading} onClick={handleBulkDelete}>
+              删除所选（{selectedRowKeys.length}）
+            </Button>
+          )}
         </Space>
 
         <Table<UserRow>
@@ -576,11 +800,17 @@ const Users: React.FC = () => {
           dataSource={list}
           rowKey="user_id"
           loading={loading}
-          scroll={{ x: 2000 }}
+          scroll={{ x: 2500 }}
+          onChange={handleTableChange}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+            preserveSelectedRowKeys: true,
+          }}
           pagination={{
             total, current: page, pageSize: 20, showSizeChanger: false,
             showQuickJumper: true, showTotal: (t: number) => `共 ${t} 条`,
-            onChange: (p: number) => { setPage(p); loadList(p, search, status, systemFilter, acquisitionFilter); },
+            onChange: (p: number) => { setPage(p); loadList(p, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); },
           }}
         />
       </Card>

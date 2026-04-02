@@ -3,6 +3,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import '../models/user_model.dart';
 import '../services/user_repository.dart';
 import '../services/storage_service.dart';
+import '../services/api_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:async';
 
@@ -112,12 +113,14 @@ class UserProvider with ChangeNotifier {
       _offlineDebounce?.cancel();
       _offlineDebounce = Timer(const Duration(seconds: 3), () {
         _setError('Network connection lost, using offline mode');
-        // 防抖：3 秒内已由 ApiService 弹过同一条提示则不重复弹
-        Fluttertoast.showToast(
-          msg: 'Network connection error, please try again!',
-          toastLength: Toast.LENGTH_SHORT,
-          gravity: ToastGravity.CENTER,
-        );
+        // 从后台恢复的静默窗口期内不弹 Toast（网络重建的正常抖动）
+        if (!ApiService.isInResumeSilenceWindow) {
+          Fluttertoast.showToast(
+            msg: 'Network connection error, please try again!',
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+          );
+        }
       });
     }
   }

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:io' show Platform;
+import 'dart:ui' as ui;
 import 'package:package_info_plus/package_info_plus.dart';
 import '../constants/app_constants.dart';
 import '../models/user_model.dart';
@@ -10,6 +11,24 @@ import 'storage_service.dart';
 /// API服务类 - 对应Kotlin的ApiService
 class ApiService {
   late final Dio _dio;
+
+  /// 获取设备 locale 国家码（方案B：最贴近 AdMob 归因国家）
+  static String getDeviceCountryCode() {
+    try {
+      final locale = ui.PlatformDispatcher.instance.locale;
+      final code = locale.countryCode ?? '';
+      if (code.isNotEmpty) return code.toUpperCase();
+      if (!kIsWeb) {
+        final localeName = Platform.localeName;
+        if (localeName.contains('_')) {
+          return localeName.split('_').last.split('@').first.toUpperCase();
+        }
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
 
   ApiService() {
     // iOS 上 VPN 会延迟 HTTP 回包，接收超时用 60s；Android / 其他平台用 30s
@@ -209,6 +228,7 @@ class ApiService {
         'device_id': deviceId,
         'gaid': gaid,
         'country': country,
+        'device_country': getDeviceCountryCode(), // 方案B：设备locale国家，最贴近AdMob归因
         if (system != null) 'system': system,
         if (appVersion != null) 'app_version': appVersion,
         if (appBuildNumber != null) 'app_build_number': appBuildNumber,
@@ -683,6 +703,22 @@ class ApiService {
   // 声明为 public 以供 user_provider.dart 共用同一个防抖时间戳
   static DateTime? lastNetworkErrorToastTime;
 
+  // App 从后台恢复的时间戳：恢复后 3 秒内的网络错误为正常抖动，静默处理不弹 Toast
+  static DateTime? _lastResumeTime;
+  static const int _resumeSilenceSeconds = 3;
+
+  /// 由 main.dart 在 AppLifecycleState.resumed 时调用，记录恢复时间
+  static void notifyAppResumed() {
+    _lastResumeTime = DateTime.now();
+  }
+
+  /// 判断当前是否处于从后台恢复的静默窗口期
+  static bool get isInResumeSilenceWindow {
+    final t = _lastResumeTime;
+    if (t == null) return false;
+    return DateTime.now().difference(t).inSeconds < _resumeSilenceSeconds;
+  }
+
   Exception _handleError(DioException error) {
     final bool isNetworkError =
         error.type == DioExceptionType.connectionTimeout ||
@@ -694,19 +730,22 @@ class ApiService {
     final bool isReceiveTimeout = error.type == DioExceptionType.receiveTimeout;
 
     if (isNetworkError) {
-      final now = DateTime.now();
-      final lastShown = lastNetworkErrorToastTime;
-      // 5 秒内只弹一次，避免多个并发请求同时失败时重复弹出
-      if (lastShown == null || now.difference(lastShown).inSeconds >= 5) {
-        lastNetworkErrorToastTime = now;
-        final msg = isReceiveTimeout
-            ? 'Connection timed out. If you have a VPN enabled, please disable it and try again.'
-            : 'Network connection error, please try again!';
-        Fluttertoast.showToast(
-          msg: msg,
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.CENTER,
-        );
+      // 从后台恢复后 3 秒静默窗口内不弹 Toast（网络重建的正常抖动）
+      if (!isInResumeSilenceWindow) {
+        final now = DateTime.now();
+        final lastShown = lastNetworkErrorToastTime;
+        // 5 秒内只弹一次，避免多个并发请求同时失败时重复弹出
+        if (lastShown == null || now.difference(lastShown).inSeconds >= 5) {
+          lastNetworkErrorToastTime = now;
+          final msg = isReceiveTimeout
+              ? 'Connection timed out. If you have a VPN enabled, please disable it and try again.'
+              : 'Network connection error, please try again!';
+          Fluttertoast.showToast(
+            msg: msg,
+            toastLength: Toast.LENGTH_LONG,
+            gravity: ToastGravity.CENTER,
+          );
+        }
       }
     }
 
@@ -783,6 +822,7 @@ class ApiService {
         '/check-in/daily',
         data: {
           'user_id': userId,
+          'device_country': getDeviceCountryCode(), // 方案B：设备locale国家，最贴近AdMob归因
         },
       );
       print('✅ [API Service] 签到API响应: ${response.data}');

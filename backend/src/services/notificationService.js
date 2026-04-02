@@ -10,7 +10,12 @@
  * 安装依赖: npm install google-auth-library
  */
 
-const { GoogleAuth } = require('google-auth-library');
+let GoogleAuth;
+try {
+  ({ GoogleAuth } = require('google-auth-library'));
+} catch (e) {
+  console.warn('⚠️ [notificationService] google-auth-library 未安装，推送通知不可用:', e.message);
+}
 const https = require('https');
 const pool = require('../config/database_native');
 
@@ -19,6 +24,9 @@ let _auth = null;
 let _projectId = null;
 
 function _getAuth() {
+  if (!GoogleAuth) {
+    throw new Error('❌ google-auth-library 未安装，推送通知不可用');
+  }
   if (_auth) return { auth: _auth, projectId: _projectId };
 
   const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;

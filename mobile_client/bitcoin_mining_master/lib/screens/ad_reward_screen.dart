@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'dart:io' show Platform;
+import 'dart:ui' as ui;
 import 'checkin_screen.dart';
 
 /// 广告奖励页面 - Ad Reward Screen 
@@ -28,6 +29,24 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
   String? _lastErrorMessage;
   bool _hasCheckedInToday = false; // 今日是否已签到
   bool _isAdReady = false; // 广告是否准备好
+
+  /// 获取设备 locale 中的国家代码（方案B：最贴近 AdMob 归因国家）
+  String _getDeviceCountryCode() {
+    try {
+      // 优先从 dart:ui 获取（比 Platform.localeName 更准确，来自系统语言设置）
+      final locale = ui.PlatformDispatcher.instance.locale;
+      final code = locale.countryCode ?? '';
+      if (code.isNotEmpty) return code.toUpperCase();
+      // 兜底：从 Platform.localeName 解析（如 "zh_CN" → "CN"）
+      final localeName = kIsWeb ? '' : Platform.localeName;
+      if (localeName.contains('_')) {
+        return localeName.split('_').last.split('@').first.toUpperCase();
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
   bool _isLoadingAd = true; // 是否正在加载广告
   bool _adWatched = false; // 是否已观看完广告
 
@@ -304,7 +323,10 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             headers: {
               'Content-Type': 'application/json',
             },
-            body: json.encode({'user_id': userId}),
+            body: json.encode({
+              'user_id': userId,
+              'device_country': _getDeviceCountryCode(), // 方案B：上报设备locale国家
+            }),
           ).timeout(
             const Duration(seconds: 30), // 增加超时时间到30秒
             onTimeout: () {
@@ -411,6 +433,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             body: json.encode({
               'user_id': userId,
               'hours': 2, // 观看广告奖励2小时
+              'device_country': _getDeviceCountryCode(), // 方案B：上报设备locale国家
             }),
           ).timeout(
             const Duration(seconds: 30), // 增加超时时间到30秒

@@ -3,7 +3,12 @@
  * 使用Google Play Developer API验证购买凭证
  */
 
-const { google } = require('googleapis');
+let google;
+try {
+  ({ google } = require('googleapis'));
+} catch (e) {
+  console.warn('⚠️ [GooglePlay] googleapis 未安装，Android支付验证不可用:', e.message);
+}
 const path = require('path');
 const fs = require('fs');
 
@@ -18,6 +23,10 @@ class GooglePlayVerifyService {
    * 初始化Google API客户端
    */
   init() {
+    if (!google) {
+      console.warn('⚠️ [GooglePlay] googleapis 未安装，跳过初始化');
+      return;
+    }
     try {
       // 服务账号密钥文件路径
       const keyFilePath = path.join(__dirname, '../config/google-service-account.json');

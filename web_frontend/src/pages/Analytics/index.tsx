@@ -222,9 +222,9 @@ const DailySummaryTab: React.FC = () => {
   const [data, setData] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<BtcSummary | null>(null);
-  const [startDate, setStartDate] = useState<dayjs.Dayjs>(dayjs().subtract(6, 'day'));
-  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(dayjs().subtract(1, 'day'));
-  const [platform, setPlatform]   = useState('Android');
+  const [startDate, setStartDate] = useState<dayjs.Dayjs>(dayjs().subtract(7, 'day'));
+  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(dayjs());
+  const [platform, setPlatform]   = useState('all');
   const [selectedRows, setSelectedRows] = useState<DailyRow[]>([]);
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const handleColResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: ResizeCallbackData) => {
@@ -360,6 +360,7 @@ const DailySummaryTab: React.FC = () => {
           <DatePicker value={endDate}   onChange={d => d && setEndDate(d)}   format="YYYY-MM-DD" style={{ width: 130 }} />
           <span>类型：</span>
           <Select value={platform} onChange={setPlatform} style={{ width: 110 }}>
+            <Option value="all">全部</Option>
             <Option value="Android">Android</Option>
             <Option value="iOS">iOS</Option>
           </Select>

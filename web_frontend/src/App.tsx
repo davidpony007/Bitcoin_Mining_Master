@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
 import Transactions from './pages/Transactions';
 import PaidProducts from './pages/PaidProducts';
+import RateConfig from './pages/RateConfig';
 
 const App: React.FC = () => {
   return (
@@ -41,6 +42,7 @@ const App: React.FC = () => {
           <Route path="reports" element={<Reports />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="paid-products" element={<PaidProducts />} />
+          <Route path="rate-config" element={<RateConfig />} />
           <Route path="settings" element={<Settings />} />
       </Route>
       

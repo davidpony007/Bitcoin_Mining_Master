@@ -116,6 +116,8 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // 记录 resume 时间：恢复后 3 秒内的网络错误为正常抖动，不弹 Toast
+      ApiService.notifyAppResumed();
       PushNotificationService.reportActive();
       // 用户回到前台时重新上报 FCM token（token 可能已刷新）
       PushNotificationService.initialize();

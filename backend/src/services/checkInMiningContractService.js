@@ -26,7 +26,7 @@ class CheckInMiningContractService {
    * 4. 📌 重要：不会增加电池数量显示（电池只显示Ad Reward合约）
    * 5. 📌 签到验证由调用方（路由层）负责
    */
-  static async checkInAndCreateMiningContract(userId, requestIp = null) {
+  static async checkInAndCreateMiningContract(userId, requestIp = null, clientCountry = null) {
     try {
       // 1. 验证用户存在
       const user = await UserInformation.findOne({
@@ -40,34 +40,40 @@ class CheckInMiningContractService {
         };
       }
 
-      // 1.5 IP实时国家检测（与AdMob对齐：AdMob也是基于请求IP判断国家）
-      if (requestIp && requestIp !== '未知') {
+      // 1.5 国家检测（方案B：设备locale优先 > IP检测 > 已存储值）
+      // clientCountry 来自 Flutter Platform.localeName，与 AdMob 归因国家口径最接近
+      const clientCountryUpper = clientCountry ? clientCountry.trim().toUpperCase() : null;
+      let targetCountry = clientCountryUpper; // 设备locale最优先
+
+      if (!targetCountry && requestIp && requestIp !== '未知') {
         try {
           const geoip = require('geoip-lite');
           const geo = geoip.lookup(requestIp);
-          if (geo && geo.country) {
-            const ipCountry = geo.country.toUpperCase();
-            const CountryMiningConfig = require('../models/countryMiningConfig');
-            const countryConfig = await CountryMiningConfig.findOne({
-              where: { country_code: ipCountry, is_active: true },
-              raw: true
-            });
-            const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
-            const oldCountry = user.country_code;
-            const oldMultiplier = parseFloat(user.country_multiplier) || 1.00;
+          if (geo && geo.country) targetCountry = geo.country.toUpperCase();
+        } catch (_) {}
+      }
 
-            if (ipCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
-              console.log(`🌍 [AdMob对齐-签到] 用户 ${userId}: IP国家=${ipCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新country_multiplier`);
-              await user.update({
-                country_code: ipCountry,
-                country_multiplier: newMultiplier
-              });
-            } else {
-              console.log(`🌍 [AdMob对齐-签到] 用户 ${userId}: IP国家=${ipCountry}, 倍率无变化(${oldMultiplier}x)`);
-            }
+      if (targetCountry) {
+        try {
+          const CountryMiningConfig = require('../models/countryMiningConfig');
+          const countryConfig = await CountryMiningConfig.findOne({
+            where: { country_code: targetCountry, is_active: true },
+            raw: true
+          });
+          const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
+          const oldCountry = user.country_code;
+          const oldMultiplier = parseFloat(user.country_multiplier) || 1.00;
+
+          if (targetCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
+            const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
+            console.log(`🌍 [方案B-签到] 用户 ${userId}: [${source}]国家=${targetCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新`);
+            await user.update({ country_code: targetCountry, country_multiplier: newMultiplier });
+          } else {
+            const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
+            console.log(`🌍 [方案B-签到] 用户 ${userId}: [${source}]国家=${targetCountry}, 倍率无变化(${oldMultiplier}x)`);
           }
         } catch (geoErr) {
-          console.warn(`⚠️ [AdMob对齐-签到] IP国家检测失败，使用原存储倍率: ${geoErr.message}`);
+          console.warn(`⚠️ [方案B-签到] 国家检测失败，保留原存储值: ${geoErr.message}`);
         }
       }
 

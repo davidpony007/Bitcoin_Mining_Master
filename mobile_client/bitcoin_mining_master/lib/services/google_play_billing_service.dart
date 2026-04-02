@@ -67,30 +67,38 @@ class GooglePlayBillingService {
     }
   }
 
-  /// 加载订阅商品列表
-  Future<void> loadProducts() async {
-    try {
-      final ProductDetailsResponse response = await _iap.queryProductDetails(_subscriptionIds);
-      
-      if (response.error != null) {
-        print('❌ 查询订阅商品失败: ${response.error}');
-        return;
-      }
-      
-      if (response.notFoundIDs.isNotEmpty) {
-        print('⚠️ 未找到的订阅商品: ${response.notFoundIDs}');
-      }
+  /// 加载订阅商品列表（最多重试3次，每次间隔2秒）
+  Future<void> loadProducts({int maxRetries = 3}) async {
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final ProductDetailsResponse response = await _iap.queryProductDetails(_subscriptionIds);
 
-      subscriptionProducts = response.productDetails;
-      subscriptionProducts.sort((a, b) => a.id.compareTo(b.id)); // 按价格排序
-      
-      print('✅ 加载了 ${subscriptionProducts.length} 个订阅商品');
-      for (var product in subscriptionProducts) {
-        print('📦 订阅: ${product.id} - ${product.price} - ${product.title}');
+        if (response.error != null) {
+          print('❌ [第$attempt次] 查询订阅商品失败: ${response.error}');
+        } else {
+          if (response.notFoundIDs.isNotEmpty) {
+            print('⚠️ [第$attempt次] 未找到的订阅商品: ${response.notFoundIDs}');
+          }
+          if (response.productDetails.isNotEmpty) {
+            subscriptionProducts = response.productDetails;
+            subscriptionProducts.sort((a, b) => a.id.compareTo(b.id));
+            print('✅ 加载了 ${subscriptionProducts.length} 个订阅商品');
+            for (var product in subscriptionProducts) {
+              print('📦 订阅: ${product.id} - ${product.price} - ${product.title}');
+            }
+            return; // 加载成功，直接返回
+          }
+          print('⚠️ [第$attempt次] queryProductDetails 返回空列表');
+        }
+      } catch (e) {
+        print('❌ [第$attempt次] 加载订阅商品异常: $e');
       }
-    } catch (e) {
-      print('❌ 加载订阅商品异常: $e');
+      if (attempt < maxRetries) {
+        print('⏳ ${attempt * 2}秒后重试...');
+        await Future.delayed(Duration(seconds: attempt * 2));
+      }
     }
+    print('❌ 加载订阅商品最终失败，已重试 $maxRetries 次');
   }
 
   /// 获取指定订阅商品
@@ -106,8 +114,15 @@ class GooglePlayBillingService {
   /// 购买订阅
   Future<void> buySubscription(String subscriptionId) async {
     try {
-      final product = getSubscription(subscriptionId);
+      ProductDetails? product = getSubscription(subscriptionId);
+      // 若商品列表为空或商品未找到，尝试重新加载一次
       if (product == null) {
+        print('⚠️ 商品未找到，尝试重新加载商品列表...');
+        await loadProducts();
+        product = getSubscription(subscriptionId);
+      }
+      if (product == null) {
+        print('❌ 重新加载后仍未找到商品: $subscriptionId，列表: ${subscriptionProducts.map((p) => p.id).toList()}');
         onPurchaseUpdate?.call(false, 'Product not found. Please refresh and try again.');
         return;
       }

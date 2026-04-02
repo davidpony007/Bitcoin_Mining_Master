@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, DatePicker, Table, Space } from 'antd';
+import { Card, Button, DatePicker, Table, Space, Select } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { Resizable } from 'react-resizable';
 import type { ResizeCallbackData } from 'react-resizable';
@@ -9,6 +9,7 @@ import './styles.css';
 import { dataCenterApi } from '@/services/api/admin';
 
 const { RangePicker } = DatePicker;
+const { Option } = Select;
 
 // 可调整大小的列头组件
 const ResizableTitle = (
@@ -42,8 +43,10 @@ interface DailyRow {
   firstSubRevenue: number;
   adViews: number;
   adRewards: number;
+  renewalCount: number;
+  renewalAmount: number;
   withdrawals: number;
-  withdrawalAmount: number;
+  withdrawalBtcAmount: number;
   checkins: number;
 }
 
@@ -51,13 +54,19 @@ const DataCenter: React.FC = () => {
   const [data, setData] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs().subtract(29, 'day'),
+    dayjs().subtract(7, 'day'),
     dayjs(),
   ]);
+  const [platform, setPlatform] = useState('all');
 
   const fetchData = () => {
     setLoading(true);
-    dataCenterApi.daily(30).then((res: any) => {
+    const [start, end] = dateRange;
+    dataCenterApi.daily({
+      startDate: start.format('YYYY-MM-DD'),
+      endDate: end.format('YYYY-MM-DD'),
+      platform,
+    }).then((res: any) => {
       setData(res?.data || []);
     }).catch(() => {}).finally(() => setLoading(false));
   };
@@ -71,11 +80,14 @@ const DataCenter: React.FC = () => {
     { title: '首次订阅单数', dataIndex: 'firstSubOrders', key: 'firstSubOrders', width: 120 },
     { title: '首次订阅收入', dataIndex: 'firstSubRevenue', key: 'firstSubRevenue', width: 130,
       render: (v: number) => `$${(Number(v) || 0).toLocaleString()}` },
+    { title: '续期数', dataIndex: 'renewalCount', key: 'renewalCount', width: 90 },
+    { title: '续期金额', dataIndex: 'renewalAmount', key: 'renewalAmount', width: 110,
+      render: (v: number) => `$${(Number(v) || 0).toFixed(2)}` },
     { title: '广告观看量', dataIndex: 'adViews', key: 'adViews', width: 110 },
     { title: '广告奖励积分', dataIndex: 'adRewards', key: 'adRewards', width: 120 },
     { title: '提现单数', dataIndex: 'withdrawals', key: 'withdrawals', width: 100 },
-    { title: '提现金额', dataIndex: 'withdrawalAmount', key: 'withdrawalAmount', width: 110,
-      render: (v: number) => `$${(Number(v) || 0).toLocaleString()}` },
+    { title: 'BTC提现成功总数量', dataIndex: 'withdrawalBtcAmount', key: 'withdrawalBtcAmount', width: 160,
+      render: (v: number) => (Number(v) || 0).toFixed(8) },
     { title: '签到人次', dataIndex: 'checkins', key: 'checkins', width: 100 },
   ]);
 
@@ -106,6 +118,12 @@ const DataCenter: React.FC = () => {
             format="YYYY/MM/DD"
             style={{ width: 250 }}
           />
+          <span style={{ fontWeight: 500 }}>查询类型：</span>
+          <Select value={platform} onChange={setPlatform} style={{ width: 110 }}>
+            <Option value="all">全部</Option>
+            <Option value="Android">Android</Option>
+            <Option value="iOS">iOS</Option>
+          </Select>
           <Button type="primary" style={{ backgroundColor: '#00bfbf', borderColor: '#00bfbf' }} onClick={fetchData}>
             查询
           </Button>
@@ -118,7 +136,7 @@ const DataCenter: React.FC = () => {
           dataSource={data}
           rowKey="date"
           loading={loading}
-          scroll={{ x: 1200, y: 600 }}
+          scroll={{ x: 1400, y: 600 }}
           pagination={{ pageSize: 31, showSizeChanger: true, showQuickJumper: true, showTotal: (total) => `共 ${total} 条`, size: 'small' }}
           size="small"
           bordered

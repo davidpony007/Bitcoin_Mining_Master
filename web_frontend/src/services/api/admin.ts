@@ -17,10 +17,12 @@ export const dashboardApi = {
 
 export const usersApi = {
   /** 分页用户列表 */
-  list: (params: { page?: number; limit?: number; search?: string; status?: string; system?: string; acquisition?: string }) =>
+  list: (params: { page?: number; limit?: number; search?: string; status?: string; system?: string; acquisition?: string; country?: string; level?: string; sortBy?: string; sortOrder?: string }) =>
     request.get('/admin/users/list', { params }),
   /** 用户统计概要 */
   stats: () => request.get('/admin/users/stats'),
+  /** 国家列表（用于筛选） */
+  countries: () => request.get('/admin/users/countries'),
   /** 用户完整画像详情 */
   detail: (userId: string) => request.get(`/admin/users/${userId}/detail`),
   /** 禁用用户 */
@@ -30,6 +32,12 @@ export const usersApi = {
   /** 手动调整BTC余额 (amount正=增加,负=减少) */
   adjustBtc: (userId: string, amount: number, reason: string) =>
     request.post(`/admin/users/${userId}/adjust-btc`, { amount, reason }),
+  /** 获取比特币实时美元价格 */
+  getBtcPrice: () => request.get('/admin/btc-price'),
+  /** 删除单个用户（级联删除所有数据） */
+  deleteUser: (userId: string) => request.delete(`/admin/users/${userId}`),
+  /** 批量删除用户 */
+  bulkDeleteUsers: (userIds: string[]) => request.post('/admin/users/bulk-delete', { userIds }),
 };
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
@@ -112,7 +120,8 @@ export const adsApi = {
 
 export const dataCenterApi = {
   /** 每日综合业务数据（旧版） */
-  daily: (days = 30) => request.get('/admin/datacenter/daily', { params: { days } }),
+  daily: (params: { startDate?: string; endDate?: string; platform?: string; days?: number } | number = 30) =>
+    request.get('/admin/datacenter/daily', { params: typeof params === 'number' ? { days: params } : params }),
   /** 完整每日业务报表 */
   dailyReport: (startDate: string, endDate: string, platform = 'Android') =>
     request.get('/admin/datacenter/daily-report', { params: { startDate, endDate, platform } }),
@@ -143,8 +152,8 @@ export const bitcoinTxApi = {
 // ─── Paid Products ────────────────────────────────────────────────────────────
 
 export const paidProductsApi = {
-  /** 获取产品列表（公开接口） */
-  list: () => request.get('/paid-contracts/products'),
+  /** 获取产品列表（管理端接口，含完整字段） */
+  list: () => request.get('/admin/products'),
   /** 更新产品字段（管理员接口） */
   update: (id: number, data: Partial<{
     display_name: string;
@@ -156,5 +165,20 @@ export const paidProductsApi = {
     sort_order: number;
     is_active: number;
   }>) => request.put(`/admin/paid-products/${id}`, data),
+};
+
+// ─── Rate Config ─────────────────────────────────────────────────────────────
+
+export const rateConfigApi = {
+  /** 获取基础速率 + 所有国家倍率 */
+  getConfig: () => request.get('/admin/rate-config'),
+  /** 更新基础挖矿速率 */
+  updateBaseRate: (value: number) => request.put('/admin/rate-config/base-rate', { value }),
+  /** 更新单个国家倍率 */
+  updateCountry: (code: string, multiplier: number) =>
+    request.put(`/admin/rate-config/country/${code}`, { multiplier }),
+  /** 批量更新多个国家倍率 */
+  batchUpdateCountries: (updates: { code: string; multiplier: number }[]) =>
+    request.post('/admin/rate-config/country/batch', { updates }),
 };
 

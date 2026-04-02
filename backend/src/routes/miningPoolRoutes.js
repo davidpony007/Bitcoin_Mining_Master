@@ -178,6 +178,7 @@ router.post('/extend-contract', async (req, res) => {
   
   try {
     const { user_id, hours = 1 } = req.body;
+    const deviceCountry = req.body.device_country || null; // 方案B：Flutter设备locale国家
 
     if (!user_id) {
       return res.status(400).json({
@@ -191,6 +192,50 @@ router.post('/extend-contract', async (req, res) => {
         success: false,
         message: 'Hours must be between 1 and 24'
       });
+    }
+
+    // 🌍 方案B：更新用户国家（设备locale > IP检测 > 已存储，独立于合约事务）
+    try {
+      const requestIp = req.headers['x-forwarded-for']?.split(',')[0].trim()
+                     || req.headers['x-real-ip']
+                     || req.ip
+                     || '未知';
+
+      const clientCountryUpper = deviceCountry ? deviceCountry.trim().toUpperCase() : null;
+      let targetCountry = clientCountryUpper;
+
+      if (!targetCountry && requestIp && requestIp !== '未知') {
+        const geoip = require('geoip-lite');
+        const geo = geoip.lookup(requestIp);
+        if (geo && geo.country) targetCountry = geo.country.toUpperCase();
+      }
+
+      if (targetCountry) {
+        const [userRows] = await pool.query(
+          'SELECT country_code, country_multiplier FROM user_information WHERE user_id = ?',
+          [user_id]
+        );
+        if (userRows.length > 0) {
+          const oldCountry = userRows[0].country_code;
+          const oldMultiplier = parseFloat(userRows[0].country_multiplier) || 1.00;
+          const [configRows] = await pool.query(
+            'SELECT mining_multiplier FROM country_mining_config WHERE country_code = ? AND is_active = 1 LIMIT 1',
+            [targetCountry]
+          );
+          const newMultiplier = configRows.length > 0 ? parseFloat(configRows[0].mining_multiplier) : 1.00;
+
+          if (targetCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
+            const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
+            console.log(`🌍 [方案B-广告] 用户 ${user_id}: [${source}]国家=${targetCountry}(${newMultiplier}x), 原存储=${oldCountry} → 更新`);
+            await pool.query(
+              'UPDATE user_information SET country_code = ?, country_multiplier = ? WHERE user_id = ?',
+              [targetCountry, newMultiplier, user_id]
+            );
+          }
+        }
+      }
+    } catch (countryErr) {
+      console.warn(`⚠️ [方案B-广告] 国家检测失败，保留原存储值: ${countryErr.message}`);
     }
 
     connection = await pool.getConnection();

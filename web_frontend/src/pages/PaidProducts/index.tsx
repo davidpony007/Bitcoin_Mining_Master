@@ -91,9 +91,12 @@ const PaidProducts: React.FC = () => {
     { title: '算力显示', dataIndex: 'hashrate', key: 'hashrate', width: 120 },
     {
       title: '每秒BTC产出', dataIndex: 'hashrate_raw', key: 'hashrate_raw', width: 150,
-      render: v => <Tooltip title={`${v}`}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{Number(v).toExponential(4)}</span></Tooltip>,
+      render: v => { const n = parseFloat(v); return <Tooltip title={`${v}`}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{isNaN(n) ? '-' : n.toExponential(4)}</span></Tooltip>; },
     },
-    { title: '时长(天)', dataIndex: 'duration_days', key: 'duration_days', width: 80 },
+    {
+      title: '时长', dataIndex: 'duration_days', key: 'duration_days', width: 80,
+      render: (v, r: any) => r.duration_months ? `${r.duration_months}个月` : (v >= 28 ? '1个月' : `${v}天`),
+    },
     { title: 'iOS商品ID', dataIndex: 'ios_product_id', key: 'ios_product_id', width: 140 },
     { title: 'Android商品ID', dataIndex: 'android_product_id', key: 'android_product_id', width: 140 },
     {
@@ -126,7 +129,7 @@ const PaidProducts: React.FC = () => {
       </Row>
 
       <Card
-        title="付费产品配置"
+        title="商品配置"
         extra={
           <Space>
             <Button icon={<ReloadOutlined />} onClick={loadProducts} loading={loading}>

@@ -175,7 +175,9 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
     if (available) {
       await _billingService.loadProducts();
     }
-    if (mounted) setState(() => _serviceInitialized = available);
+    // 只有在商品成功加载时才标记服务可用（否则点击购买会立即报 Product not found）
+    final productsLoaded = _billingService.subscriptionProducts.isNotEmpty;
+    if (mounted) setState(() => _serviceInitialized = available && productsLoaded);
   }
 
   Future<void> _initAppleService() async {

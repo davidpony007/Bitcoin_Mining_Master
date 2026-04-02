@@ -54,5 +54,21 @@ const withdrawalLimiter = rateLimit({
   }
 });
 
-module.exports = { globalLimiter, authLimiter, withdrawalLimiter };
+/**
+ * 管理员登录严格限流：每IP每15分钟最多5次
+ * 防止暴力破解管理后台账号
+ */
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: '登录尝试过于频繁，请15分钟后再试',
+    code: 'ADMIN_LOGIN_RATE_LIMIT_EXCEEDED'
+  }
+});
+
+module.exports = { globalLimiter, authLimiter, withdrawalLimiter, adminLoginLimiter };
 

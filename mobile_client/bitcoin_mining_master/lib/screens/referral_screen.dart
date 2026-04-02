@@ -439,6 +439,7 @@ $downloadUrl
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
               ),
               child: const Text('Confirm'),
             ),

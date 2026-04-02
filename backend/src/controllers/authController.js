@@ -577,7 +577,7 @@ exports.googleLoginOrCreate = async (req, res) => {
     // 添加原始请求体日志
     console.log('🔍 [RAW] req.body:', JSON.stringify(req.body, null, 2));
     
-const { google_id, google_account, google_name, gaid, country, system, app_version, app_build_number, referrer_invitation_code, install_referrer } = req.body;
+const { google_id, google_account, google_name, gaid, country, device_country, system, app_version, app_build_number, referrer_invitation_code, install_referrer } = req.body;
     // 兼容 Flutter 发送的 device_id（iOS/Android 通用）和旧字段名 android_id
     const android_id = req.body.android_id || req.body.device_id || null;
 
@@ -623,19 +623,23 @@ const { google_id, google_account, google_name, gaid, country, system, app_versi
       req.connection.remoteAddress ||
       '未知';
 
-    // 🌍 IP优先检测国家（与AdMob对齐），IP失败才用前端值
+    // 🌍 方案B：设备locale国家优先 > IP检测 > 前端传入country（旧字段）
+    // device_country 来自 Flutter Platform.localeName，与 AdMob 归因口径最接近
     let detectedCountry = null;
-    if (register_ip !== '未知') {
+    if (device_country && device_country.trim() !== '') {
+      detectedCountry = device_country.trim().toUpperCase();
+      console.log(`   📱 [方案B] 使用设备locale国家: ${detectedCountry}`);
+    } else if (register_ip !== '未知') {
       const geoip = require('geoip-lite');
       const geo = geoip.lookup(register_ip);
       if (geo && geo.country) {
         detectedCountry = geo.country;
-        console.log(`   📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
+        console.log(`   📍 从IP ${register_ip} 检测到国家(fallback): ${detectedCountry}`);
       }
     }
     if (!detectedCountry && country) {
       detectedCountry = country;
-      console.log(`   📱 使用前端提供的国家代码（IP备选）: ${detectedCountry}`);
+      console.log(`   📱 使用前端提供的国家代码（最终备选）: ${detectedCountry}`);
     }
 
     // 查找是否已有该Google账号绑定的用户
@@ -1241,7 +1245,7 @@ exports.addReferrer = async (req, res) => {
       );
       console.log('推荐人邀请挖矿合约创建/延长成功:', referrerContractResult);
     } catch (miningErr) {
-      console.error('创建/延长推荐人邀请挖矿合约失败:', miningErr);
+      console.error('创建/延长推荐人邀请挖矿合约失败:', miningErr.message, miningErr.stack);
     }
 
     // 9. 🎁 为被邀请人创建绑定推荐人挖矿合约（仅一次，2小时）

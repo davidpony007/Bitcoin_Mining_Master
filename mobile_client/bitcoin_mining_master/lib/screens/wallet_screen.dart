@@ -459,6 +459,12 @@ class WalletScreenState extends State<WalletScreen>
         iconBgColor = const Color(0xFF4CAF50);
         isPositive = false;
         break;
+      case 'admin_deduct':
+        icon = Icons.remove_circle_outline;
+        iconColor = Colors.white;
+        iconBgColor = Colors.red;
+        isPositive = false;
+        break;
       case 'subordinate rebate':
         icon = Icons.people;
         iconColor = Colors.green;
