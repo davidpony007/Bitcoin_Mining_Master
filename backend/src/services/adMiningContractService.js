@@ -56,10 +56,14 @@ class AdMiningContractService {
 
             if (ipCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
               console.log(`🌍 [AdMob对齐-广告] 用户 ${userId}: IP国家=${ipCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新country_multiplier`);
-              await user.update({
+              const updateFields = {
                 country_code: ipCountry,
                 country_multiplier: newMultiplier
-              });
+              };
+              if (countryConfig && countryConfig.country_name_cn) {
+                updateFields.country_name_cn = countryConfig.country_name_cn;
+              }
+              await user.update(updateFields);
             } else {
               console.log(`🌍 [AdMob对齐-广告] 用户 ${userId}: IP国家=${ipCountry}, 倍率无变化(${oldMultiplier}x)`);
             }

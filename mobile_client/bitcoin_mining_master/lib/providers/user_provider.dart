@@ -108,13 +108,16 @@ class UserProvider with ChangeNotifier {
       print('📡 网络已恢复，开始同步离线用户数据...');
       await _syncOfflineData();
     } else if (!hasConnection && !_isOfflineMode) {
-      print('📴 检测到网络变化，等待3秒确认...');
-      // 防抖 3 秒：短暂切换网络（如 VPN 重连、信号切换）不弹 Toast
+      print('📴 检测到网络变化，等待4秒确认...');
+      // 防抖 4 秒：短暂切换网络（如 VPN 重连、信号切换）不弹 Toast
+      // 注意：静默窗口为 6 秒，防抖必须 < 静默窗口，否则防抖触发时窗口已过期
       _offlineDebounce?.cancel();
-      _offlineDebounce = Timer(const Duration(seconds: 3), () {
+      _offlineDebounce = Timer(const Duration(seconds: 4), () {
+        final inWindow = ApiService.isInResumeSilenceWindow;
+        print('📴 [Provider] 防抖触发，inSilenceWindow=$inWindow');
         _setError('Network connection lost, using offline mode');
         // 从后台恢复的静默窗口期内不弹 Toast（网络重建的正常抖动）
-        if (!ApiService.isInResumeSilenceWindow) {
+        if (!inWindow) {
           Fluttertoast.showToast(
             msg: 'Network connection error, please try again!',
             toastLength: Toast.LENGTH_SHORT,

@@ -50,8 +50,8 @@ class ContractsScreenState extends State<ContractsScreen>
   Timer? _contractTimer;
   Timer? _refreshTimer;
   // 乐观保护：订阅成功后，在服务端确认建立合约前，任何 _loadContracts 结果都不得清除该档位的主动条目
-  String? _pendingOptimisticProductId;
-  Timer? _pendingOptimisticTimer;
+  // Map key = productId，value = 60秒超时 Timer；支持同时保护多个档位（多套餐并购场景）
+  final Map<String, Timer> _pendingOptimisticTimers = {};
   // iOS 订阅状态同步冷却：5 分钟内不重复调用 restorePurchases()，避免频繁触发 StoreKit 事件
   DateTime? _lastIosSyncTime;
 
@@ -114,7 +114,10 @@ class ContractsScreenState extends State<ContractsScreen>
     _tabController.dispose();
     _contractTimer?.cancel();
     _refreshTimer?.cancel();
-    _pendingOptimisticTimer?.cancel();
+    for (final t in _pendingOptimisticTimers.values) {
+      t.cancel();
+    }
+    _pendingOptimisticTimers.clear();
     super.dispose();
   }
 
@@ -193,11 +196,11 @@ class ContractsScreenState extends State<ContractsScreen>
   /// 订阅成功后立即乐观更新对应档位为 Mining 状态，无需等待 API 响应
   void _applyOptimisticContractUpdate(String productId) {
     if (productId.isEmpty) return;
-    // 设置乐观保护：60秒内任body 刷新覆盖（无论哪个 _loadContracts 结果先到）都不得清除该档位
-    _pendingOptimisticProductId = productId;
-    _pendingOptimisticTimer?.cancel();
-    _pendingOptimisticTimer = Timer(const Duration(seconds: 60), () {
-      _pendingOptimisticProductId = null;
+    // 设置乐观保护：60秒内任何 _loadContracts 刷新都不得清除该档位
+    // 每个 productId 独立计时，互不干扰（支持同时订阅多个套餐）
+    _pendingOptimisticTimers[productId]?.cancel();
+    _pendingOptimisticTimers[productId] = Timer(const Duration(seconds: 60), () {
+      _pendingOptimisticTimers.remove(productId);
     });
     setState(() {
       // 移除同一 productId 的非活跃旧条目（如 cancelled）
@@ -311,16 +314,15 @@ class ContractsScreenState extends State<ContractsScreen>
             }
           }
 
-          // 乐观保护：若服务端尚未包含待确认的主动购买档位，将其保留在列表中
-          final pid = _pendingOptimisticProductId;
-          if (pid != null) {
+          // 乐观保护：遍历所有待确认档位，独立判断服务端是否已确认
+          for (final pid in List<String>.from(_pendingOptimisticTimers.keys)) {
             final serverConfirmed = _activePaidContracts.any(
               (c) => c['productId']?.toString() == pid && c['status'] == 'active',
             );
             if (serverConfirmed) {
-              // 服务端已确认，清除保护标志
-              _pendingOptimisticProductId = null;
-              _pendingOptimisticTimer?.cancel();
+              // 服务端已确认，取消并移除该档位的保护
+              _pendingOptimisticTimers[pid]?.cancel();
+              _pendingOptimisticTimers.remove(pid);
             } else {
               // 服务端尚未包含，将乐观条目加回列表
               _activePaidContracts

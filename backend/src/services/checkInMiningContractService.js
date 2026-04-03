@@ -67,7 +67,11 @@ class CheckInMiningContractService {
           if (targetCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
             const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
             console.log(`🌍 [方案B-签到] 用户 ${userId}: [${source}]国家=${targetCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新`);
-            await user.update({ country_code: targetCountry, country_multiplier: newMultiplier });
+            const updateFields = { country_code: targetCountry, country_multiplier: newMultiplier };
+            if (countryConfig && countryConfig.country_name_cn) {
+              updateFields.country_name_cn = countryConfig.country_name_cn;
+            }
+            await user.update(updateFields);
           } else {
             const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
             console.log(`🌍 [方案B-签到] 用户 ${userId}: [${source}]国家=${targetCountry}, 倍率无变化(${oldMultiplier}x)`);

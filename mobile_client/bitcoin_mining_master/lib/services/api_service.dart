@@ -96,6 +96,8 @@ class ApiService {
     String? gaid,
     String? country,
     String? email,
+    String? idfa,
+    int? attStatus,
   }) async {
     // 获取当前 App 版本信息，登录时同步到服务端
     String? appVersion;
@@ -118,6 +120,8 @@ class ApiService {
       if (email != null) 'email': email,
       if (appVersion != null) 'app_version': appVersion,
       if (appBuildNumber != null) 'app_build_number': appBuildNumber,
+      if (idfa != null) 'idfa': idfa,
+      if (attStatus != null) 'att_status': attStatus,
     };
 
     try {
@@ -703,20 +707,25 @@ class ApiService {
   // 声明为 public 以供 user_provider.dart 共用同一个防抖时间戳
   static DateTime? lastNetworkErrorToastTime;
 
-  // App 从后台恢复的时间戳：恢复后 3 秒内的网络错误为正常抖动，静默处理不弹 Toast
+  // App 从后台恢复的时间戳：恢复后 10 秒内的网络错误为正常抖动，静默处理不弹 Toast
+  // 注意：connectivity 防抖为 4 秒，VPN 重连最晚可在 resume 后 ~6 秒才触发 connectivity 事件
+  // 因此静默窗口需 > 防抖(4s) + VPN重连延迟(~6s) = 10s
   static DateTime? _lastResumeTime;
-  static const int _resumeSilenceSeconds = 3;
+  static const int _resumeSilenceSeconds = 10;
 
   /// 由 main.dart 在 AppLifecycleState.resumed 时调用，记录恢复时间
   static void notifyAppResumed() {
     _lastResumeTime = DateTime.now();
+    print('🔕 [ApiService] App 已恢复，静默窗口开始（${_resumeSilenceSeconds}s）');
   }
 
   /// 判断当前是否处于从后台恢复的静默窗口期
   static bool get isInResumeSilenceWindow {
     final t = _lastResumeTime;
     if (t == null) return false;
-    return DateTime.now().difference(t).inSeconds < _resumeSilenceSeconds;
+    final elapsed = DateTime.now().difference(t).inMilliseconds;
+    final inWindow = elapsed < (_resumeSilenceSeconds * 1000);
+    return inWindow;
   }
 
   Exception _handleError(DioException error) {
@@ -730,8 +739,10 @@ class ApiService {
     final bool isReceiveTimeout = error.type == DioExceptionType.receiveTimeout;
 
     if (isNetworkError) {
-      // 从后台恢复后 3 秒静默窗口内不弹 Toast（网络重建的正常抖动）
-      if (!isInResumeSilenceWindow) {
+      // 从后台恢复后 6 秒静默窗口内不弹 Toast（网络重建的正常抖动）
+      final inWindow = isInResumeSilenceWindow;
+      print('🔕 [ApiService] 网络错误 type=${error.type}, inSilenceWindow=$inWindow, resumeTime=$_lastResumeTime');
+      if (!inWindow) {
         final now = DateTime.now();
         final lastShown = lastNetworkErrorToastTime;
         // 5 秒内只弹一次，避免多个并发请求同时失败时重复弹出
@@ -746,6 +757,8 @@ class ApiService {
             gravity: ToastGravity.CENTER,
           );
         }
+      } else {
+        print('🔕 [ApiService] 在静默窗口内，不弹 Toast');
       }
     }
 

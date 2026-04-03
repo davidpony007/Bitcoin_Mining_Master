@@ -369,6 +369,26 @@ const Users: React.FC = () => {
       },
     },
     {
+      title: '平台', dataIndex: 'system', key: 'system', width: 75,
+      render: (v: string, r: UserRow) => {
+        const p = inferPlatform(v, r.device_id ?? null);
+        return p === 'iOS' ? <Tag color="blue">iOS</Tag> : p === 'Android' ? <Tag color="green">Android</Tag> : <Tag color="default">-</Tag>;
+      },
+    },
+    {
+      title: '等级', dataIndex: 'user_level', key: 'user_level', width: 65,
+      sorter: true, sortOrder: getSO('user_level'),
+      render: (v: number) => <Tag color="gold"><CrownOutlined /> {v}</Tag>,
+    },
+    {
+      title: '积分', dataIndex: 'user_points', key: 'user_points', width: 70,
+      sorter: true, sortOrder: getSO('user_points'),
+    },
+    {
+      title: '广告观看次数', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 100,
+      sorter: true, sortOrder: getSO('total_ad_views'),
+    },
+    {
       title: 'BTC余额', dataIndex: 'current_bitcoin_balance', key: 'current_bitcoin_balance', width: 130,
       sorter: true, sortOrder: getSO('current_bitcoin_balance'),
       render: (v: string) => <Text style={{ color: '#f7931a', fontWeight: 600 }}>{fmtBtc(v)}</Text>,
@@ -396,19 +416,6 @@ const Users: React.FC = () => {
       render: (v: string) => <Text style={{ color: '#722ed1' }}>{fmtBtc(v)}</Text>,
     },
     {
-      title: '等级', dataIndex: 'user_level', key: 'user_level', width: 65,
-      sorter: true, sortOrder: getSO('user_level'),
-      render: (v: number) => <Tag color="gold"><CrownOutlined /> {v}</Tag>,
-    },
-    {
-      title: '积分', dataIndex: 'user_points', key: 'user_points', width: 70,
-      sorter: true, sortOrder: getSO('user_points'),
-    },
-    {
-      title: '广告观看次数', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 100,
-      sorter: true, sortOrder: getSO('total_ad_views'),
-    },
-    {
       title: '实时挖矿速率', dataIndex: 'mining_rate_per_second', key: 'mining_rate_per_second', width: 155,
       sorter: true, sortOrder: getSO('mining_rate_per_second'),
       render: (v: string | null) => (
@@ -417,13 +424,6 @@ const Users: React.FC = () => {
           <Text type="secondary" style={{ fontSize: 10, marginLeft: 3 }}>BTC/s</Text>
         </span>
       ),
-    },
-    {
-      title: '平台', dataIndex: 'system', key: 'system', width: 75,
-      render: (v: string, r: UserRow) => {
-        const p = inferPlatform(v, r.device_id ?? null);
-        return p === 'iOS' ? <Tag color="blue">iOS</Tag> : p === 'Android' ? <Tag color="green">Android</Tag> : <Tag color="default">-</Tag>;
-      },
     },
     {
       title: '来源', dataIndex: 'acquisition_channel', key: 'acquisition_channel', width: 75,

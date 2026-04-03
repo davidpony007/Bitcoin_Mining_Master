@@ -928,7 +928,12 @@ class _DashboardScreenState extends State<DashboardScreen>
         final data = response['data'];
         setState(() {
           _userLevel = data['level'] ?? 1;
-          _userPoints = data['points'] ?? 0;
+          // 取当前值和 level API 返回值中的最大值，防止 level 缓存过时数据覆盖
+          // _loadPointsData() 的 getPointsBalance() 是更权威的积分来源
+          final levelApiPoints = (data['points'] ?? 0) as int;
+          if (levelApiPoints > _userPoints) {
+            _userPoints = levelApiPoints;
+          }
           _maxPoints = data['maxPoints'] ?? 20;
           _levelName = data['levelName'] ?? 'LV.1 新手矿工';
           _progressPercentage = (data['progressPercentage'] ?? 0.0).toDouble();

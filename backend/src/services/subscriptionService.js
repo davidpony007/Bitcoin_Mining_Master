@@ -56,7 +56,7 @@ class SubscriptionService {
    * @private
    */
   async _findContract(userId, backendProductId, purchaseToken) {
-    // 优先：用户 + 产品 + 平台 + 未取消
+    // 优先：用户 + 产品 + 平台 + 未取消（活跃合约）
     if (userId && backendProductId) {
       const [[mc]] = await sequelize.query(
         `SELECT * FROM mining_contracts
@@ -66,11 +66,21 @@ class SubscriptionService {
       );
       if (mc) return mc;
     }
-    // 回退：按当前 purchaseToken 查找（仅首次购买时 token 与存储一致）
+    // 回退1：按当前 purchaseToken 查找（含已取消合约，用于续订/重启场景）
     if (purchaseToken) {
       const [[mc]] = await sequelize.query(
         `SELECT * FROM mining_contracts WHERE original_transaction_id = ? LIMIT 1`,
         { replacements: [purchaseToken] }
+      );
+      if (mc) return mc;
+    }
+    // 回退2：用户 + 产品 + 平台（含已取消），用于用户 token 变更后的续订/重启
+    if (userId && backendProductId) {
+      const [[mc]] = await sequelize.query(
+        `SELECT * FROM mining_contracts
+         WHERE user_id = ? AND product_id = ? AND platform = 'android'
+         ORDER BY id DESC LIMIT 1`,
+        { replacements: [userId, backendProductId] }
       );
       if (mc) return mc;
     }
@@ -109,7 +119,7 @@ class SubscriptionService {
 
       await sequelize.query(
         `UPDATE mining_contracts
-         SET contract_end_time = ?, original_transaction_id = ?, is_renewal = 1
+         SET contract_end_time = ?, original_transaction_id = ?, is_renewal = 1, is_cancelled = 0
          WHERE id = ?`,
         { replacements: [newExpiry, purchaseToken, contract.id] }
       );
@@ -124,7 +134,9 @@ class SubscriptionService {
   }
 
   /**
-   * 处理订阅取消 / 撤销（RTDN type 3/12）
+   * 处理订阅取消 / 撤销（RTDN type 3/10/12）
+   * ⚠️ Google Play 的取消通知可能在当期到期前到达（用户关闭自动续费）。
+   * 与 iOS 保持一致：只对到期时间在 10 分钟内的合约标记取消。
    */
   async handleSubscriptionCanceled(subscriptionId, purchaseToken) {
     try {
@@ -141,6 +153,15 @@ class SubscriptionService {
         return { success: false, error: 'contract not found' };
       }
 
+      // 时间守卫：只对到期时间在 10 分钟内的合约标记取消
+      // 防止在计费周期中途误取消活跃合约（Google Play 政策：取消后当期仍有效）
+      const cutoffMs = Date.now() + 10 * 60 * 1000;
+      const contractEndMs = new Date(contract.contract_end_time).getTime();
+      if (contractEndMs > cutoffMs) {
+        console.log(`ℹ️ [RTDN] 取消通知但合约尚在有效期内，当期继续有效: user=${contract.user_id} product=${contract.product_id} endTime=${contract.contract_end_time}`);
+        return { success: true };
+      }
+
       await sequelize.query(
         `UPDATE mining_contracts SET is_cancelled = 1 WHERE id = ? AND is_cancelled = 0`,
         { replacements: [contract.id] }
@@ -151,6 +172,52 @@ class SubscriptionService {
 
     } catch (error) {
       console.error('❌ [RTDN] 处理取消失败:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 处理订阅重启（RTDN type 7 SUBSCRIPTION_RESTARTED）
+   * 用户在到期前重新开启了已取消的自动续费，恢复合约活跃状态并更新到期时间
+   */
+  async handleSubscriptionRestarted(subscriptionId, purchaseToken) {
+    try {
+      console.log(`🔄 [RTDN] 重启通知: subscriptionId=${subscriptionId} token=${purchaseToken?.substring(0, 30)}…`);
+
+      const backendProductId = await this._resolveBackendProductId(subscriptionId);
+      if (!backendProductId) {
+        console.log(`⚠️ [RTDN] 重启：未找到 product 映射 subscriptionId=${subscriptionId}`);
+        return { success: false, error: 'product mapping not found' };
+      }
+
+      const { userId, expiryTimeMillis } = await this._resolveUserFromToken(subscriptionId, purchaseToken);
+      const contract = await this._findContract(userId, backendProductId, purchaseToken);
+      if (!contract) {
+        console.log(`⚠️ [RTDN] 重启：未找到 mining_contracts. userId=${userId} product=${backendProductId}`);
+        return { success: false, error: 'contract not found' };
+      }
+
+      let newExpiry;
+      if (expiryTimeMillis) {
+        newExpiry = new Date(parseInt(expiryTimeMillis, 10));
+      } else {
+        // 无法获取准确到期时间，以当前合约到期时间为准（若未过期），或改为 now+1 月
+        const existingEnd = new Date(contract.contract_end_time);
+        newExpiry = existingEnd > new Date() ? existingEnd : (() => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d; })();
+      }
+
+      await sequelize.query(
+        `UPDATE mining_contracts
+         SET contract_end_time = ?, is_cancelled = 0, original_transaction_id = ?
+         WHERE id = ?`,
+        { replacements: [newExpiry, purchaseToken, contract.id] }
+      );
+
+      console.log(`✅ [RTDN] 重启成功: user=${contract.user_id} product=${backendProductId} newExpiry=${newExpiry.toISOString()}`);
+      return { success: true };
+
+    } catch (error) {
+      console.error('❌ [RTDN] 处理重启失败:', error);
       return { success: false, error: error.message };
     }
   }

@@ -61,13 +61,12 @@ class _SubscriptionManagementPageState extends State<SubscriptionManagementPage>
       _billingService.userId = storageService.getUserId();
 
       await _billingService.init();
-      final subscriptions = await _billingService.getActiveSubscriptions();
+      await _billingService.getActiveSubscriptions();
       setState(() {
-        _activeSubscriptions = subscriptions;
         _isLoading = false;
       });
       
-      print('✅ 加载了 ${subscriptions.length} 个活跃订阅');
+      print('✅ 订阅查询已触发（通过 purchaseStream 回调更新）');
     } catch (e) {
       print('❌ 加载订阅失败: $e');
       setState(() => _isLoading = false);

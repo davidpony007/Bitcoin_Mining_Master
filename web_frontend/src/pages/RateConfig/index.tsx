@@ -115,10 +115,17 @@ const RateConfig: React.FC = () => {
   const columns: ColumnsType<CountryConfig> = [
     {
       title: '代码', dataIndex: 'country_code', key: 'country_code', width: 70,
+      sorter: (a, b) => a.country_code.localeCompare(b.country_code),
       render: (v: string) => <Tag color="blue">{v}</Tag>,
     },
-    { title: '国家（英文）', dataIndex: 'country_name', key: 'country_name', width: 160, ellipsis: true },
-    { title: '国家（中文）', dataIndex: 'country_name_cn', key: 'country_name_cn', width: 120, ellipsis: true },
+    {
+      title: '国家（英文）', dataIndex: 'country_name', key: 'country_name', width: 160, ellipsis: true,
+      sorter: (a, b) => a.country_name.localeCompare(b.country_name),
+    },
+    {
+      title: '国家（中文）', dataIndex: 'country_name_cn', key: 'country_name_cn', width: 120, ellipsis: true,
+      sorter: (a, b) => a.country_name_cn.localeCompare(b.country_name_cn, 'zh-CN'),
+    },
     {
       title: '当前倍率',
       dataIndex: 'mining_multiplier',

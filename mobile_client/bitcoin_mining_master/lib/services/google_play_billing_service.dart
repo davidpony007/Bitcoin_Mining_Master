@@ -172,11 +172,20 @@ class GooglePlayBillingService {
         }
         
       } else if (purchaseDetails.status == PurchaseStatus.error) {
-        // 购买失败
-        print('❌ 购买失败: ${purchaseDetails.error}');
-        onPurchaseUpdate?.call(false, 'Purchase failed: ${purchaseDetails.error?.message ?? "Unknown error"}');
-        if (purchaseDetails.pendingCompletePurchase) {
-          _iap.completePurchase(purchaseDetails);
+        final errMsg = purchaseDetails.error?.message ?? '';
+        if (errMsg.contains('itemAlreadyOwned')) {
+          // Google Play 说此订阅已存在但我们后端可能无合约记录
+          // 自动恢复购买，让后端重新验证并创建合约
+          print('⚠️ itemAlreadyOwned: 自动恢复订阅以同步后端合约...');
+          _iap.restorePurchases();
+          // 不显示错误提示，让 restore 流程处理后续
+        } else {
+          // 购买失败
+          print('❌ 购买失败: ${purchaseDetails.error}');
+          onPurchaseUpdate?.call(false, 'Purchase failed: $errMsg');
+          if (purchaseDetails.pendingCompletePurchase) {
+            _iap.completePurchase(purchaseDetails);
+          }
         }
         
       } else if (purchaseDetails.status == PurchaseStatus.canceled) {

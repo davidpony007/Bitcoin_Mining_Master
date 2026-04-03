@@ -143,18 +143,26 @@ exports.verifyPurchase = async (req, res) => {
             ? new Date(parseInt(verifyResult.expiresDateMs))
             : null;
           // 验证到期时间在未来（至少 > now + 1小时），防止沙盒陈旧 expiresDateMs 把合约续订到过去
+          // 若 Apple 提供的 expiresDate 已过期（沙盒超短周期或收据延迟），回退到从当前合约到期时间 +1 个月
           const ONE_HOUR_MS = 3600 * 1000;
-          const newExpiry = (rawExpiry && rawExpiry.getTime() > Date.now() + ONE_HOUR_MS) ? rawExpiry : null;
+          let newExpiry = (rawExpiry && rawExpiry.getTime() > Date.now() + ONE_HOUR_MS) ? rawExpiry : null;
           if (rawExpiry && !newExpiry) {
-            console.warn(`⚠️ [paymentController] 续订 expiresDate 已过期或即将过期 (${rawExpiry.toISOString()})，跳过合约时间更新`);
+            // expiresDate 不可用（沙盒超短周期） → 从 now 起算 1 个自然月
+            // ⚠️ 必须用 now 而非 existingEndTime：沙盒每 5 分钟发一次 DID_RENEW，
+            // 若用 MAX(existingEndTime, now) 则每次都在上次延伸基础上再加一个月，
+            // 导致多条通知叠加后合约时长暴增（如 10 条 → +10 个月）。
+            // 用 now 作为基时，所有重复通知的结果均约等于 now+tierMonths，幂等安全。
+            const tierMonths = productInfo?.duration_months || 1;
+            const fallbackExpiry = new Date();
+            fallbackExpiry.setMonth(fallbackExpiry.getMonth() + tierMonths);
+            newExpiry = fallbackExpiry;
+            console.warn(`⚠️ [paymentController] 续订 expiresDate 已过期 (${rawExpiry.toISOString()})，回退自然月延期(from now): newExpiry=${newExpiry.toISOString()}`);
           }
-          if (newExpiry) {
-            await MiningContract.update(
-              { contract_end_time: newExpiry, is_renewal: 1 },
-              { where: { original_transaction_id: originalTxId, user_id: user_id } }
-            );
-            console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
-          }
+          await MiningContract.update(
+            { contract_end_time: newExpiry, is_renewal: 1, is_cancelled: 0 },
+            { where: { original_transaction_id: originalTxId, user_id: user_id } }
+          );
+          console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
           const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email', 'apple_account'] });
           await UserOrder.create({
             user_id,
@@ -218,7 +226,7 @@ exports.verifyPurchase = async (req, res) => {
         newExpiry.setMonth(newExpiry.getMonth() + tierMonths);
         console.log(`🔄 [paymentController] Android 同档位续订: user=${user_id} product=${resolvedBackendProductId} purchaseToken=${purchase_token?.substring(0, 30)} newExpiry=${newExpiry.toISOString()}`);
         await MiningContract.update(
-          { contract_end_time: newExpiry, original_transaction_id: purchase_token, is_renewal: 1 },
+          { contract_end_time: newExpiry, original_transaction_id: purchase_token, is_renewal: 1, is_cancelled: 0 },
           { where: { id: existingActiveAndroidContract.id } }
         );
         const renewUserAndroid = await UserInformation.findOne({ where: { user_id }, attributes: ['email'] });
@@ -403,7 +411,7 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
   let appleRes;
 
   try {
-    appleRes = await axios.post(appleUrl, payload, { timeout: 10000 });
+    appleRes = await axios.post(appleUrl, payload, { timeout: 20000 });
   } catch (e) {
     console.error(`❌ [IAP] Apple 生产环境请求失败: ${e.message}`);
     return { valid: false, reason: `Apple 服务器请求失败: ${e.message}` };
@@ -419,7 +427,7 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
       appleRes = await axios.post(
         'https://sandbox.itunes.apple.com/verifyReceipt',
         payload,
-        { timeout: 10000 }
+        { timeout: 20000 }
       );
       currentStatus = appleRes.data.status;
       console.log(`📡 [IAP] Apple 沙盒响应状态: ${currentStatus} | txId=${transactionId}`);
@@ -592,6 +600,10 @@ exports.syncIosStatus = async (req, res) => {
           await contract.update({ is_cancelled: 1 });
           cancelledCount++;
           console.log(`📴 [syncIos] 合约已过期并标记取消: user=${userId} origTx=${origTxId}`);
+        } else if (!subscriptionExpired && contract.is_cancelled === 1) {
+          // 订阅确认仍在有效期内，但 is_cancelled=1（可能由延迟/乱序通知误设）→ 恢复活跃
+          await contract.update({ is_cancelled: 0 });
+          console.log(`✅ [syncIos] 订阅有效期内发现 is_cancelled=1，已恢复活跃: user=${userId} origTx=${origTxId}`);
         } else if (isExplicitCancel && !subscriptionExpired) {
           // 用户已关闭自动续期，但当期合约仍有效，继续挖矿直到 contract_end_time
           console.log(`ℹ️ [syncIos] 用户关闭自动续期，当期继续有效直到 ${latestEntry?.expires_date_ms ? new Date(parseInt(latestEntry.expires_date_ms)).toISOString() : '未知'}: user=${userId} origTx=${origTxId}`);

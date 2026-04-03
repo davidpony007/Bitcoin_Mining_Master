@@ -113,7 +113,7 @@ exports.handleNotification = async (req, res) => {
           if (order) {
             const { MiningContract } = require('../models');
             await MiningContract.update(
-              { contract_end_time: newExpiry },
+              { contract_end_time: newExpiry, is_cancelled: 0 },
               { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
             );
             console.log(`✅ [AppleNotif V2] 续订延期: origTx=${original_transaction_id} newExpiry=${newExpiry.toISOString()}`);
@@ -128,10 +128,48 @@ exports.handleNotification = async (req, res) => {
       if (notification_type === 'DID_CHANGE_RENEWAL_STATUS' && subtype === 'AUTO_RENEW_DISABLED') {
         const autoRenewProductId = renewalInfo?.autoRenewProductId;
         if (!autoRenewProductId) {
-          console.log(`📴 [AppleNotif V2] 用户明确取消订阅，立即停止: original_tx=${original_transaction_id}`);
+          // ⚠️ 用户关闭了自动续期，但当期合约继续有效直到 contract_end_time。
+          // markContractCancelled 内置 10 分钟时间窗口保护，若合约仍在有效期内，此处不会实际取消。
+          console.log(`ℹ️ [AppleNotif V2] 用户关闭自动续期，当期继续有效（到期后正式停止）: original_tx=${original_transaction_id}`);
           await markContractCancelled(original_transaction_id);
         } else {
           console.log(`ℹ️ [AppleNotif V2] 档位切换（非明确取消），当期继续有效: original_tx=${original_transaction_id} nextPlan=${autoRenewProductId}`);
+        }
+        return;
+      }
+      // AUTO_RENEW_ENABLED → 用户重新开启自动续费（取消后反悔），恢复合约活跃状态
+      if (notification_type === 'DID_CHANGE_RENEWAL_STATUS' && subtype === 'AUTO_RENEW_ENABLED') {
+        const { MiningContract } = require('../models');
+        await MiningContract.update(
+          { is_cancelled: 0 },
+          { where: { original_transaction_id, contract_type: 'paid contract' } }
+        );
+        console.log(`✅ [AppleNotif V2] 用户恢复自动续费，合约重新激活: original_tx=${original_transaction_id}`);
+        return;
+      }
+      // SUBSCRIBED/RESUBSCRIBE → 用户重新订阅（到期后全新购买同一产品），恢复合约活跃状态并更新到期时间
+      if (notification_type === 'SUBSCRIBED' && subtype === 'RESUBSCRIBE') {
+        const { MiningContract } = require('../models');
+        const order = await UserOrder.findOne({ where: { payment_network_id: original_transaction_id } });
+        if (order) {
+          // 更新到期时间（同 DID_RENEW 的沙盒保护逻辑）
+          let resubExpiry = txInfo?.expiresDate ? new Date(txInfo.expiresDate) : null;
+          if (resubExpiry) {
+            const ONE_HOUR_MS = 3600 * 1000;
+            if (resubExpiry.getTime() <= Date.now() + ONE_HOUR_MS) {
+              const fallback = new Date();
+              fallback.setMonth(fallback.getMonth() + 1);
+              console.warn(`⚠️ [AppleNotif V2] RESUBSCRIBE 到期时间不可靠(${resubExpiry.toISOString()})，回退自然月: ${fallback.toISOString()}`);
+              resubExpiry = fallback;
+            }
+          }
+          const updateFields = { is_cancelled: 0 };
+          if (resubExpiry) updateFields.contract_end_time = resubExpiry;
+          await MiningContract.update(
+            updateFields,
+            { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
+          );
+          console.log(`✅ [AppleNotif V2] 用户重新订阅，合约恢复${resubExpiry ? ` 新到期: ${resubExpiry.toISOString()}` : ''}: original_tx=${original_transaction_id}`);
         }
         return;
       }
@@ -254,14 +292,20 @@ exports.handleNotification = async (req, res) => {
       case 'DID_CHANGE_RENEWAL_STATUS': {
         // 用户关闭/开启自动续期
         // ⚠️ 关闭自动续期只表示当期结束后不再续订，当前有效期内合约依然有效，不能立即取消。
-        // 合约到期时会自然过期（contract_end_time 届时 mining queue 不再产生收益）。
+        // 合约到期时会自然过期（contract_end_time 届时 contractRewardService 不再产生收益）。
         const pendingRenewal = req.body.unified_receipt?.pending_renewal_info || [];
         const pendingItem = pendingRenewal.find(p => p.original_transaction_id === original_transaction_id);
         const autoRenewStatus = pendingItem?.auto_renew_status;
         if (autoRenewStatus === '0' || autoRenewStatus === 0) {
           console.log(`ℹ️ [AppleNotif V1] 用户关闭自动续期，当期继续有效: original_tx=${original_transaction_id}`);
         } else {
+          // 用户重新开启自动续期：若 is_cancelled 被误设为 1（通知乱序），重置回 0
           console.log(`✅ [AppleNotif V1] 用户重新开启自动续期: original_tx=${original_transaction_id}`);
+          const { MiningContract } = require('../models');
+          await MiningContract.update(
+            { is_cancelled: 0 },
+            { where: { original_transaction_id, contract_type: 'paid contract' } }
+          );
         }
         break;
       }
@@ -385,7 +429,11 @@ exports.cancelContractManually = async (req, res) => {
       return res.status(400).json({ success: false, message: '缺少必要参数' });
     }
 
-    const { MiningContract } = require('../models');
+    const { MiningContract, Sequelize } = require('../models');
+    const { Op } = Sequelize;
+    // ⚠️ 与 markContractCancelled 保持一致：只允许取消已到期或即将到期（10分钟内）的合约。
+    // 防止在计费周期中途误取消活跃合约（Apple 政策：取消后当期仍有效）。
+    const cutoff = new Date(Date.now() + 10 * 60 * 1000);
     // 安全性：只允许操作属于当前用户的合约
     const contract = await MiningContract.findOne({
       where: {
@@ -393,14 +441,15 @@ exports.cancelContractManually = async (req, res) => {
         original_transaction_id: originalTransactionId,
         contract_type: 'paid contract',
         is_cancelled: 0,
+        contract_end_time: { [Op.lte]: cutoff },
       },
     });
 
     if (!contract) {
-      // 可能已经取消，或不属于该用户
+      // 合约不存在、已取消、或尚在有效期内（时间窗口保护）
       return res.status(200).json({
         success: true,
-        message: '合约不存在或已取消',
+        message: '合约不存在、已取消或仍在有效期内',
         alreadyCancelled: true,
       });
     }

@@ -7,7 +7,6 @@
 
 const cron = require('node-cron');
 const SubscriptionService = require('../services/subscriptionService');
-const paidContractMiningQueue = require('../services/paidContractMiningQueue');
 
 class SubscriptionCheckJob {
   constructor() {
@@ -71,22 +70,6 @@ class SubscriptionCheckJob {
       console.log('\n📋 检查冻结期过期...');
       const accountHoldResult = await SubscriptionService.checkAccountHoldExpiry();
       console.log(`   处理了 ${accountHoldResult.checked} 个冻结期过期的订阅`);
-
-      // 3. 获取挖矿统计
-      console.log('\n📊 挖矿统计:');
-      const stats = await paidContractMiningQueue.getStatistics();
-      if (stats) {
-        console.log(`   总合约数: ${stats.total}`);
-        console.log(`   一次性购买:`);
-        console.log(`     - 活跃: ${stats.oneTime.active}`);
-        console.log(`     - 过期: ${stats.oneTime.expired}`);
-        console.log(`   订阅模式:`);
-        console.log(`     - 活跃: ${stats.subscription.active}`);
-        console.log(`     - 宽限期: ${stats.subscription.gracePeriod}`);
-        console.log(`     - 冻结: ${stats.subscription.accountHold}`);
-        console.log(`     - 已取消: ${stats.subscription.canceled}`);
-        console.log(`   正在挖矿: ${stats.currentlyMining}`);
-      }
 
       console.log('\n========== 检查完成 ==========\n');
 

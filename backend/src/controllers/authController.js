@@ -113,7 +113,9 @@ exports.deviceLogin = async (req, res) => {
       country,
       email,
       app_version,
-      app_build_number
+      app_build_number,
+      idfa,
+      att_status
     } = req.body;
 
     // 验证必填字段
@@ -228,6 +230,8 @@ exports.deviceLogin = async (req, res) => {
           app_version: app_version || null,
           app_build_number: app_build_number || null,
           system: detectedSystem,
+          idfa: idfa || null,
+          att_status: (att_status != null) ? att_status : null,
           acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer)
       }
     });
@@ -379,6 +383,12 @@ exports.deviceLogin = async (req, res) => {
           // 更新客户端版本信息（每次登录上报）
           if (app_version) updateData.app_version = app_version;
           if (app_build_number != null) updateData.app_build_number = app_build_number;
+
+          // 补全设备识别信息（首次有值时写入，后续更新）
+          const detectedSystemNow = android_id.trim().startsWith('IOS_') ? 'iOS' : 'Android';
+          if (!user.system) updateData.system = detectedSystemNow;
+          if (idfa && idfa.trim() !== '') updateData.idfa = idfa.trim();
+          if (att_status != null) updateData.att_status = att_status;
           
           await UserInformation.update(
             updateData,
@@ -386,10 +396,14 @@ exports.deviceLogin = async (req, res) => {
           );
           console.log(`   ✅ [Device Login] 已更新现有用户国家信息: ${countryNameCn}, 倍率: ${countryMultiplier}`);
         } else {
-          // 即便国家未变，也要更新版本信息
+          // 即便国家未变，也要更新版本信息和设备识别信息
           const versionData = {};
           if (app_version) versionData.app_version = app_version;
           if (app_build_number != null) versionData.app_build_number = app_build_number;
+          const detectedSystemNow = android_id.trim().startsWith('IOS_') ? 'iOS' : 'Android';
+          if (!user.system) versionData.system = detectedSystemNow;
+          if (idfa && idfa.trim() !== '') versionData.idfa = idfa.trim();
+          if (att_status != null) versionData.att_status = att_status;
           if (Object.keys(versionData).length > 0) {
             await UserInformation.update(versionData, { where: { user_id: user.user_id } });
           }

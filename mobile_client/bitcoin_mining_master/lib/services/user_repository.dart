@@ -120,6 +120,8 @@ class UserRepository {
       // 3. 获取GAID和设备地区信息（独立try-catch，失败不影响整体）
       String? gaid;
       String? country;
+      String? idfa;
+      int? attStatus;
       
       try {
         print('📱 [Guest Login] 正在获取GAID和地区信息...');
@@ -133,6 +135,18 @@ class UserRepository {
         print('📱 [Guest Login] GAID: $gaidPreview');
         print('📍 [Guest Login] Country: ${country ?? "未获取"}');
         print('📍 国家代码: ${country ?? "未获取"}');
+
+        // iOS：获取 ATT 状态和 IDFA（独立 try-catch，失败不阻断登录）
+        if (!kIsWeb && Platform.isIOS) {
+          try {
+            final iosAdInfo = await DeviceInfoService.getIosAdInfo();
+            idfa = iosAdInfo['idfa'] as String?;
+            attStatus = iosAdInfo['att_status'] as int?;
+            print('📱 [Guest Login] IDFA: ${idfa ?? "未授权或不可用"}, ATT: $attStatus');
+          } catch (e) {
+            print('⚠️ [Guest Login] ATT/IDFA 获取失败（不影响登录）: $e');
+          }
+        }
         
         // 4. 尝试通过后端API创建用户（有网络）
         print('正在通过后端API创建新用户...');
@@ -142,6 +156,8 @@ class UserRepository {
           deviceId: deviceId,
           gaid: gaid,
           country: country,
+          idfa: idfa,
+          attStatus: attStatus,
         );
         
         print('🔍 API响应状态:');

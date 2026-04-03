@@ -263,6 +263,7 @@ class PointsService {
       // 5. 更新 Redis 缓存
       if (redisClient.isReady()) {
         await redisClient.deleteUserPoints(userId);
+        await redisClient.deleteUserLevel(userId); // 同步清除 level 缓存，保证 getUserLevel 返回新鲜 points
       }
 
       console.log(`✅ 用户 ${userId} 扣除 ${points} 积分，类型: ${pointsType}`);

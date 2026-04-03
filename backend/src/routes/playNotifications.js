@@ -105,13 +105,14 @@ async function handleSubscriptionNotification(notification) {
       break;
 
     case 7: // SUBSCRIPTION_RESTARTED
-      console.log('🔄 订阅已重启');
-      await SubscriptionService.handleSubscriptionRenewed(subscriptionId, purchaseToken);
+      console.log('🔄 订阅已重启（取消后在到期前重新开启）');
+      await SubscriptionService.handleSubscriptionRestarted(subscriptionId, purchaseToken);
       break;
 
     case 10: // SUBSCRIPTION_PAUSED
-      console.log('⏸️ 订阅已暂停');
-      await handleSubscriptionPaused(subscriptionId, purchaseToken);
+      // 暂停 = 付款失败进入重试窗口，合约当期仍有效，不立即取消
+      console.log('⏸️ 订阅已暂停（付款重试中，当期合约继续有效）');
+      await SubscriptionService.handleGracePeriod(subscriptionId, purchaseToken);
       break;
 
     case 12: // SUBSCRIPTION_REVOKED
@@ -175,50 +176,6 @@ async function handleOneTimeProductNotification(notification) {
 
   // 一次性商品通常在/verify endpoint已处理，这里只记录
   console.log('✅ 一次性商品通知已记录');
-}
-
-/**
- * 处理订阅暂停
- */
-async function handleSubscriptionPaused(subscriptionId, purchaseToken) {
-  try {
-    const [[contract]] = await sequelize.query(`
-      SELECT * FROM paid_contracts 
-      WHERE subscription_id = ?
-      ORDER BY created_at DESC
-      LIMIT 1
-    `, {
-      replacements: [subscriptionId]
-    });
-
-    if (!contract) {
-      console.log(`⚠️ 未找到订阅: ${subscriptionId}`);
-      return;
-    }
-
-    await sequelize.query(`
-      UPDATE paid_contracts SET
-        subscription_status = 'paused',
-        auto_renewing = FALSE,
-        updated_at = NOW()
-      WHERE id = ?
-    `, {
-      replacements: [contract.id]
-    });
-
-    await SubscriptionService.recordStatusChange(
-      subscriptionId,
-      contract.user_id,
-      contract.subscription_status,
-      'paused',
-      '用户暂停订阅'
-    );
-
-    console.log(`⏸️ 订阅已暂停: ${subscriptionId}`);
-
-  } catch (error) {
-    console.error('处理订阅暂停失败:', error);
-  }
 }
 
 /**

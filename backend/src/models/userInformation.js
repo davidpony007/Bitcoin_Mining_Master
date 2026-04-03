@@ -151,6 +151,18 @@ const UserInformation = sequelize.define('user_information', {
     defaultValue: null,
     comment: '用户获取渠道: invited(邀请注册) | paid_xxx(付费推广) | organic(自然安装)'
   },
+  app_version: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    defaultValue: null,
+    comment: 'App版本号，每次登录上报'
+  },
+  app_build_number: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'App构建号，每次登录上报'
+  },
   user_creation_time: { 
     type: DataTypes.DATE, 
     allowNull: false, 

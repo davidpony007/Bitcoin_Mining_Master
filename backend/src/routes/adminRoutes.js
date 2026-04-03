@@ -242,7 +242,7 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount,
               us.total_withdrawal_amount, us.total_invitation_rebate,
               (
-                (SELECT COALESCE(SUM(COALESCE(fcr.base_hashrate, fcr.hashrate) * COALESCE(ui.country_multiplier, 1) * COALESCE(ui.miner_level_multiplier, 1)), 0)
+                (SELECT COALESCE(SUM(COALESCE(fcr.base_hashrate, fcr.hashrate) * COALESCE(ui.country_multiplier, 1) * COALESCE(ui.miner_level_multiplier, 1) * CASE WHEN fcr.has_daily_bonus = 1 THEN 1.36 ELSE 1.0 END), 0)
                  FROM free_contract_records fcr WHERE fcr.user_id = ui.user_id AND fcr.free_contract_end_time > NOW())
                 + (SELECT COALESCE(SUM(COALESCE(mc.base_hashrate, mc.hashrate)), 0)
                    FROM mining_contracts mc WHERE mc.user_id = ui.user_id AND mc.contract_end_time > NOW() AND mc.is_cancelled = 0 AND mc.contract_type != 'Bind Referrer Reward')
@@ -953,10 +953,13 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
        GROUP BY DATE(user_creation_time)`,
       platform ? [startDate, endDate, platform] : [startDate, endDate]
     );
+    const dauFilter = platform ? ' AND ui.`system` = ?' : '';
     const [dau] = await conn.query(
-      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt FROM user_status
-       WHERE DATE(last_login_time) BETWEEN ? AND ?
-       GROUP BY DATE(last_login_time)`, [startDate, endDate]
+      `SELECT DATE(us.last_login_time) AS d, COUNT(*) AS cnt
+       FROM user_status us JOIN user_information ui ON ui.user_id = us.user_id
+       WHERE DATE(us.last_login_time) BETWEEN ? AND ?${dauFilter}
+       GROUP BY DATE(us.last_login_time)`,
+      platform ? [startDate, endDate, platform] : [startDate, endDate]
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d,
@@ -983,10 +986,13 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
          AND DATE(created_at) BETWEEN ? AND ?
        GROUP BY DATE(created_at)`, [startDate, endDate]
     );
+    const checkinFilter = platform ? ' AND ui.`system` = ?' : '';
     const [checkins] = await conn.query(
-      `SELECT check_in_date AS d, COUNT(*) AS cnt
-       FROM user_check_in WHERE check_in_date BETWEEN ? AND ?
-       GROUP BY check_in_date`, [startDate, endDate]
+      `SELECT uci.check_in_date AS d, COUNT(*) AS cnt
+       FROM user_check_in uci JOIN user_information ui ON ui.user_id = uci.user_id
+       WHERE uci.check_in_date BETWEEN ? AND ?${checkinFilter}
+       GROUP BY uci.check_in_date`,
+      platform ? [startDate, endDate, platform] : [startDate, endDate]
     );
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
@@ -1050,19 +1056,23 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 
-    // 1. 每日新增用户
+    // 1. 每日新增用户 (按平台过滤)
+    const nuPlatFilter = platform ? ' AND `system` = ?' : '';
     const [nuRows] = await conn.query(
       `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt
        FROM user_information
-       WHERE DATE(user_creation_time) BETWEEN ? AND ?
-       GROUP BY DATE(user_creation_time)`, [startDate, endDate]);
+       WHERE DATE(user_creation_time) BETWEEN ? AND ?${nuPlatFilter}
+       GROUP BY DATE(user_creation_time)`,
+      platform ? [startDate, endDate, platform] : [startDate, endDate]);
 
-    // 2. DAU
+    // 2. DAU (按平台过滤)
+    const drDauFilter = platform ? ' AND ui.`system` = ?' : '';
     const [dauRows] = await conn.query(
-      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt
-       FROM user_status
-       WHERE DATE(last_login_time) BETWEEN ? AND ?
-       GROUP BY DATE(last_login_time)`, [startDate, endDate]);
+      `SELECT DATE(us.last_login_time) AS d, COUNT(*) AS cnt
+       FROM user_status us JOIN user_information ui ON ui.user_id = us.user_id
+       WHERE DATE(us.last_login_time) BETWEEN ? AND ?${drDauFilter}
+       GROUP BY DATE(us.last_login_time)`,
+      platform ? [startDate, endDate, platform] : [startDate, endDate]);
 
     // 3. 订单 —— 按 order_status 区分首次订阅(active) 与续订(renewing)
     const [ordRows] = await conn.query(
@@ -1884,14 +1894,25 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        ORDER BY transaction_creation_time DESC LIMIT 20`, [userId]
     );
 
-    // 5. 合约摘要（含过期数）
-    const [[contractStats]] = await conn.query(
-      `SELECT COUNT(*) AS total_contracts,
-              SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
+    // 5. 合约摘要（付费合约 + 免费合约合计）
+    const [[mcStats]] = await conn.query(
+      `SELECT COUNT(*) AS mc_total,
+              SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS mc_active,
               SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts,
               SUM(CASE WHEN (contract_end_time <= NOW() OR is_cancelled = 1) THEN 1 ELSE 0 END) AS expired_contracts
        FROM mining_contracts WHERE user_id = ?`, [userId]
     );
+    const [[fcrStats]] = await conn.query(
+      `SELECT COUNT(*) AS fcr_total,
+              SUM(CASE WHEN free_contract_end_time > NOW() THEN 1 ELSE 0 END) AS fcr_active
+       FROM free_contract_records WHERE user_id = ?`, [userId]
+    );
+    const contractStats = {
+      total_contracts: (parseInt(mcStats.mc_total) || 0) + (parseInt(fcrStats.fcr_total) || 0),
+      active_contracts: (parseInt(mcStats.mc_active) || 0) + (parseInt(fcrStats.fcr_active) || 0),
+      paid_contracts: parseInt(mcStats.paid_contracts) || 0,
+      expired_contracts: parseInt(mcStats.expired_contracts) || 0,
+    };
 
     // 6. 订单摘要（退款订单不计入消费）
     const [[orderStats]] = await conn.query(
@@ -1921,7 +1942,7 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
     const levelMul   = parseFloat(user.miner_level_multiplier || '1.0');
 
     const [[{ free_rate }]] = await conn.query(
-      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate) * ? * ?), 0) AS free_rate
+      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate) * ? * ? * CASE WHEN has_daily_bonus = 1 THEN 1.36 ELSE 1.0 END), 0) AS free_rate
        FROM free_contract_records
        WHERE user_id = ? AND free_contract_end_time > NOW()`,
       [countryMul, levelMul, userId]

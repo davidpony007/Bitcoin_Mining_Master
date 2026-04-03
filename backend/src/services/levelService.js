@@ -122,6 +122,22 @@ class LevelService {
       if (redisClient.isReady()) {
         const cachedLevel = await redisClient.getUserLevel(userId);
         if (cachedLevel) {
+          // 用 user:points 缓存中的权威积分值覆盖 level 缓存中可能过时的 points 字段
+          // 避免两个缓存不一致导致 Experience 显示错误
+          try {
+            const cachedPoints = await redisClient.getUserPoints(userId);
+            if (cachedPoints && cachedPoints.available !== undefined) {
+              const freshPoints = parseInt(cachedPoints.available || 0);
+              if (freshPoints !== cachedLevel.points) {
+                console.log(`⚠️  用户 ${userId} level缓存points(${cachedLevel.points}) != points缓存(${freshPoints})，使用最新值`);
+                cachedLevel.points = freshPoints;
+                // 同步更新 level 缓存中的 points 字段
+                await redisClient.client.hset(`user:level:${userId}`, 'points', freshPoints.toString());
+              }
+            }
+          } catch (e) {
+            // 忽略，不影响主流程
+          }
           console.log(`✅ 从 Redis 获取用户 ${userId} 等级信息`);
           return cachedLevel;
         }

@@ -55,13 +55,11 @@ class InvitationMiningContractService {
 
       // 3. 获取纯基础挖矿速率（不含任何倍数）
       const BASE_HASHRATE = 0.000000000000139;
-      
-      // 4. 计算当前的速度信息（仅用于返回给前端显示）
-      const speedInfo = await LevelService.calculateMiningSpeed(referrerId);
 
       let contract;
       let isNewContract = false;
 
+      // 4. 创建或延长合约（核心操作，不依赖任何外部计算）
       if (existingContract) {
         // 延长现有合约
         const currentEndTime = new Date(existingContract.free_contract_end_time);
@@ -97,40 +95,52 @@ class InvitationMiningContractService {
         console.log(`✅ 创建邀请挖矿合约: 推荐人 ${referrerId}, 结束时间 ${endTime}, 基础速率 ${BASE_HASHRATE.toExponential(2)} BTC/s`);
       }
 
-      // 5. 获取推荐人的总邀请人数
-      const connection = await pool.getConnection();
+      // 5. 获取推荐人的总邀请人数（非关键，失败不影响合约）
+      let totalInvitations = 0;
       try {
-        const [invitationStats] = await connection.query(
-          'SELECT COUNT(*) as total FROM invitation_relationship WHERE referrer_user_id = ?',
-          [referrerId]
-        );
-        
-        const totalInvitations = invitationStats[0]?.total || 0;
-        
-        return {
-          success: true,
-          message: isNewContract ? '邀请成功，开始挖矿2小时' : '邀请成功，挖矿时间延长2小时',
-          contract: {
-            id: contract.id,
-            type: 'Invite Friend Reward',
-            startTime: contract.free_contract_creation_time,
-            endTime: contract.free_contract_end_time,
-            hashrate: contract.hashrate
-          },
-          speedInfo: {
-            baseSpeed: speedInfo.baseSpeed,
-            levelMultiplier: speedInfo.levelMultiplier,
-            countryMultiplier: speedInfo.countryMultiplier
-          },
-          invitationStats: {
-            totalInvitations,
-            newInvitee: refereeId
-          },
-          isNewContract
-        };
-      } finally {
-        connection.release();
+        const connection = await pool.getConnection();
+        try {
+          const [invitationStats] = await connection.query(
+            'SELECT COUNT(*) as total FROM invitation_relationship WHERE referrer_user_id = ?',
+            [referrerId]
+          );
+          totalInvitations = invitationStats[0]?.total || 0;
+        } finally {
+          connection.release();
+        }
+      } catch (statsErr) {
+        console.warn(`⚠️ 获取邀请统计失败（合约已创建，可忽略）: ${statsErr.message}`);
       }
+
+      // 6. 计算速度信息（仅用于返回展示，失败不影响合约）
+      let speedInfo = null;
+      try {
+        speedInfo = await LevelService.calculateMiningSpeed(referrerId);
+      } catch (speedErr) {
+        console.warn(`⚠️ 获取挖矿速率失败（合约已创建，可忽略）: ${speedErr.message}`);
+      }
+
+      return {
+        success: true,
+        message: isNewContract ? '邀请成功，开始挖矿2小时' : '邀请成功，挖矿时间延长2小时',
+        contract: {
+          id: contract.id,
+          type: 'Invite Friend Reward',
+          startTime: contract.free_contract_creation_time,
+          endTime: contract.free_contract_end_time,
+          hashrate: contract.hashrate
+        },
+        speedInfo: speedInfo ? {
+          baseSpeed: speedInfo.baseSpeed,
+          levelMultiplier: speedInfo.levelMultiplier,
+          countryMultiplier: speedInfo.countryMultiplier
+        } : null,
+        invitationStats: {
+          totalInvitations,
+          newInvitee: refereeId
+        },
+        isNewContract
+      };
 
     } catch (err) {
       console.error('❌ 处理邀请挖矿合约失败:', err);
