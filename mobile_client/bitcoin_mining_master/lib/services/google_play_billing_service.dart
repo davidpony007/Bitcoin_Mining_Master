@@ -266,7 +266,7 @@ class GooglePlayBillingService {
           'transaction_id': purchase.purchaseID,
           'purchase_token': purchaseToken,
         }),
-      );
+      ).timeout(const Duration(seconds: 50));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

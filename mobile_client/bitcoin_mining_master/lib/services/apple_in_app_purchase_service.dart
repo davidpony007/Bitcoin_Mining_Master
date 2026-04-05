@@ -393,10 +393,19 @@ class AppleInAppPurchaseService {
               print('🎉 iOS 购买积分奖励: +$pts 积分');
               onPointsAwarded?.call(pts);
             }
-            onPurchaseUpdate?.call(
-              true,
-              'Purchase successful! Contract activated. Check "My Contracts" to view.',
-            );
+            // 区分"真正的新购买"与"续订/合约延期"：
+            // renewed=true 表示后端只是延期了已有合约，并非激活新合约。
+            // 用户主动点击 Subscribe 但 StoreKit 回放了原有合约的续订交易时会触发此路径。
+            final bool isRenewal = data['renewed'] == true;
+            if (isRenewal) {
+              print('ℹ️ [IAP] 续订交易：合约已延期（不显示"购买成功"）: ${purchase.productID}');
+              // 不显示任何 Toast，用户并没有完成新购买
+            } else {
+              onPurchaseUpdate?.call(
+                true,
+                'Purchase successful! Contract activated. Check "My Contracts" to view.',
+              );
+            }
           } else {
             print('ℹ️ [IAP] 后台交易验证成功（非用户主动购买），静默处理: ${purchase.productID}');
           }

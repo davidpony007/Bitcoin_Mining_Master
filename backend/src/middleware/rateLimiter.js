@@ -5,12 +5,12 @@
 const rateLimit = require('express-rate-limit');
 
 /**
- * 通用全局限流：每个IP每15分钟最多200个请求
- * 适合挂载在所有路由之前
+ * 通用全局限流：每个IP每15分钟最多1000个请求
+ * 移动端 App 有多个轮询接口，200/15min 太低，实际正常使用即可触发
  */
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
-  max: 200,
+  max: 1000,
   standardHeaders: true,    // 在响应头返回 RateLimit-* 标准字段
   legacyHeaders: false,
   message: {

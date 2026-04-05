@@ -533,7 +533,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _startMiningTimer() {
-    _syncCounter = 9; // 从9开始，使第1秒就触发一次余额同步，之后每10秒同步一次
+    _syncCounter = 29; // 从29开始，使第1秒就触发一次余额同步，之后每30秒同步一次
     
     _miningTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!mounted) return;
@@ -581,9 +581,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         _sortBatteries();
       }
 
-      // 每10秒从后端同步一次真实余额和挖矿速率（校准基准值）
+      // 每30秒从后端同步一次真实余额和挖矿速率（校准基准值）
       _syncCounter++;
-      if (mounted && _syncCounter >= 10) {
+      if (mounted && _syncCounter >= 30) {
         await context.read<UserProvider>().fetchBitcoinBalance();
         _syncCounter = 0;
       }
@@ -968,17 +968,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   
   /// 获取挖矿速率加成文本
   String _getMiningRateBonus() {
-    // LV.1: +0%, LV.2: +10%, LV.3: +30%, LV.4: +50%, LV.5: +75%,
-    // LV.6: +100%, LV.7: +130%, LV.8: +160%, LV.9: +200%
+    // LV.1: +0%, LV.2: +10%, LV.3: +20%, LV.4: +35%, LV.5: +50%,
+    // LV.6: +70%, LV.7: +100%, LV.8: +140%, LV.9: +200%
     final bonusPercentages = {
       1: 0,
       2: 10,
-      3: 30,
-      4: 50,
-      5: 75,
-      6: 100,
-      7: 130,
-      8: 160,
+      3: 20,
+      4: 35,
+      5: 50,
+      6: 70,
+      7: 100,
+      8: 140,
       9: 200,
     };
     

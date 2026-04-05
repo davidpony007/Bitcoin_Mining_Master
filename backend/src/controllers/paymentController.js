@@ -377,14 +377,14 @@ exports.verifyPurchase = async (req, res) => {
       console.warn(`⚠️ [paymentController] 积分奖励失败（不影响主流程）: ${pointsErr.message}`);
     }
 
-    if (!contract?.id) {
+    if (!contract?.contract?.id) {
       console.warn(`⚠️ [paymentController] 合约创建失败或返回空: user=${user_id} product=${resolvedBackendProductId} orderId=${newOrder?.id}`, contract);
     }
 
     return res.status(200).json({
       success: true,
       message: '购买验证成功，合约已激活',
-      contractId: contract?.id,
+      contractId: contract?.contract?.id,
       orderId: newOrder?.id,
       pointsAwarded: pointsResult.awarded ? pointsResult.pointsAwarded : 0,
       pointsReason: pointsResult.awarded ? '首次订阅积分奖励' : null,
@@ -425,6 +425,7 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
 
   // 先尝试生产环境，21007 → 切换到沙盒
   let appleUrl = 'https://buy.itunes.apple.com/verifyReceipt';
+  let activeUrl = appleUrl; // 追踪实际最终使用的环境 URL（生产 or 沙盒）
   let appleRes;
 
   try {
@@ -440,9 +441,10 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
   // 21007 = 沙盒收据发到了生产环境，切换到沙盒
   if (currentStatus === 21007) {
     console.log(`🔄 [IAP] 沙盒收据，切换到沙盒环境验证 | txId=${transactionId}`);
+    activeUrl = 'https://sandbox.itunes.apple.com/verifyReceipt';
     try {
       appleRes = await axios.post(
-        'https://sandbox.itunes.apple.com/verifyReceipt',
+        activeUrl,
         payload,
         { timeout: 20000 }
       );
@@ -463,6 +465,36 @@ async function verifyAppleReceipt(receiptData, transactionId, productId) {
       originalTransactionId: transactionId,
       expiresDateMs: String(Date.now() + 30 * 24 * 3600 * 1000), // 默认30天
     };
+  }
+
+  // 21105 = Apple 服务器临时内部错误（数据库访问失败），重试一次
+  if (currentStatus === 21105) {
+    console.warn(`⚠️ [IAP] Apple 返回 21105（临时内部错误），2秒后重试 | txId=${transactionId}`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const retryRes = await axios.post(activeUrl, payload, { timeout: 20000 });
+      const retryStatus = retryRes.data.status;
+      console.log(`📡 [IAP] Apple 21105 重试响应状态: ${retryStatus} | txId=${transactionId}`);
+      if (retryStatus === 0) {
+        appleRes = retryRes;
+        currentStatus = 0;
+      } else {
+        // 重试后仍然失败，降级信任客户端（避免因 Apple 临时故障拒绝真实购买）
+        console.warn(`⚠️ [IAP] Apple 21105 重试仍失败(${retryStatus})，降级信任客户端数据: txId=${transactionId}`);
+        return {
+          valid: true,
+          originalTransactionId: transactionId,
+          expiresDateMs: String(Date.now() + 30 * 24 * 3600 * 1000),
+        };
+      }
+    } catch (e) {
+      console.warn(`⚠️ [IAP] Apple 21105 重试请求失败(${e.message})，降级信任客户端数据: txId=${transactionId}`);
+      return {
+        valid: true,
+        originalTransactionId: transactionId,
+        expiresDateMs: String(Date.now() + 30 * 24 * 3600 * 1000),
+      };
+    }
   }
 
   const finalStatus = appleRes.data.status;
