@@ -173,15 +173,28 @@ class GooglePlayBillingService {
         
       } else if (purchaseDetails.status == PurchaseStatus.error) {
         final errMsg = purchaseDetails.error?.message ?? '';
-        if (errMsg.contains('itemAlreadyOwned')) {
-          // Google Play 说此订阅已存在但我们后端可能无合约记录
-          // 自动恢复购买，让后端重新验证并创建合约
-          print('⚠️ itemAlreadyOwned: 自动恢复订阅以同步后端合约...');
-          _iap.restorePurchases();
-          // 不显示错误提示，让 restore 流程处理后续
+        final errCode = purchaseDetails.error?.code ?? '';
+        final errDetails = purchaseDetails.error?.details?.toString() ?? '';
+        // 打印完整错误信息，便于排查（含 code、message、details）
+        print('❌ 购买错误: code=$errCode | message=$errMsg | details=${errDetails.length > 200 ? errDetails.substring(0, 200) : errDetails}');
+        // 判断是否为 itemAlreadyOwned：同时检查 code、message、details，兼容不同
+        // 版本 Google Play Billing SDK 的错误格式
+        final isAlreadyOwned = errCode.toLowerCase().contains('itemalreadyowned') ||
+            errCode.toLowerCase().contains('item_already_owned') ||
+            errMsg.toLowerCase().contains('itemalreadyowned') ||
+            errMsg.toLowerCase().contains('item_already_owned') ||
+            errMsg.toLowerCase().contains('already owned') ||
+            errDetails.toLowerCase().contains('itemalreadyowned') ||
+            errDetails.toLowerCase().contains('item_already_owned');
+        if (isAlreadyOwned) {
+          // Google Play 说此订阅已存在（用户已有活跃订阅）。
+          // 1. 立即通知 UI 停止 loading（否则 _loadingTierId 永不清除 → 按钮永久转圈）
+          // 2. 后台调用 restorePurchases 同步后端合约（如果本会话 txId 未处理过则会触发 _verifyAndDeliver）
+          print('⚠️ itemAlreadyOwned: 订阅已存在，停止 loading 并后台同步合约...');
+          onPurchaseUpdate?.call(true, 'Your subscription is already active.');
+          _iap.restorePurchases(); // 后台同步，让 restore 流程处理未确认合约
         } else {
           // 购买失败
-          print('❌ 购买失败: ${purchaseDetails.error}');
           onPurchaseUpdate?.call(false, 'Purchase failed: $errMsg');
           if (purchaseDetails.pendingCompletePurchase) {
             _iap.completePurchase(purchaseDetails);

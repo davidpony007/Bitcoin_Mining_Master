@@ -784,6 +784,15 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       _billingService.authToken = StorageService().getAuthToken();
       await _billingService.buySubscription(storeId);
       // 结果通过 onPurchaseUpdate 回调返回，会自动清除 _loadingTierId
+      // 安全超时：60 秒内若 onPurchaseUpdate 仍未回调（如 itemAlreadyOwned 事件未触发），
+      // 自动清除 loading 防止永久转圈，让用户可以再次尝试。
+      final capturedTierIdAndroid = tier['id'] as String;
+      Future.delayed(const Duration(seconds: 60), () {
+        if (mounted && _loadingTierId == capturedTierIdAndroid) {
+          setState(() => _loadingTierId = null);
+          _showPurchaseResult(false, 'Purchase is taking too long. Please try again.');
+        }
+      });
     } else if (Platform.isIOS) {
       // iOS: Apple In-App Purchase via App Store
       if (!_serviceInitialized) {

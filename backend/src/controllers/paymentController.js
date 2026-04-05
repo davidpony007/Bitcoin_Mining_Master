@@ -219,6 +219,23 @@ exports.verifyPurchase = async (req, res) => {
         order: [['id', 'DESC']],
       });
       if (existingActiveAndroidContract) {
+        // ── 先做去重：同一 transaction_id（GPA 订单号）只处理一次 ──
+        // 必须在 MiningContract.update 之前检查，否则重复请求时合约已延期
+        // 而 UserOrder INSERT 才触发 UNIQUE 约束 → 合约错误累加 + 客户端收到 500
+        const existingRenewalOrder = await UserOrder.findOne({
+          where: { payment_gateway_id: transaction_id },
+        });
+        if (existingRenewalOrder) {
+          console.log(`⚠️ [paymentController] Android 续订重复请求，已忽略: txId=${transaction_id} user=${user_id}`);
+          return res.status(200).json({
+            success: true,
+            message: 'Android 订阅续订成功，合约已延期',
+            renewed: true,
+            newExpiry: existingActiveAndroidContract.contract_end_time,
+            pointsAwarded: 0,
+          });
+        }
+
         // 计算新到期时间（从当前到期时间 + 1 个计费周期）
         const tierMonths = productInfo?.duration_months || 1;
         const currentExpiry = new Date(existingActiveAndroidContract.contract_end_time);

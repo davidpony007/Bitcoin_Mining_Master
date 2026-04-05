@@ -52,6 +52,8 @@ class ContractsScreenState extends State<ContractsScreen>
   // 乐观保护：订阅成功后，在服务端确认建立合约前，任何 _loadContracts 结果都不得清除该档位的主动条目
   // Map key = productId，value = 60秒超时 Timer；支持同时保护多个档位（多套餐并购场景）
   final Map<String, Timer> _pendingOptimisticTimers = {};
+  // 防 race condition：每次 _loadContracts() 调用递增，响应到达时若序号已过时则丢弃
+  int _loadContractsSeq = 0;
   // iOS 订阅状态同步冷却：5 分钟内不重复调用 restorePurchases()，避免频繁触发 StoreKit 事件
   DateTime? _lastIosSyncTime;
 
@@ -237,6 +239,7 @@ class ContractsScreenState extends State<ContractsScreen>
   }
 
   Future<void> _loadContracts() async {
+    final seq = ++_loadContractsSeq; // 捕获本次请求的序列号
     try {
       final userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) {
@@ -247,13 +250,19 @@ class ContractsScreenState extends State<ContractsScreen>
         return;
       }
 
-      print('📝 加载合约数据 - userId: $userId');
+      print('📝 加载合约数据 - userId: $userId seq=$seq');
 
       // 同时刷新用户等级
       _loadUserLevel();
 
       final response = await _apiService.getMyContracts(userId);
-      print('📦 API响应: $response');
+      print('📦 API响应 seq=$seq (current=${_loadContractsSeq}): $response');
+
+      // 若已有更新的请求在途，丢弃本次过时响应，避免覆盖较新结果
+      if (seq < _loadContractsSeq) {
+        print('⚠️ [contracts] 丢弃过时响应 seq=$seq，当前序号=${_loadContractsSeq}');
+        return;
+      }
 
       if (!mounted) return;
 

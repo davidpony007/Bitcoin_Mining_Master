@@ -134,10 +134,13 @@ class PointsService {
 
       // 3. 更新用户积分和等级（user_information表）
       if (levelChanged) {
+        const newLevelConfig = LevelService.LEVEL_CONFIG.find(c => c.level === currentLevel);
+        const newMultiplier = newLevelConfig ? newLevelConfig.speed_multiplier : 1.0;
         await connection.query(
-          'UPDATE user_information SET user_points = ?, user_level = ? WHERE user_id = ?',
-          [newPoints, currentLevel, userId]
+          'UPDATE user_information SET user_points = ?, user_level = ?, miner_level_multiplier = ? WHERE user_id = ?',
+          [newPoints, currentLevel, newMultiplier, userId]
         );
+        console.log(`✅ 用户 ${userId} miner_level_multiplier 更新为 ${newMultiplier}`);
       } else {
         await connection.query(
           'UPDATE user_information SET user_points = ? WHERE user_id = ?',
