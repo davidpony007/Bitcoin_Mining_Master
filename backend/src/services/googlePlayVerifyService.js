@@ -191,7 +191,7 @@ class GooglePlayVerifyService {
   }
 
   /**
-   * 确认购买（防止退款）
+   * 确认一次性购买（防止退款）
    * Google要求在3天内确认购买，否则会自动退款
    * 
    * @param {string} packageName - 应用包名
@@ -207,7 +207,7 @@ class GooglePlayVerifyService {
     }
 
     try {
-      console.log(`✅ 确认购买: ${packageName} / ${productId}`);
+      console.log(`✅ 确认一次性购买: ${packageName} / ${productId}`);
       
       await this.androidPublisher.purchases.products.acknowledge({
         packageName: packageName,
@@ -220,6 +220,41 @@ class GooglePlayVerifyService {
       
     } catch (error) {
       console.error('❌ 确认购买失败:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 确认订阅购买（防止 Google Play 3天内自动退款取消订阅）
+   * 订阅必须用 purchases.subscriptions.acknowledge，与一次性购买不同
+   * 
+   * @param {string} packageName - 应用包名（如 com.cloudminingtool.bitcoin_mining_app）
+   * @param {string} subscriptionId - 订阅商品ID（如 p04.99）
+   * @param {string} purchaseToken - 购买token
+   */
+  async acknowledgeSubscription(packageName, subscriptionId, purchaseToken) {
+    if (!this.isInitialized) {
+      return { success: false, error: 'Google Play验证服务未初始化' };
+    }
+
+    try {
+      console.log(`✅ 确认订阅: ${packageName} / ${subscriptionId}`);
+
+      await this.androidPublisher.purchases.subscriptions.acknowledge({
+        packageName,
+        subscriptionId,
+        token: purchaseToken,
+      });
+
+      console.log('✅ 订阅已确认（prevent 3-day auto-refund）');
+      return { success: true };
+    } catch (error) {
+      // 如果已确认（ALREADY_ACKNOWLEDGED），不视为错误
+      if (error.message && error.message.includes('acknowledgedState')) {
+        console.log('ℹ️ 订阅已处于已确认状态，跳过');
+        return { success: true };
+      }
+      console.error('❌ 确认订阅失败:', error.message);
       return { success: false, error: error.message };
     }
   }

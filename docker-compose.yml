@@ -1,4 +1,5 @@
 # Docker Compose - 本地开发环境
+# 使用前请先复制 .env.dev.example 为 .env.dev 并填写配置
 version: '3.8'
 
 services:
@@ -8,11 +9,13 @@ services:
     platform: linux/amd64  # M芯片兼容模式
     container_name: bitcoin_mysql_dev
     restart: unless-stopped
+    env_file:
+      - .env.dev
     environment:
-      MYSQL_ROOT_PASSWORD: dev_password_123
+      MYSQL_ROOT_PASSWORD: ${DEV_DB_ROOT_PASSWORD}
       MYSQL_DATABASE: bitcoin_mining_master
-      MYSQL_USER: bitcoin
-      MYSQL_PASSWORD: bitcoin_dev_123
+      MYSQL_USER: ${DEV_DB_USER}
+      MYSQL_PASSWORD: ${DEV_DB_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
@@ -31,7 +34,9 @@ services:
     image: redis:6-alpine
     container_name: bitcoin_redis_dev
     restart: unless-stopped
-    command: redis-server --requirepass dev_redis_123
+    env_file:
+      - .env.dev
+    command: redis-server --requirepass ${DEV_REDIS_PASSWORD}
     ports:
       - "6379:6379"
     volumes:
@@ -70,19 +75,22 @@ services:
       dockerfile: Dockerfile.dev
     container_name: bitcoin_backend_dev
     restart: unless-stopped
+    env_file:
+      - .env.dev
     environment:
       NODE_ENV: development
       PORT: 8888
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: bitcoin_mining_master
-      DB_USER: bitcoin
-      DB_PASSWORD: bitcoin_dev_123
+      DB_USER: ${DEV_DB_USER}
+      DB_PASSWORD: ${DEV_DB_PASSWORD}
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: dev_redis_123
-      JWT_SECRET: dev_jwt_secret_key_for_testing
-      APPLE_IAP_SHARED_SECRET: ""  # 填入 App Store Connect → App Information → App-Specific Shared Secret
+      REDIS_PASSWORD: ${DEV_REDIS_PASSWORD}
+      JWT_SECRET: ${DEV_JWT_SECRET}
+      APPLE_IAP_SHARED_SECRET: ${APPLE_IAP_SHARED_SECRET}  # 填入 App Store Connect App-Specific Shared Secret
+      ANDROID_PACKAGE_NAME: ${ANDROID_PACKAGE_NAME}  # 与 build.gradle.kts applicationId 一致
     ports:
       - "8888:8888"
     volumes:

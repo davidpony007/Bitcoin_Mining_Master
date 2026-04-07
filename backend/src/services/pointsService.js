@@ -25,7 +25,8 @@ class PointsService {
     SUBSCRIBE_STARTER_PLAN: 'SUBSCRIBE STARTER PLAN',   // 订阅 Starter Plan 积分奖励
     SUBSCRIBE_STANDARD_PLAN: 'SUBSCRIBE STANDARD PLAN', // 订阅 Standard Plan 积分奖励
     SUBSCRIBE_ADVANCED_PLAN: 'SUBSCRIBE ADVANCED PLAN', // 订阅 Advanced Plan 积分奖励
-    SUBSCRIBE_PREMIUM_PLAN: 'SUBSCRIBE PREMIUM PLAN'    // 订阅 Premium Plan 积分奖励
+    SUBSCRIBE_PREMIUM_PLAN: 'SUBSCRIBE PREMIUM PLAN',   // 订阅 Premium Plan 积分奖励
+    APP_RATING: 'APP_RATING'                               // 应用评分一次性奖励
   };
 
   /**

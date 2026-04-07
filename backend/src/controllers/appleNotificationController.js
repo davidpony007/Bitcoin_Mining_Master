@@ -84,6 +84,24 @@ exports.handleNotification = async (req, res) => {
         console.warn('⚠️ [AppleNotif] V2 signedPayload 无法解析，忽略');
         return;
       }
+
+      // ── V2 安全校验 ──────────────────────────────────────
+      // 1. bundleId 校验：防止伪造请求或其他 App 通知误触发
+      const expectedBundleId = process.env.APPLE_BUNDLE_ID;
+      const receivedBundleId = v2.data?.bundleId || v2.bundleId;
+      if (expectedBundleId && receivedBundleId && receivedBundleId !== expectedBundleId) {
+        console.warn(`⚠️ [AppleNotif V2] bundleId 不匹配，拒绝: received=${receivedBundleId} expected=${expectedBundleId}`);
+        return;
+      }
+      // 2. 时间戳防重放：signedDate 超过 1 小时的通知直接丢弃
+      const signedDate = v2.signedDate;
+      if (signedDate && Math.abs(Date.now() - signedDate) > 3600 * 1000) {
+        console.warn(`⚠️ [AppleNotif V2] signedDate 超过 1 小时，忽略（可能重放攻击）: ${new Date(signedDate).toISOString()}`);
+        return;
+      }
+      // TODO(security): 实现完整 JWS 证书链签名验证（使用 @apple/app-store-server-library）。
+      // 需配置 App Store Connect API 私钥（.p8）、Key ID、Issuer ID 等环境变量。
+      // 参考: https://developer.apple.com/documentation/appstoreservernotifications/enabling_app_store_server_notifications
       notification_type = v2.notificationType || v2.notification_type;
       const subtype = v2.subtype || '';
       const txInfo = parseSignedInfo(v2.data?.signedTransactionInfo);

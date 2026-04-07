@@ -9,6 +9,7 @@ yarn-error.log*
 .env.local
 .env.production
 .env.*.local
+.env.dev
 *.log
 
 # ===== Flutter / Mobile =====

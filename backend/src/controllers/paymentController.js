@@ -364,6 +364,19 @@ exports.verifyPurchase = async (req, res) => {
       iosMeta?.originalTransactionId || (platform === 'android' ? purchase_token : null)
     );
 
+    // ── Android 订阅确认（Google Play 要求 3 天内 acknowledge，否则自动退款/取消）────
+    // 必须在合约创建后调用，且失败不阻断主流程（避免因 acknowledge 失败让用户看到"购买失败"）
+    if (platform === 'android' && purchase_token && googlePlayVerifyService.isInitialized) {
+      const packageName = process.env.ANDROID_PACKAGE_NAME;
+      if (packageName) {
+        try {
+          await googlePlayVerifyService.acknowledgeSubscription(packageName, store_product_id, purchase_token);
+        } catch (ackErr) {
+          console.warn(`⚠️ [paymentController] Android 订阅 acknowledge 失败（不影响合约）: ${ackErr.message}`);
+        }
+      }
+    }
+
     // ── 订阅积分奖励（首次订阅该档位 +20 分，幂等，失败不阻断主流程）────
     // ⚠️ 必须用独立 try/catch 包裹，防止积分表不存在或 DB 异常时
     // 导致 verifyPurchase 整体返回 500，用户看到"Server verification failed"

@@ -555,12 +555,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     if (userId == null || userId.isEmpty) return;
     try {
       final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/points/add'),
+        Uri.parse('${ApiConstants.baseUrl}/points/claim-app-rating'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'user_id': userId,
-          'points': 10,
-          'reason': 'app_rating',
         }),
       ).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
@@ -720,7 +718,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   Future<void> _openStoreReview() async {
     if (Platform.isAndroid) {
-      const packageName = 'com.cloudminingtool.bitcoin_mining_app';
+      const packageName = StoreConstants.androidPackageName;
       final marketUri = Uri.parse('market://details?id=$packageName');
       final webUri = Uri.parse(
           'https://play.google.com/store/apps/details?id=$packageName');
@@ -730,8 +728,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         await launchUrl(webUri, mode: LaunchMode.externalApplication);
       }
     } else if (Platform.isIOS) {
-      // App Store ID (上架后替换为正确的数字 ID，例如 '6743692060')
-      const appStoreId = 'YOUR_APP_STORE_ID';
+      const appStoreId = StoreConstants.iosAppStoreId;
       final storeUri = Uri.parse(
           'itms-apps://apps.apple.com/app/id$appStoreId?action=write-review');
       final webUri = Uri.parse(

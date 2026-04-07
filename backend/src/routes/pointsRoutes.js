@@ -282,4 +282,46 @@ router.post('/deduct', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * @route   POST /api/points/claim-app-rating
+ * @desc    用户领取应用评分一次性奖励 (+10 积分)，服务端幂等防重复
+ * @access  Public (user_id in body)
+ */
+router.post('/claim-app-rating', async (req, res) => {
+  const pool = require('../config/database_native');
+  try {
+    const { user_id } = req.body;
+    if (!user_id) {
+      return res.status(400).json({ success: false, message: '缺少参数: user_id' });
+    }
+
+    // 服务端幂等：检查是否已领取过（points_transaction 表）
+    const connection = await pool.getConnection();
+    try {
+      const [existing] = await connection.query(
+        "SELECT id FROM points_transaction WHERE user_id = ? AND points_type = 'APP_RATING' LIMIT 1",
+        [user_id]
+      );
+      if (existing.length > 0) {
+        return res.status(400).json({ success: false, message: 'App rating reward already claimed' });
+      }
+    } finally {
+      connection.release();
+    }
+
+    const result = await PointsService.addPoints(
+      user_id,
+      10,
+      PointsService.POINTS_TYPES.APP_RATING,
+      'App rating reward',
+      null
+    );
+
+    res.json({ success: true, data: result, message: '+10 points added' });
+  } catch (error) {
+    console.error('领取评分积分失败:', error);
+    res.status(500).json({ success: false, message: '领取评分积分失败', error: error.message });
+  }
+});
+
 module.exports = router;

@@ -854,8 +854,7 @@ class ApiService {
           return {
             'success': true,
             'alreadyCheckedIn': true,
-            'message': (responseData is Map ? responseData['message'] : null) ??
-                'Already checked in today'
+            'message': responseData['message'] ?? 'Already checked in today'
           };
         }
       }

@@ -412,42 +412,37 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       
       print('🔄 调用延长合约API - userId: $userId');
 
-      final baseUrls = <String>[];
       final primaryBase = ApiConstants.baseUrl.replaceAll('/api', '');
-      baseUrls.add(primaryBase);
-      if (!kIsWeb && Platform.isAndroid) {
-        baseUrls.add('http://10.0.2.2:8888');
-        baseUrls.add('http://127.0.0.1:8888');
-      }
+      final apiUrl = '$primaryBase/api/mining-pool/extend-contract';
+      print('📍 API URL: $apiUrl');
+
+      // 获取 JWT token 用于鉴权
+      final token = _storageService.getAuthToken();
+      final headers = <String, String>{
+        'Content-Type': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      };
 
       http.Response? response;
       Exception? lastError;
 
-      for (final base in baseUrls.toSet()) {
-        final apiUrl = '$base/api/mining-pool/extend-contract';
-        print('📍 API URL: $apiUrl');
-        try {
-          response = await http.post(
-            Uri.parse(apiUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({
-              'user_id': userId,
-              'hours': 2, // 观看广告奖励2小时
-              'device_country': _getDeviceCountryCode(), // 方案B：上报设备locale国家
-            }),
-          ).timeout(
-            const Duration(seconds: 30), // 增加超时时间到30秒
-            onTimeout: () {
-              throw Exception('Server response timeout. Please try again in a moment.');
-            },
-          );
-          if (response.statusCode == 200) {
-            break;
-          }
-        } catch (e) {
-          lastError = e is Exception ? e : Exception(e.toString());
-          continue;
-        }
+      try {
+        response = await http.post(
+          Uri.parse(apiUrl),
+          headers: headers,
+          body: json.encode({
+            'user_id': userId,
+            'hours': 2, // 观看广告奖励2小时
+            'device_country': _getDeviceCountryCode(), // 方案B：上报设备locale国家
+          }),
+        ).timeout(
+          const Duration(seconds: 30), // 增加超时时间到30秒
+          onTimeout: () {
+            throw Exception('Server response timeout. Please try again in a moment.');
+          },
+        );
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
       }
 
       if (response == null) {
@@ -542,7 +537,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     }
   }
 
-  /// 增加积分
+  /// 广告观看后通过 POST /api/ad/watch 累计积分（含每日上限 & ad_view_record 记录）
   Future<bool> _addPoints(int points) async {
     try {
       final userIdResult = await _userRepository.fetchUserId();
@@ -551,43 +546,32 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
         return false;
       }
       final userId = userIdResult.data!;
-      
-      print('💰 调用增加积分API - userId: $userId, points: $points');
 
-      final baseUrls = <String>[];
-      final primaryBase = ApiConstants.baseUrl;
-      baseUrls.add(primaryBase);
+      print('💰 调用广告观看积分API - userId: $userId');
 
       http.Response? response;
       Exception? lastError;
 
-      for (final base in baseUrls.toSet()) {
-        final apiUrl = '$base/points/add';
-        print('📍 积分API URL: $apiUrl');
-        try {
-          response = await http.post(
-            Uri.parse(apiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: json.encode({
-              'user_id': userId,
-              'points': points,
-              'reason': widget.isDailyCheckIn ? 'daily_check_in' : 'ad_reward',
-            }),
-          ).timeout(
-            const Duration(seconds: 30), // 增加超时时间到30秒
-            onTimeout: () {
-              throw Exception('Server response timeout. Please try again.');
-            },
-          );
-          if (response.statusCode == 200) {
-            break;
-          }
-        } catch (e) {
-          lastError = e is Exception ? e : Exception(e.toString());
-          continue;
-        }
+      // 使用 /api/ad/watch（正确的非管理员端点，含每日限制与 ad_view_record 记录）
+      final apiUrl = '${ApiConstants.baseUrl}/ad/watch';
+      print('📍 广告积分API URL: $apiUrl');
+      try {
+        response = await http.post(
+          Uri.parse(apiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: json.encode({
+            'user_id': userId,
+          }),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('Server response timeout. Please try again.');
+          },
+        );
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
       }
 
       if (response == null) {

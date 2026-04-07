@@ -82,6 +82,16 @@ class ApiConstants {
   static const int receiveTimeout = 30;
 }
 
+/// 应用商店常量（上架后替换为正式 ID）
+class StoreConstants {
+  /// Android 包名（与 build.gradle applicationId 一致）
+  static const String androidPackageName = 'com.cloudminingtool.bitcoin_mining_app';
+
+  /// iOS App Store 数字 ID（上架后从 App Store Connect 获取，e.g. '6743692060'）
+  /// 目前为占位符 — 上架时必须替换，否则 iOS 评分链接无法跳转
+  static const String iosAppStoreId = 'YOUR_APP_STORE_ID';
+}
+
 /// 应用常量
 class AppConstants {
   static const String appName = 'Bitcoin Mining Master';

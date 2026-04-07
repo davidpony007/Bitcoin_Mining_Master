@@ -219,7 +219,7 @@ class UserRepository {
           print('✅ 用户创建成功（在线）: $userId');
           return Result.success(userId);
         } else {
-          final errorMsg = response.message ?? 'Server error. Please try again later.';
+          final errorMsg = response.message;
           print('❌ API返回失败: $errorMsg');
           throw Exception(errorMsg);
         }

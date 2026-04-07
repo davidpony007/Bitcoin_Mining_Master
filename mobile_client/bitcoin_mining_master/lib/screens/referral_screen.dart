@@ -186,29 +186,9 @@ class ReferralScreenState extends State<ReferralScreen> with WidgetsBindingObser
     }
   }
 
-  /// 使用多地址回退机制调用user-status接口
+  /// 调用user-status接口
   Future<Map<String, dynamic>> _getUserStatusWithFallback(String userId) async {
-    final baseUrls = [
-      ApiConstants.baseUrl, // Primary (10.0.2.2 for Android)
-      'http://10.0.2.2:8888',
-      'http://127.0.0.1:8888',
-    ];
-
-    Exception? lastError;
-    for (final baseUrl in baseUrls.toSet()) {
-      try {
-        print('🔄 Trying to get user status from: $baseUrl');
-        final response = await _apiService.getUserStatus(userId);
-        print('✅ Successfully got user status from: $baseUrl');
-        return response;
-      } catch (e) {
-        print('❌ Failed with $baseUrl: $e');
-        lastError = e as Exception;
-        continue;
-      }
-    }
-    
-    throw lastError ?? Exception('All endpoints failed');
+    return await _apiService.getUserStatus(userId);
   }
 
   Future<void> _loadInvitationInfo(String userId) async {

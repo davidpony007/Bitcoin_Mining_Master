@@ -115,15 +115,31 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
+    // JWT 用户身份校验：防止用户 A 用自己的 Token 替 B 提现
+    const jwtUserId = req.user?.userId || req.user?.user_id;
+    if (jwtUserId && String(jwtUserId) !== String(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: cannot withdraw on behalf of another user'
+      });
+    }
+
     const withdrawAmount = parseFloat(parseFloat(amount).toFixed(8));
     const fee = parseFloat(parseFloat(networkFee || 0).toFixed(8));
     const receivedAmount = parseFloat((withdrawAmount - fee).toFixed(8));
 
     // 2. 验证金额
+    const MINIMUM_WITHDRAWAL = 0.00002200; // 与客户端 _minimumAmount 保持一致
     if (withdrawAmount <= 0 || receivedAmount <= 0) {
       return res.status(400).json({
         success: false,
         message: 'Invalid withdrawal amount'
+      });
+    }
+    if (withdrawAmount < MINIMUM_WITHDRAWAL) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum withdrawal amount is ${MINIMUM_WITHDRAWAL.toFixed(8)} BTC`
       });
     }
 
@@ -209,11 +225,12 @@ router.post('/request', authenticateToken, async (req, res) => {
     );
 
     // 8. 创建提现记录（使用原生SQL避免Sequelize验证问题）
+    // binance_uid 单独存储：isBinanceUID 时 walletAddress 即为 UID，同时写入专用列方便管理员识别
     const [insertResult] = await sequelize.query(
       `INSERT INTO withdrawal_records 
-       (user_id, email, wallet_address, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_account, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW())`,
-      { replacements: [userId, email, walletAddress, withdrawAmount, fee, receivedAmount, googleAccount || null, appleAccount || null], transaction }
+       (user_id, email, wallet_address, binance_uid, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_account, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW())`,
+      { replacements: [userId, email, walletAddress, isBinanceUID ? walletAddress : null, withdrawAmount, fee, receivedAmount, googleAccount || null, appleAccount || null], transaction }
     );
     
     const withdrawalId = insertResult;
@@ -549,11 +566,10 @@ router.put('/reject/:id', authenticateToken, requireAdmin, async (req, res) => {
     });
 
     if (userStatus) {
-      await userStatus.update({
-        current_bitcoin_balance: Sequelize.literal(
-          `current_bitcoin_balance + ${withdrawal.withdrawal_request_amount}`
-        )
-      }, { transaction });
+      await userStatus.increment('current_bitcoin_balance', {
+        by: parseFloat(withdrawal.withdrawal_request_amount),
+        transaction,
+      });
     }
 
     // 记录退款交易
@@ -675,12 +691,38 @@ router.post('/admin/bulk-reject', authenticateToken, requireAdmin, async (req, r
       // 退还余额
       const userStatus = await UserStatus.findOne({ where: { user_id: withdrawal.user_id }, transaction });
       if (userStatus) {
-          const newBalance = parseFloat(userStatus.current_bitcoin_balance || 0) + parseFloat(withdrawal.withdrawal_request_amount || 0);
-          await userStatus.update({ current_bitcoin_balance: newBalance }, { transaction });
+        await userStatus.increment('current_bitcoin_balance', {
+          by: parseFloat(withdrawal.withdrawal_request_amount),
+          transaction,
+        });
       }
+
       await withdrawal.update({
         withdrawal_status: 'rejected',
         reject_reason: rejectReason,
+      }, { transaction });
+
+      // 将原 pending 提现的 BTX 记录标为 failed
+      await BitcoinTransactionRecord.update(
+        { transaction_status: 'failed' },
+        {
+          where: {
+            user_id: withdrawal.user_id,
+            transaction_type: 'withdrawal',
+            transaction_status: 'pending',
+          },
+          limit: 1,
+          transaction,
+        }
+      );
+
+      // 创建退款 BTX 记录（与单条 reject 保持一致）
+      await BitcoinTransactionRecord.create({
+        user_id: withdrawal.user_id,
+        transaction_type: 'refund for withdrawal failure',
+        transaction_amount: parseFloat(withdrawal.withdrawal_request_amount),
+        transaction_status: 'success',
+        description: `Withdrawal rejected: ${rejectReason}`,
       }, { transaction });
 
       await transaction.commit();

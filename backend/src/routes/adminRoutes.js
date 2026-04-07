@@ -4,22 +4,8 @@ const express = require('express'); // 引入 express 框架
 const router = express.Router(); // 创建路由实例
 const authenticateToken = require('../middleware/auth'); // JWT 认证中间件
 const { requireAdmin } = require('../middleware/role'); // 管理员权限校验中间件
-// ─── 管理员登录频率限制（内联实现，无外部依赖）──────────────────────────────────
-const _loginAttempts = new Map();
-function adminLoginLimiter(req, res, next) {
-  const ip = req.ip || (req.connection && req.connection.remoteAddress) || 'unknown';
-  const now = Date.now();
-  const WINDOW_MS = 15 * 60 * 1000; // 15 分钟窗口
-  const MAX = 5;
-  let rec = _loginAttempts.get(ip);
-  if (!rec || now > rec.resetAt) rec = { count: 0, resetAt: now + WINDOW_MS };
-  rec.count += 1;
-  _loginAttempts.set(ip, rec);
-  if (rec.count > MAX) {
-    return res.status(429).json({ error: '登录尝试次数过多，请15分钟后重试' });
-  }
-  next();
-}
+// 使用 express-rate-limit 提供的 adminLoginLimiter（支持跨进程共享 + 重启恢复）
+const { adminLoginLimiter } = require('../middleware/rateLimiter');
 const CountryMiningService = require('../services/countryMiningService'); // 国家挖矿配置服务
 const pool = require('../config/database_native');
 const sequelize = require('../config/database');
@@ -58,14 +44,19 @@ async function getLiveBtcPrice() {
 router.post('/login', adminLoginLimiter, (req, res) => {
   const { username, password } = req.body || {};
   const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@2026';
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+  const secret = process.env.JWT_SECRET;
+
+  if (!ADMIN_PASSWORD || !secret) {
+    console.error('❌ [adminRoutes] ADMIN_PASSWORD 或 JWT_SECRET 未配置，请在 .env 中设置');
+    return res.status(500).json({ error: '服务器配置错误' });
+  }
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
   if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }
-  const secret = process.env.JWT_SECRET || 'default_secret';
   const token = jwt.sign({ user_id: 'admin', role: 'admin' }, secret, { expiresIn: '7d' });
   return res.json({ success: true, token, user: { id: 'admin', username: ADMIN_USERNAME, role: 'admin' } });
 });

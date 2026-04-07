@@ -7,6 +7,7 @@ const router = express.Router();
 const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const { Op } = require('sequelize');
 const PointsService = require('../services/pointsService'); // 📌 导入积分服务
+const authenticateToken = require('../middleware/auth'); // JWT 鉴权中间件
 
 /**
  * POST /api/mining-pool/use-battery
@@ -18,7 +19,7 @@ const PointsService = require('../services/pointsService'); // 📌 导入积分
  *   "battery_count": 1  // 使用的电池数量，默认1
  * }
  */
-router.post('/use-battery', async (req, res) => {
+router.post('/use-battery', authenticateToken, async (req, res) => {
   let connection;
   
   try {
@@ -29,6 +30,12 @@ router.post('/use-battery', async (req, res) => {
         success: false,
         message: 'User ID is required'
       });
+    }
+
+    // JWT 用户身份校验
+    const jwtUserId = req.user?.userId || req.user?.user_id;
+    if (jwtUserId && String(jwtUserId) !== String(user_id)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     if (battery_count < 1 || battery_count > 24) {
@@ -128,7 +135,7 @@ router.post('/use-battery', async (req, res) => {
  * 注意：这是一个占位API，实际电池数量应该从游戏积分系统或其他系统获取
  * 现在暂时返回固定数量用于测试
  */
-router.get('/battery-count/:userId', async (req, res) => {
+router.get('/battery-count/:userId', authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -139,16 +146,20 @@ router.get('/battery-count/:userId', async (req, res) => {
       });
     }
 
-    // TODO: 实际应该从积分系统或电池表中查询
-    // 现在返回模拟数据用于测试
-    const mockBatteryCount = 5; // 假设用户有5个电池
+    // JWT 用户身份校验
+    const jwtUserId = req.user?.userId || req.user?.user_id;
+    if (jwtUserId && String(jwtUserId) !== String(userId)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    // 从积分系统查询用户真实电池数量（user_information.user_points）
+    const pointsData = await PointsService.getUserPoints(userId);
 
     return res.json({
       success: true,
       data: {
         user_id: userId,
-        battery_count: mockBatteryCount,
-        note: 'This is mock data. Implement actual battery system later.'
+        battery_count: pointsData.availablePoints,
       }
     });
 
@@ -173,7 +184,7 @@ router.get('/battery-count/:userId', async (req, res) => {
  *   "hours": 2  // 要增加的小时数（等于电池数量）
  * }
  */
-router.post('/extend-contract', async (req, res) => {
+router.post('/extend-contract', authenticateToken, async (req, res) => {
   let connection;
   
   try {
@@ -185,6 +196,12 @@ router.post('/extend-contract', async (req, res) => {
         success: false,
         message: 'User ID is required'
       });
+    }
+
+    // JWT 用户身份校验
+    const jwtUserId = req.user?.userId || req.user?.user_id;
+    if (jwtUserId && String(jwtUserId) !== String(user_id)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     if (hours < 1 || hours > 24) {

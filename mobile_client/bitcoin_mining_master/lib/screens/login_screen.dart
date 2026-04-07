@@ -565,7 +565,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await _storageService.saveInvitationCode('');
       await _storageService.setOfflineUser(false);
       
-      String errorMsg = (e != null) ? e.toString() : 'An unexpected error occurred';
+      String errorMsg = e.toString();
       if (errorMsg.contains('Network connection')) {
         errorMsg = 'Network connection error. Please check your internet connection and try again.';
       } else if (errorMsg.contains('Server error')) {
