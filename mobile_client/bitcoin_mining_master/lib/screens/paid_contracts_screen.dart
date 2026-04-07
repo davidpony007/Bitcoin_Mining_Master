@@ -861,7 +861,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       // （storekit_duplicate_product_object 后 StoreKit 未重放，或其他异常），
       // 自动清除 loading 防止永久转圈，让用户可以再次尝试。
       final capturedTierId = tier['id'] as String;
-      Future.delayed(const Duration(seconds: 90), () {
+      Future.delayed(const Duration(seconds: 20), () {
         if (mounted && _loadingTierId == capturedTierId) {
           setState(() => _loadingTierId = null);
           _showPurchaseResult(false, 'Purchase is taking too long. Please try again.');

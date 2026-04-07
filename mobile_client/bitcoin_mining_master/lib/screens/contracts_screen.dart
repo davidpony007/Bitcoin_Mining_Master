@@ -125,6 +125,7 @@ class ContractsScreenState extends State<ContractsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) ApiService.notifyAppResumed();
     if (state == AppLifecycleState.resumed && _isPageVisible) {
       // 延迟 800ms 再发请求：iOS 从后台恢复后网络接口需要短暂时间重建
       Future.delayed(const Duration(milliseconds: 800), () {

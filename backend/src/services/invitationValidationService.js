@@ -146,8 +146,10 @@ class InvitationValidationService {
       return false;
 
     } catch (error) {
-      console.error('检查循环邀请失败:', error);
-      return true; // 出错时保守处理，拒绝邀请
+      // 查询异常时保守地放行（允许绑定），不要因 DB 瞬时错误而拒绝合法用户。
+      // 循环邀请校验是非关键保护，误判拒绝的用户体验代价远高于偶尔漏检。
+      console.error('检查循环邀请失败（放行）:', error);
+      return false;
     }
   }
 

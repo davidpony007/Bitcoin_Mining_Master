@@ -40,45 +40,44 @@ class CheckInMiningContractService {
         };
       }
 
-      // 1.5 国家检测（方案B：设备locale优先 > IP检测 > 已存储值）
+      // 1.5 国家检测：只在用户尚无国家记录时才写入（防止VPN登录覆盖正确值）
       // clientCountry 来自 Flutter Platform.localeName，与 AdMob 归因国家口径最接近
-      const clientCountryUpper = clientCountry ? clientCountry.trim().toUpperCase() : null;
-      let targetCountry = clientCountryUpper; // 设备locale最优先
+      const hasCountry = user.country_code && user.country_code.trim() !== '';
 
-      if (!targetCountry && requestIp && requestIp !== '未知') {
-        try {
-          const geoip = require('geoip-lite');
-          const geo = geoip.lookup(requestIp);
-          if (geo && geo.country) targetCountry = geo.country.toUpperCase();
-        } catch (_) {}
-      }
+      if (!hasCountry) {
+        // 用户尚无国家记录，尝试首次写入
+        const clientCountryUpper = clientCountry ? clientCountry.trim().toUpperCase() : null;
+        let targetCountry = clientCountryUpper; // 设备locale最优先
 
-      if (targetCountry) {
-        try {
-          const CountryMiningConfig = require('../models/countryMiningConfig');
-          const countryConfig = await CountryMiningConfig.findOne({
-            where: { country_code: targetCountry, is_active: true },
-            raw: true
-          });
-          const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
-          const oldCountry = user.country_code;
-          const oldMultiplier = parseFloat(user.country_multiplier) || 1.00;
+        if (!targetCountry && requestIp && requestIp !== '未知') {
+          try {
+            const geoip = require('geoip-lite');
+            const geo = geoip.lookup(requestIp);
+            if (geo && geo.country) targetCountry = geo.country.toUpperCase();
+          } catch (_) {}
+        }
 
-          if (targetCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
+        if (targetCountry) {
+          try {
+            const CountryMiningConfig = require('../models/countryMiningConfig');
+            const countryConfig = await CountryMiningConfig.findOne({
+              where: { country_code: targetCountry, is_active: true },
+              raw: true
+            });
+            const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
             const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
-            console.log(`🌍 [方案B-签到] 用户 ${userId}: [${source}]国家=${targetCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新`);
+            console.log(`🌍 [签到-首次] 用户 ${userId}: [${source}]首次写入国家=${targetCountry}(${newMultiplier}x)`);
             const updateFields = { country_code: targetCountry, country_multiplier: newMultiplier };
             if (countryConfig && countryConfig.country_name_cn) {
               updateFields.country_name_cn = countryConfig.country_name_cn;
             }
             await user.update(updateFields);
-          } else {
-            const source = clientCountryUpper ? 'device-locale' : 'ip-geoip';
-            console.log(`🌍 [方案B-签到] 用户 ${userId}: [${source}]国家=${targetCountry}, 倍率无变化(${oldMultiplier}x)`);
+          } catch (geoErr) {
+            console.warn(`⚠️ [签到-首次] 国家写入失败: ${geoErr.message}`);
           }
-        } catch (geoErr) {
-          console.warn(`⚠️ [方案B-签到] 国家检测失败，保留原存储值: ${geoErr.message}`);
         }
+      } else {
+        console.log(`🌍 [签到] 用户 ${userId}: 已有国家记录(${user.country_code})，跳过覆盖`);
       }
 
       // 2. 获取纯基础挖矿速率（不含任何倍数）

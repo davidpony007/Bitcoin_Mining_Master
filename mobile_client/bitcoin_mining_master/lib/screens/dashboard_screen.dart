@@ -13,6 +13,7 @@ import 'points_screen.dart';
 import 'checkin_screen.dart';
 import 'paid_contracts_screen.dart';
 import 'ad_reward_screen.dart';
+import '../widgets/info_pages_dialog.dart';
 
 
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
@@ -50,6 +51,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   String _levelName = 'LV.1 新手矿工';
   double _progressPercentage = 0.0;
   bool _isLoadingLevel = true;
+  bool _isNavigating = false; // 防止按钮多次点击重复 push
 
   // 比特币价格
   String _bitcoinPrice = '\$88,911.78 USD';
@@ -131,6 +133,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       _pausedAt = DateTime.now();
       print('📱 Dashboard: 应用进入后台，记录时间: $_pausedAt');
     } else if (state == AppLifecycleState.resumed) {
+      ApiService.notifyAppResumed();
       print('📱 Dashboard: 应用恢复前台');
       // 先用本地时间估算后台期间流逝的秒数，快速修正电池显示（无需网络，立即执行）
       if (_pausedAt != null) {
@@ -1081,7 +1084,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                               const SizedBox(width: 4),
                               GestureDetector(
-                                onTap: () => _showLevelInfoDialog(context),
+                                onTap: () => InfoPagesDialog.show(context, initialPage: 0),
                                 child: Icon(
                                   Icons.help_outline,
                                   size: 16,
@@ -1436,6 +1439,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                           );
                         }
                       : () {
+                          if (_isNavigating) return;
+                          _isNavigating = true;
                           print('✅ Free Ad Mining 点击 - 准备导航到AdRewardScreen');
                           // 跳转到广告奖励页面（非签到模式）
                           Navigator.push(
@@ -1444,6 +1449,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               builder: (context) => const AdRewardScreen(isDailyCheckIn: false),
                             ),
                           ).then((result) {
+                            _isNavigating = false;
                             print('✅ 从AdRewardScreen返回, result=$result');
                             if (result == true) {
                               // 立即乐观更新 Contracts 页 UI，无需等待 API
@@ -1511,6 +1517,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               Expanded(
                 child: ElevatedButton(
                   onPressed: () async {
+                    if (_isNavigating) return;
+                    _isNavigating = true;
                     // 检查今日是否已签到
                     final lastCheckInDate = _storageService
                         .getLastCheckInDate();
@@ -1520,6 +1528,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
                     if (lastCheckInDate == today) {
                       // 今日已签到，显示提示
+                      _isNavigating = false;
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
@@ -1542,7 +1551,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         builder: (context) => const AdRewardScreen(isDailyCheckIn: true),
                       ),
                     );
-                    
+                    _isNavigating = false;
                     // 签到成功后刷新数据（不需要跳转，AdRewardScreen已经处理）
                     if (result == true && mounted) {
                       print('✅ [Dashboard] 签到成功，刷新数据');

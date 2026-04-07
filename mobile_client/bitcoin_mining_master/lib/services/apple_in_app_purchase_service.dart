@@ -59,6 +59,11 @@ class AppleInAppPurchaseService {
   // 只有 productID 与此匹配的交易验证结果才触发 UI 回调，防止后台续订竞态条件
   String? _activeUserProductId;
 
+  // storekit_duplicate_product_object 路径：通过 restorePurchases 回放时，
+  // 允许对应产品的 restored 事件作为用户主动购买处理。
+  // 正常购买流程时此标志为 false，delayed restored 干扰事件将被静默完成。
+  bool _expectRestoredAsInitiated = false;
+
   /// 初始化 App Store IAP
   Future<bool> init() async {
     try {
@@ -179,11 +184,15 @@ class AppleInAppPurchaseService {
           print('⚠️ [IAP] StoreKit 队列仍有残留交易（预检查已确认无活跃合约），尝试 restore 回放...');
           _processedTransactionIds.clear();
           // _activeUserProductId 保持当前值，使 _verifyAndDeliver 正常判定为用户主动购买
+          // _expectRestoredAsInitiated=true: 允许 restored 事件被当作用户主动购买处理
+          // （此路径是故意的 restore 回放，不同于 clearPendingTransactions 的延迟干扰事件）
+          _expectRestoredAsInitiated = true;
           try {
             await _iap.restorePurchases();
           } catch (restoreErr) {
             print('❌ [IAP] restore 回放失败: $restoreErr');
             _activeUserProductId = null;
+            _expectRestoredAsInitiated = false;
             onPurchaseUpdate?.call(false, 'Purchase failed. Please try again.');
           }
         } else {
@@ -231,15 +240,25 @@ class AppleInAppPurchaseService {
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
           // sync 期间：只在没有主动购买时才抑制 restored 事件。
-          // 若正在购买（_activeUserProductId != null），用户刚确认的交易有时会以
-          // PurchaseStatus.restored 回调（sandbox 自动续期订阅常见），必须允许通过，
-          // 否则用户点击「确认」后什么都不发生（事件被静默丢弃 → onPurchaseUpdate 永不触发）。
           if (_isSyncing &&
               purchase.status == PurchaseStatus.restored &&
               _activeUserProductId == null) {
             if (purchase.pendingCompletePurchase) {
               _iap.completePurchase(purchase);
             }
+            break;
+          }
+          // ★ 主动购买进行中（_activeUserProductId != null）时，静默完成同产品的 restored 事件。
+          // 原因：clearPendingTransactions() 的 2000ms 等待可能不足以让所有 restored 回调到达；
+          // 延迟到达的旧 restored 事件若被处理，会消耗 _activeUserProductId，导致用户
+          // 确认付款后的 purchased 事件 isUserInitiated=false → onPurchaseUpdate 不触发 → 界面卡住。
+          // 例外：_expectRestoredAsInitiated=true（storekit_duplicate 后主动调用 restorePurchases）
+          if (_activeUserProductId != null &&
+              purchase.status == PurchaseStatus.restored &&
+              purchase.productID == _activeUserProductId &&
+              !_expectRestoredAsInitiated) {
+            print('⚠️ [IAP] 购买进行中: 静默完成旧 restored 干扰事件 ${purchase.productID}（等待 purchased 事件）');
+            if (purchase.pendingCompletePurchase) _iap.completePurchase(purchase);
             break;
           }
           // 防止 StoreKit 多次回调同一笔交易（purchased/restored 可能对同一 purchaseID 重复触发）
@@ -308,6 +327,10 @@ class AppleInAppPurchaseService {
     if (_activeUserProductId != null && purchase.productID == _activeUserProductId) {
       // 立即清除，防止并发的其他 _verifyAndDeliver 调用重复匹配
       _activeUserProductId = null;
+    }
+    // storekit_duplicate 路径的 restore 回放标志：处理完首个 restored 事件后重置
+    if (_expectRestoredAsInitiated && purchase.status == PurchaseStatus.restored) {
+      _expectRestoredAsInitiated = false;
     }
     // Restore 模式：第一个 restored 交易处理后清除标记，防止本会话后续后台事件误判
     if (isFromUserRestore) {
@@ -395,11 +418,17 @@ class AppleInAppPurchaseService {
             }
             // 区分"真正的新购买"与"续订/合约延期"：
             // renewed=true 表示后端只是延期了已有合约，并非激活新合约。
-            // 用户主动点击 Subscribe 但 StoreKit 回放了原有合约的续订交易时会触发此路径。
+            // 场景：用户主动点击「已订阅的同一 Plan」的 Subscribe → Apple 弹出"你已订阅此项目"
+            //       → 用户点"好" → StoreKit 回播同一产品的现有订阅交易 → backend 返回 renewed=true。
+            // 此时必须调用 onPurchaseUpdate 让 UI 停止转圈；
+            // 不显示"购买成功"，而是告知用户订阅仍有效（不关闭页面）。
             final bool isRenewal = data['renewed'] == true;
             if (isRenewal) {
               print('ℹ️ [IAP] 续订交易：合约已延期（不显示"购买成功"）: ${purchase.productID}');
-              // 不显示任何 Toast，用户并没有完成新购买
+              if (isUserInitiated) {
+                // 必须回调让 UI 清除转圈，否则 _loadingTierId 永不清除 → 永久转圈
+                onPurchaseUpdate?.call(false, 'Your subscription is already active.');
+              }
             } else {
               onPurchaseUpdate?.call(
                 true,

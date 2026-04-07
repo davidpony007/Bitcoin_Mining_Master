@@ -65,12 +65,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showWelcomeDialogIfNeeded() async {
-    final isFirstLaunch = _storageService.isFirstLaunch();
-    if (isFirstLaunch) {
-      await _storageService.setLaunched();
-      if (mounted) {
-        WelcomeDialog.showIfFirstTime(context, _handleReferrerCode);
-      }
+    // 注意：不要在这里调用 setLaunched()，让 WelcomeDialog.showIfFirstTime 内部处理。
+    // 若先调用 setLaunched() 再调 showIfFirstTime，后者检查 isFirstLaunch()=false 会直接跳过，
+    // 导致欢迎弹窗永远不显示。
+    if (mounted) {
+      WelcomeDialog.showIfFirstTime(context, _handleReferrerCode);
     }
   }
 
@@ -82,8 +81,18 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) {
-        // 用户ID还未生成，等待Settings页面生成后再处理
-        // 可以保存到临时存储，在用户ID生成后再绑定
+        // 用户ID还未生成，将邀请码暂存到本地，待用户ID生成后在 Referral 页面可手动绑定
+        // 同时持久化邀请码，避免丢失
+        await _storageService.saveInvitationCode(referrerCode);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Invitation code saved. Please go to the Referral page to complete binding.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
         return;
       }
 

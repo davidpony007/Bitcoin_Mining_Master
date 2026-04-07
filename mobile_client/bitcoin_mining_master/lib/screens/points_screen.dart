@@ -4,6 +4,7 @@ import '../models/points_model.dart';
 import '../services/points_api_service.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../widgets/info_pages_dialog.dart';
 
 /// 积分中心页面
 class PointsScreen extends StatefulWidget {
@@ -379,7 +380,7 @@ class _PointsScreenState extends State<PointsScreen> {
                   color: Colors.white,
                   size: 24,
                 ),
-                onPressed: _showPointsGuide,
+                onPressed: () => InfoPagesDialog.show(context, initialPage: 1),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),

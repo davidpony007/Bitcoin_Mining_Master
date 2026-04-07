@@ -161,7 +161,8 @@ exports.deviceLogin = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
-    // 🌍 IP优先检测国家（与AdMob对齐），IP失败才用前端值
+    // 🌍 仅使用IP检测国家，不使用前端传入的 country 参数
+    // 设备 locale 不能代表地理位置（iOS en-US 用户不一定在美国）
     let detectedCountry = null;
     if (register_ip !== '未知') {
       const geo = geoip.lookup(register_ip);
@@ -169,12 +170,8 @@ exports.deviceLogin = async (req, res) => {
         detectedCountry = geo.country;
         console.log(`📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
       } else {
-        console.log(`⚠️ 无法从IP ${register_ip} 检测国家，使用前端提供值`);
+        console.log(`⚠️ 无法从IP ${register_ip} 检测国家，country_code 将置空`);
       }
-    }
-    if (!detectedCountry && country) {
-      detectedCountry = country;
-      console.log(`📱 使用前端提供的国家代码（IP备选）: ${detectedCountry}`);
     }
 
     // 获取国家信息（中文名称和挖矿倍率）
@@ -361,18 +358,19 @@ exports.deviceLogin = async (req, res) => {
           { where: { user_id: user.user_id } }
         );
         
-        // 更新用户的国家信息（如果有新的国家代码）
+        // 更新用户的国家信息：仅当用户尚未分配国家时才写入（防止 VPN 登录覆盖已有的正确值）
+        const hasCountry = user.country_code && user.country_code.trim() !== '';
         if (detectedCountry && detectedCountry.trim() !== '') {
-          const updateData = {
-            country_code: detectedCountry.trim()
-          };
-          
-          // 同时更新国家中文名和挖矿倍率
-          if (countryNameCn) {
-            updateData.country_name_cn = countryNameCn;
-          }
-          if (countryMultiplier) {
-            updateData.country_multiplier = countryMultiplier;
+          const updateData = {};
+
+          // 国家字段：仅在用户还没有国家记录时才写入
+          if (!hasCountry) {
+            updateData.country_code = detectedCountry.trim();
+            if (countryNameCn) updateData.country_name_cn = countryNameCn;
+            if (countryMultiplier) updateData.country_multiplier = countryMultiplier;
+            console.log(`   ✅ [Device Login] 首次写入国家信息: ${countryNameCn}(${detectedCountry}), 倍率: ${countryMultiplier}`);
+          } else {
+            console.log(`   ℹ️ [Device Login] 已有国家记录(${user.country_code})，跳过覆盖（本次检测: ${detectedCountry}）`);
           }
           
           // 更新GAID（如果提供）
@@ -390,11 +388,12 @@ exports.deviceLogin = async (req, res) => {
           if (idfa && idfa.trim() !== '') updateData.idfa = idfa.trim();
           if (att_status != null) updateData.att_status = att_status;
           
-          await UserInformation.update(
-            updateData,
-            { where: { user_id: user.user_id } }
-          );
-          console.log(`   ✅ [Device Login] 已更新现有用户国家信息: ${countryNameCn}, 倍率: ${countryMultiplier}`);
+          if (Object.keys(updateData).length > 0) {
+            await UserInformation.update(
+              updateData,
+              { where: { user_id: user.user_id } }
+            );
+          }
         } else {
           // 即便国家未变，也要更新版本信息和设备识别信息
           const versionData = {};
@@ -637,19 +636,20 @@ const { google_id, google_account, google_name, gaid, country, device_country, s
       req.connection.remoteAddress ||
       '未知';
 
-    // 🌍 方案B：设备locale国家优先 > IP检测 > 前端传入country（旧字段）
-    // device_country 来自 Flutter Platform.localeName，与 AdMob 归因口径最接近
+    // 🌍 IP优先检测国家（更精准），device_country 作为IP失败时的备选
+    // 已有国家的用户不再覆盖，防止VPN/locale误判导致数据污染
     let detectedCountry = null;
-    if (device_country && device_country.trim() !== '') {
-      detectedCountry = device_country.trim().toUpperCase();
-      console.log(`   📱 [方案B] 使用设备locale国家: ${detectedCountry}`);
-    } else if (register_ip !== '未知') {
+    if (register_ip !== '未知') {
       const geoip = require('geoip-lite');
       const geo = geoip.lookup(register_ip);
       if (geo && geo.country) {
         detectedCountry = geo.country;
-        console.log(`   📍 从IP ${register_ip} 检测到国家(fallback): ${detectedCountry}`);
+        console.log(`   📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
       }
+    }
+    if (!detectedCountry && device_country && device_country.trim() !== '') {
+      detectedCountry = device_country.trim().toUpperCase();
+      console.log(`   📱 IP检测失败，使用设备locale国家(fallback): ${detectedCountry}`);
     }
     if (!detectedCountry && country) {
       detectedCountry = country;
@@ -676,11 +676,9 @@ const { google_id, google_account, google_name, gaid, country, device_country, s
         updateData.gaid = gaid.trim();
         console.log(`   📱 更新GAID: ${gaid}`);
       }
-      if (detectedCountry && detectedCountry.trim() !== '') {
-        updateData.country_code = detectedCountry.trim();
-        console.log(`   🌍 更新国家代码: ${detectedCountry}`);
-        
-        // 同时更新国家中文名称和倍率
+      // 已有国家的用户不覆盖，防止VPN/locale误判；无国家的用户才写入（且必须三字段同步）
+      const googleHasCountry = user.country_code && user.country_code.trim() !== '';
+      if (!googleHasCountry && detectedCountry && detectedCountry.trim() !== '') {
         try {
           const CountryMiningConfig = require('../models/countryMiningConfig');
           const countryConfig = await CountryMiningConfig.findOne({
@@ -688,13 +686,18 @@ const { google_id, google_account, google_name, gaid, country, device_country, s
             raw: true
           });
           if (countryConfig) {
+            updateData.country_code = detectedCountry.trim();
             updateData.country_name_cn = countryConfig.country_name_cn;
             updateData.country_multiplier = parseFloat(countryConfig.mining_multiplier) || 1.00;
-            console.log(`   🌍 更新国家名称: ${countryConfig.country_name_cn}, 倍率: ${countryConfig.mining_multiplier}`);
+            console.log(`   🌍 首次写入国家信息: ${countryConfig.country_name_cn}(${detectedCountry}), 倍率: ${countryConfig.mining_multiplier}`);
+          } else {
+            console.log(`   ⚠️ 未找到国家配置(${detectedCountry})，跳过国家字段写入`);
           }
         } catch (err) {
           console.log('   ❌ 获取国家配置失败:', err.message);
         }
+      } else if (googleHasCountry) {
+        console.log(`   ℹ️ [Google Login] 已有国家记录(${user.country_code})，跳过覆盖（本次检测: ${detectedCountry}）`);
       }
       
       if (!user.system) {
@@ -1222,11 +1225,14 @@ exports.addReferrer = async (req, res) => {
             raw: true
           });
           const newMultiplier = countryConfig ? parseFloat(countryConfig.mining_multiplier) : 1.00;
+          const newCountryNameCn = countryConfig ? countryConfig.country_name_cn : null;
           const oldCountry = user.country_code;
           const oldMultiplier = parseFloat(user.country_multiplier) || 1.00;
           if (ipCountry !== oldCountry || Math.abs(newMultiplier - oldMultiplier) > 0.001) {
             console.log(`🌍 [AdMob对齐-绑定推荐人] 用户 ${user.user_id}: IP国家=${ipCountry}(${newMultiplier}x), 原存储=${oldCountry}(${oldMultiplier}x) → 更新country_multiplier`);
-            await user.update({ country_code: ipCountry, country_multiplier: newMultiplier });
+            const updateFields = { country_code: ipCountry, country_multiplier: newMultiplier };
+            if (newCountryNameCn) updateFields.country_name_cn = newCountryNameCn;
+            await user.update(updateFields);
           } else {
             console.log(`🌍 [AdMob对齐-绑定推荐人] 用户 ${user.user_id}: IP国家=${ipCountry}, 倍率无变化(${oldMultiplier}x)`);
           }
@@ -1896,15 +1902,20 @@ exports.appleLoginOrCreate = async (req, res) => {
         updateData.att_status = att_status;
         updateData.att_consent_updated_at = new Date();
       }
-      if (detectedCountry && detectedCountry.trim() !== '') {
-        updateData.country = detectedCountry.trim();
+      // 已有国家的用户不覆盖；无国家用户才写入，且三字段同步
+      const appleHasCountry = user.country_code && user.country_code.trim() !== '';
+      if (!appleHasCountry && detectedCountry && detectedCountry.trim() !== '') {
         try {
           const CountryMiningConfig = require('../models/countryMiningConfig');
           const cfg = await CountryMiningConfig.findOne({ where: { country_code: detectedCountry.trim() }, raw: true });
           if (cfg) {
+            updateData.country_code = detectedCountry.trim();
+            updateData.country_name_cn = cfg.country_name_cn;
             updateData.country_multiplier = parseFloat(cfg.mining_multiplier) || 1.00;
           }
         } catch (_) {}
+      } else if (appleHasCountry) {
+        console.log(`   ℹ️ [Apple Login] 已有国家记录(${user.country_code})，跳过覆盖（本次检测: ${detectedCountry}）`);
       }
       if (!user.system) updateData.system = 'iOS';
       if (app_version) updateData.app_version = app_version;
@@ -1924,12 +1935,19 @@ exports.appleLoginOrCreate = async (req, res) => {
       }
 
       let countryMultiplier = 1.00;
+      let countryNameCnApple = null;
       if (detectedCountry) {
         try {
           const CountryMiningConfig = require('../models/countryMiningConfig');
           const cfg = await CountryMiningConfig.findOne({ where: { country_code: detectedCountry.trim() }, raw: true });
-          if (cfg) { countryMultiplier = parseFloat(cfg.mining_multiplier) || 1.00; }
+          if (cfg) {
+            countryMultiplier = parseFloat(cfg.mining_multiplier) || 1.00;
+            countryNameCnApple = cfg.country_name_cn;
+          }
         } catch (_) {}
+      }
+      if (!countryNameCnApple && detectedCountry) {
+        countryNameCnApple = detectedCountry.trim();
       }
 
       user = await UserInformation.create({
@@ -1945,7 +1963,8 @@ exports.appleLoginOrCreate = async (req, res) => {
         att_status: (att_status !== undefined && att_status !== null) ? att_status : null,
         att_consent_updated_at: (att_status !== undefined && att_status !== null) ? new Date() : null,
         register_ip,
-        country: detectedCountry ? detectedCountry.trim() : null,
+        country_code: detectedCountry ? detectedCountry.trim() : null,
+        country_name_cn: countryNameCnApple,
         country_multiplier: countryMultiplier,
         system: 'iOS',
         app_version: app_version || null,
@@ -2017,6 +2036,7 @@ exports.getAppleBindingStatus = async (req, res) => {
       data: {
         user_id: user.user_id,
         isBound,
+        apple_id: isBound ? user.apple_id : null,
         apple_account: isBound ? (user.apple_account || null) : null
       }
     });

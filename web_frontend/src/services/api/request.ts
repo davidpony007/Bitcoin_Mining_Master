@@ -54,7 +54,7 @@ instance.interceptors.response.use(
         case 401:
           message.error('未授权，请重新登录');
           localStorage.removeItem('token');
-          window.location.href = '/login';
+          window.location.href = '/data-system/login';
           break;
         case 403:
           message.error('没有权限访问');

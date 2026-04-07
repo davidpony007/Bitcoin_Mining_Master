@@ -56,6 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   Timer? _timeTimer;
 
   // 版本信息
+  bool _isDialogShowing = false; // 防止重复弹出弹窗
   String _appVersion = '';
   String _buildNumber = '';
   bool _hasUpdate = false;
@@ -175,7 +176,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   /// 显示版本更新弹窗
   void _showUpdateDialog() {
-    if (!mounted) return;
+    if (!mounted || _isDialogShowing) return;
+    _isDialogShowing = true;
     showDialog(
       context: context,
       barrierDismissible: !_isForceUpdate,
@@ -215,10 +217,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ),
         ],
       ),
-    );
+    ).whenComplete(() { if (mounted) setState(() => _isDialogShowing = false); });
   }
-
-  /// 加载用户数据（先加载userId，再加载对应的昵称）
   Future<void> _loadUserData() async {
     setState(() {
       _isLoading = true;
@@ -450,6 +450,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             _boundAppleEmail = isBound ? email : null;
           });
         }
+        // 恢复 apple_id 到本地缓存（App 重装后 SharedPreferences 被清空）
+        if (isBound) {
+          final cachedAppleId = _storageService.getAppleId();
+          if (cachedAppleId == null || cachedAppleId.isEmpty) {
+            final restoredAppleId = data['apple_id']?.toString();
+            if (restoredAppleId != null && restoredAppleId.isNotEmpty) {
+              await _storageService.saveAppleId(restoredAppleId);
+            }
+          }
+        }
         print('✅ Apple 绑定状态: isBound=$isBound, email=$email');
       }
     } catch (e) {
@@ -576,6 +586,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   void _showRateDialog() {
+    if (_isDialogShowing) return;
+    _isDialogShowing = true;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -688,7 +700,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ),
         );
       },
-    );
+    ).whenComplete(() { if (mounted) setState(() => _isDialogShowing = false); });
   }
 
   /// 打开系统订阅管理页面
@@ -1949,6 +1961,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   void _showEditNameDialog() {
+    if (_isDialogShowing) return;
+    _isDialogShowing = true;
     final nameController = TextEditingController(text: _userName);
 
     showDialog(
@@ -2008,7 +2022,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           ],
         );
       },
-    );
+    ).whenComplete(() { if (mounted) setState(() => _isDialogShowing = false); });
   }
 
   // 异步更新昵称方法（在dialog外部执行）

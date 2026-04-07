@@ -192,6 +192,7 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
     const search = req.query.search ? `%${req.query.search}%` : null;
+    const searchField = req.query.searchField || null;
     const status = req.query.status || null;
     const system = req.query.system || null;
     const country = req.query.country || null;
@@ -213,7 +214,26 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
 
     let where = 'WHERE 1=1';
     const params = [];
-    if (search) { where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ?)'; params.push(search, search, search); }
+    if (search) {
+      const fieldMap = {
+        email: 'ui.email',
+        user_id: 'ui.user_id',
+        google_account: 'ui.google_account',
+        apple_account: 'ui.apple_account',
+        apple_id: 'ui.apple_id',
+        device_id: 'ui.device_id',
+        idfa: 'ui.idfa',
+        gaid: 'ui.gaid',
+        register_ip: 'ui.register_ip',
+      };
+      if (searchField && fieldMap[searchField]) {
+        where += ` AND ${fieldMap[searchField]} LIKE ?`;
+        params.push(search);
+      } else {
+        where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ? OR ui.apple_account LIKE ? OR ui.apple_id LIKE ? OR ui.device_id LIKE ? OR ui.idfa LIKE ? OR ui.gaid LIKE ? OR ui.register_ip LIKE ?)';
+        params.push(search, search, search, search, search, search, search, search, search);
+      }
+    }
     if (status === 'disabled') {
       where += ' AND ui.is_banned = 1';
     } else if (status) {
@@ -235,6 +255,7 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     const [rows] = await conn.query(
       `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.nickname,
               ui.country_code, ui.country_name_cn,
+              ui.country_multiplier, ui.miner_level_multiplier,
               ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
               ui.is_banned, ui.banned_at, ui.ban_reason,
               ui.device_id,
@@ -1997,15 +2018,21 @@ router.post('/users/:userId/adjust-btc', authenticateToken, requireAdmin, async 
   const { userId } = req.params;
   const { amount, reason } = req.body || {};
   if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
-  const numAmount = parseFloat(amount);
+  // 用字符串精确表示，避免 parseFloat 浮点误差
+  const amountStr = String(amount).trim();
+  const numAmount = Number(amountStr);
   if (isNaN(numAmount) || numAmount === 0) return res.status(400).json({ success: false, message: 'amount 必须为非零数字' });
   if (!reason || String(reason).trim().length === 0) return res.status(400).json({ success: false, message: '必须填写操作原因' });
+  // 校验格式：只允许合法十进制数字（最多18位小数），防止注入
+  if (!/^-?\d+(\.\d{1,18})?$/.test(amountStr)) {
+    return res.status(400).json({ success: false, message: 'amount 格式不合法' });
+  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 查询当前余额
+    // 查询当前余额（用字符串读取，保留 DECIMAL 精度）
     const [[statusRow]] = await conn.query(
       'SELECT current_bitcoin_balance, bitcoin_accumulated_amount FROM user_status WHERE user_id = ?', [userId]
     );
@@ -2014,42 +2041,61 @@ router.post('/users/:userId/adjust-btc', authenticateToken, requireAdmin, async 
       return res.status(404).json({ success: false, message: '用户不存在' });
     }
 
-    const currentBalance = parseFloat(statusRow.current_bitcoin_balance || 0);
-    const newBalance = currentBalance + numAmount;
-
-    if (newBalance < 0) {
-      await conn.rollback();
-      return res.status(400).json({
-        success: false,
-        message: `余额不足：当前余额 ${currentBalance.toFixed(18)} BTC，无法扣减 ${Math.abs(numAmount).toFixed(18)} BTC`
-      });
+    // 余额不足检查：让 MySQL 计算，比较结果是否 < 0
+    if (numAmount < 0) {
+      const [[chk]] = await conn.query(
+        'SELECT (current_bitcoin_balance + ?) < 0 AS insufficient FROM user_status WHERE user_id = ?',
+        [amountStr, userId]
+      );
+      if (chk && chk.insufficient) {
+        await conn.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `余额不足：当前余额 ${statusRow.current_bitcoin_balance} BTC，无法扣减 ${amountStr.replace('-', '')} BTC`
+        });
+      }
     }
 
-    // 更新余额
-    const accumulatedUpdate = numAmount > 0
-      ? ', bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?'
-      : '';
-    const accParams = numAmount > 0 ? [newBalance, numAmount, userId] : [newBalance, userId];
-    await conn.query(
-      `UPDATE user_status SET current_bitcoin_balance = ? ${accumulatedUpdate} WHERE user_id = ?`,
-      accParams
-    );
+    // 全部用 MySQL DECIMAL 运算，不经过 JS 浮点
+    if (numAmount > 0) {
+      await conn.query(
+        `UPDATE user_status
+         SET current_bitcoin_balance      = current_bitcoin_balance + ?,
+             bitcoin_accumulated_amount   = bitcoin_accumulated_amount + ?
+         WHERE user_id = ?`,
+        [amountStr, amountStr, userId]
+      );
+    } else {
+      await conn.query(
+        `UPDATE user_status
+         SET current_bitcoin_balance = current_bitcoin_balance + ?
+         WHERE user_id = ?`,
+        [amountStr, userId]
+      );
+    }
 
-    // 记录交易
+    // 读取更新后的精确余额
+    const [[updated]] = await conn.query(
+      'SELECT current_bitcoin_balance FROM user_status WHERE user_id = ?', [userId]
+    );
+    const newBalanceStr = updated.current_bitcoin_balance;
+
+    // 记录交易（transaction_amount 存绝对值字符串）
     const txType = numAmount > 0 ? 'admin_add' : 'admin_deduct';
     const txDesc = `管理员手动${numAmount > 0 ? '增加' : '减少'} BTC：${reason}`;
+    const absAmountStr = amountStr.replace('-', '');
     await conn.query(
       `INSERT INTO bitcoin_transaction_records
        (user_id, transaction_type, transaction_amount, balance_after, description, transaction_status)
        VALUES (?, ?, ?, ?, ?, 'success')`,
-      [userId, txType, Math.abs(numAmount), newBalance, txDesc]
+      [userId, txType, absAmountStr, newBalanceStr, txDesc]
     );
 
     await conn.commit();
     res.json({
       success: true,
-      message: `BTC余额已${numAmount > 0 ? '增加' : '减少'} ${Math.abs(numAmount)} BTC`,
-      data: { previousBalance: currentBalance, adjustment: numAmount, newBalance }
+      message: `BTC余额已${numAmount > 0 ? '增加' : '减少'} ${absAmountStr} BTC`,
+      data: { previousBalance: statusRow.current_bitcoin_balance, adjustment: amountStr, newBalance: newBalanceStr }
     });
   } catch (err) {
     await conn.rollback();

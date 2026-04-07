@@ -29,8 +29,8 @@ export const usersApi = {
   ban: (userId: string, reason?: string) => request.put(`/admin/users/${userId}/ban`, { reason }),
   /** 解除禁用 */
   unban: (userId: string) => request.put(`/admin/users/${userId}/unban`, {}),
-  /** 手动调整BTC余额 (amount正=增加,负=减少) */
-  adjustBtc: (userId: string, amount: number, reason: string) =>
+  /** 手动调整BTC余额 (amount正=增加,负=减少，以字符串传输避免浮点精度丢失) */
+  adjustBtc: (userId: string, amount: string, reason: string) =>
     request.post(`/admin/users/${userId}/adjust-btc`, { amount, reason }),
   /** 获取比特币实时美元价格 */
   getBtcPrice: () => request.get('/admin/btc-price'),

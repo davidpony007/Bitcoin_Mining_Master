@@ -7,6 +7,7 @@ import '../providers/user_provider.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/analytics_service.dart';
+import '../services/api_service.dart';
 import 'withdrawal_history_screen.dart';
 
 /// 提现页面 - Withdrawal Screen
@@ -1036,9 +1037,29 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     }
 
     // 检查账号绑定状态
-    final bool isBound = Platform.isAndroid
+    bool isBound = Platform.isAndroid
         ? (storage.getGoogleEmail()?.isNotEmpty ?? false)
         : (storage.getAppleId()?.isNotEmpty ?? false);
+
+    // iOS 本地缓存缺失时，fallback 查询服务器（App 重装后 SharedPreferences 被清空）
+    if (!isBound && Platform.isIOS) {
+      final userId = storage.getUserId();
+      if (userId != null && userId.isNotEmpty) {
+        try {
+          final apiService = ApiService();
+          final resp = await apiService.getAppleBindingStatus(userId);
+          if (resp['success'] == true && resp['data']?['isBound'] == true) {
+            isBound = true;
+            // 恢复 apple_id 到本地缓存，避免下次再走服务器
+            final restoredAppleId = resp['data']['apple_id']?.toString();
+            if (restoredAppleId != null && restoredAppleId.isNotEmpty) {
+              await storage.saveAppleId(restoredAppleId);
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
     if (!isBound) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

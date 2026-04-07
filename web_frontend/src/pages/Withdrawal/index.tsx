@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Button, Space, Tag, Input, Select, Row, Col,
   Statistic, Modal, Descriptions, message, Badge, Tooltip, Form, Typography,
+  Alert, Spin,
 } from 'antd';
 import {
   WalletOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, EyeOutlined, ReloadOutlined, SearchOutlined,
-  DollarOutlined, CheckSquareOutlined,
+  DollarOutlined, CheckSquareOutlined, ThunderboltOutlined,
+  SendOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { withdrawalAPI } from '../../services/api/withdrawal';
@@ -79,6 +81,48 @@ const Withdrawal: React.FC = () => {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [bulkRejectVisible, setBulkRejectVisible] = useState(false);
   const [bulkRejectForm] = Form.useForm();
+
+  // 币安批量打款
+  const [payoutPreviewVisible, setPayoutPreviewVisible] = useState(false);
+  const [payoutResultVisible,  setPayoutResultVisible]  = useState(false);
+  const [payoutPreviewing,     setPayoutPreviewing]     = useState(false);
+  const [payoutRunning,        setPayoutRunning]        = useState(false);
+  const [payoutPreview,        setPayoutPreview]        = useState<any[]>([]);
+  const [payoutResult,         setPayoutResult]         = useState<{ success: any[]; failed: any[]; manual: any[] } | null>(null);
+  const [payoutTargetIds,      setPayoutTargetIds]      = useState<number[]>([]);
+
+  /** 打开预览弹窗（先 dryRun 获取清单） */
+  const openPayoutPreview = async (ids: number[]) => {
+    setPayoutTargetIds(ids);
+    setPayoutPreviewing(true);
+    setPayoutPreviewVisible(true);
+    try {
+      const res: any = await withdrawalAPI.batchPayout({ ids, dryRun: true });
+      setPayoutPreview(res?.data?.preview ?? []);
+    } catch {
+      message.error('获取预览失败');
+      setPayoutPreviewVisible(false);
+    } finally {
+      setPayoutPreviewing(false);
+    }
+  };
+
+  /** 确认执行打款 */
+  const confirmBatchPayout = async () => {
+    setPayoutRunning(true);
+    try {
+      const res: any = await withdrawalAPI.batchPayout({ ids: payoutTargetIds });
+      setPayoutResult(res?.data ?? { success: [], failed: [], manual: [] });
+      setPayoutPreviewVisible(false);
+      setPayoutResultVisible(true);
+      setSelectedIds([]);
+      fetchList();
+    } catch {
+      message.error('批量打款失败，请重试');
+    } finally {
+      setPayoutRunning(false);
+    }
+  };
 
   const handleBulkApprove = () => {
     if (selectedIds.length === 0) { message.warning('请先选择要操作的记录'); return; }
@@ -455,7 +499,17 @@ const Withdrawal: React.FC = () => {
               loading={bulkApproving}
               style={{ background: '#52c41a', borderColor: '#52c41a' }}
               onClick={handleBulkApprove}
-            >批量同意</Button>
+            >手动批量同意</Button>
+            <Button
+              type="primary"
+              icon={<ThunderboltOutlined />}
+              style={{ background: '#fa8c16', borderColor: '#fa8c16' }}
+              onClick={() => {
+                const pendingOnly = records.filter(r => selectedIds.includes(r.id) && r.status === 'pending');
+                if (pendingOnly.length === 0) { message.warning('所选记录中没有待处理的申请'); return; }
+                openPayoutPreview(pendingOnly.map(r => r.id));
+              }}
+            >币安批量打款</Button>
             <Button
               danger
               icon={<CloseCircleOutlined />}
@@ -648,6 +702,222 @@ const Withdrawal: React.FC = () => {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* ─── 币安批量打款预览弹窗 ───────────────────────────── */}
+      <Modal
+        title={<Space><ThunderboltOutlined style={{ color: '#fa8c16' }} />币安批量打款预览</Space>}
+        open={payoutPreviewVisible}
+        onCancel={() => { if (!payoutRunning) { setPayoutPreviewVisible(false); setPayoutPreview([]); } }}
+        width={780}
+        footer={
+          <Space>
+            <Button onClick={() => setPayoutPreviewVisible(false)} disabled={payoutRunning}>取消</Button>
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              loading={payoutRunning}
+              disabled={payoutPreviewing || payoutPreview.length === 0}
+              style={{ background: '#fa8c16', borderColor: '#fa8c16' }}
+              onClick={() => {
+                const chainCount = payoutPreview.filter(p => !p.isUID).length;
+                const uidCount   = payoutPreview.filter(p => p.isUID).length;
+                Modal.confirm({
+                  title: '确认执行批量打款？',
+                  icon: <WarningOutlined style={{ color: '#fa8c16' }} />,
+                  content: (
+                    <div>
+                      <p>即将通过币安 API 自动打款 <b style={{ color: '#52c41a' }}>{chainCount} 笔</b>（链上地址）</p>
+                      {uidCount > 0 && <p><b style={{ color: '#fa8c16' }}>{uidCount} 笔</b> 为币安 UID，需在币安 App 手动转账</p>}
+                      <p style={{ color: '#ff4d4f', fontSize: 12, marginTop: 8 }}>⚠️ 链上打款一旦发起不可撤回，请确认金额无误</p>
+                    </div>
+                  ),
+                  okText: '确认打款',
+                  cancelText: '再看看',
+                  okButtonProps: { style: { background: '#fa8c16', borderColor: '#fa8c16' } },
+                  onOk: confirmBatchPayout,
+                });
+              }}
+            >
+              确认打款
+            </Button>
+          </Space>
+        }
+      >
+        {payoutPreviewing ? (
+          <div style={{ textAlign: 'center', padding: 40 }}>
+            <Spin tip="正在获取预览数据..." />
+          </div>
+        ) : (
+          <>
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={8}>
+                <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                  <Statistic
+                    title="链上自动打款"
+                    value={payoutPreview.filter(p => !p.isUID).length}
+                    suffix="笔"
+                    valueStyle={{ color: '#52c41a' }}
+                    prefix={<SendOutlined />}
+                  />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small" style={{ background: '#fff7e6', border: '1px solid #ffd591' }}>
+                  <Statistic
+                    title="币安UID（需手动）"
+                    value={payoutPreview.filter(p => p.isUID).length}
+                    suffix="笔"
+                    valueStyle={{ color: '#fa8c16' }}
+                    prefix={<WarningOutlined />}
+                  />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small">
+                  <Statistic
+                    title="合计打款金额"
+                    value={payoutPreview.reduce((s, p) => s + (p.receivedAmount || 0), 0).toFixed(8)}
+                    suffix="BTC"
+                    valueStyle={{ color: '#1677ff', fontFamily: 'monospace', fontSize: 16 }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+            {payoutPreview.filter(p => p.isUID).length > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message={'币安UID订单在打款完成后，需在币安App手动转账，再到本页面点击"手动批量同意"更新状态'}
+              />
+            )}
+            <Table
+              size="small"
+              rowKey="id"
+              dataSource={payoutPreview}
+              pagination={false}
+              scroll={{ y: 320 }}
+              columns={[
+                { title: 'ID', dataIndex: 'id', width: 60 },
+                { title: '邮箱', dataIndex: 'email', ellipsis: true, width: 180 },
+                {
+                  title: '收款方式', dataIndex: 'isUID', width: 120,
+                  render: (isUID: boolean, r: any) => isUID
+                    ? <Tag color="orange" icon={<WarningOutlined />}>UID: {r.walletAddress}</Tag>
+                    : <Tag color="green" icon={<SendOutlined />}>链上地址</Tag>,
+                },
+                {
+                  title: '到账金额 (BTC)', dataIndex: 'receivedAmount', width: 150, align: 'right' as const,
+                  render: (v: number) => (
+                    <span style={{ fontFamily: 'monospace', color: '#52c41a', fontWeight: 600 }}>
+                      {Number(v).toFixed(8)}
+                    </span>
+                  ),
+                },
+                {
+                  title: '钱包地址', dataIndex: 'walletAddress', ellipsis: true,
+                  render: (v: string, r: any) => r.isUID ? '—' : (
+                    <Tooltip title={v}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                        {v ? `${v.slice(0, 12)}…${v.slice(-8)}` : '—'}
+                      </span>
+                    </Tooltip>
+                  ),
+                },
+              ]}
+            />
+          </>
+        )}
+      </Modal>
+
+      {/* ─── 币安批量打款结果弹窗 ─────────────────────────────── */}
+      <Modal
+        title={<Space><CheckCircleOutlined style={{ color: '#52c41a' }} />打款完成</Space>}
+        open={payoutResultVisible}
+        onCancel={() => setPayoutResultVisible(false)}
+        footer={<Button type="primary" onClick={() => setPayoutResultVisible(false)}>关闭</Button>}
+        width={680}
+      >
+        {payoutResult && (
+          <>
+            <Row gutter={16} style={{ marginBottom: 16 }}>
+              <Col span={8}>
+                <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                  <Statistic title="打款成功" value={payoutResult.success.length} suffix="笔"
+                    valueStyle={{ color: '#52c41a' }} prefix={<CheckCircleOutlined />} />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small" style={{ background: '#fff1f0', border: '1px solid #ffa39e' }}>
+                  <Statistic title="打款失败" value={payoutResult.failed.length} suffix="笔"
+                    valueStyle={{ color: '#ff4d4f' }} prefix={<CloseCircleOutlined />} />
+                </Card>
+              </Col>
+              <Col span={8}>
+                <Card size="small" style={{ background: '#fff7e6', border: '1px solid #ffd591' }}>
+                  <Statistic title="需手动处理" value={payoutResult.manual.length} suffix="笔"
+                    valueStyle={{ color: '#fa8c16' }} prefix={<WarningOutlined />} />
+                </Card>
+              </Col>
+            </Row>
+
+            {payoutResult.success.length > 0 && (
+              <Card size="small"
+                title={<Text style={{ color: '#52c41a' }}>✅ 已自动打款</Text>}
+                style={{ marginBottom: 12 }}>
+                <Table size="small" dataSource={payoutResult.success} rowKey="id" pagination={false}
+                  columns={[
+                    { title: 'ID', dataIndex: 'id', width: 60 },
+                    {
+                      title: '到账金额', dataIndex: 'amount', width: 150,
+                      render: (v: number) => <span style={{ fontFamily: 'monospace', color: '#52c41a' }}>{Number(v).toFixed(8)} BTC</span>,
+                    },
+                    {
+                      title: '币安流水号', dataIndex: 'binanceId', ellipsis: true,
+                      render: (v: string) => <Text copyable={{ text: v }} style={{ fontSize: 12 }}>{v}</Text>,
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+
+            {payoutResult.manual.length > 0 && (
+              <Card size="small"
+                title={<Text style={{ color: '#fa8c16' }}>⚠️ 需在币安App手动转账（UID）</Text>}
+                style={{ marginBottom: 12 }}>
+                <Table size="small" dataSource={payoutResult.manual} rowKey="id" pagination={false}
+                  columns={[
+                    { title: 'ID', dataIndex: 'id', width: 60 },
+                    { title: '邮箱', dataIndex: 'email', ellipsis: true },
+                    {
+                      title: '币安 UID', dataIndex: 'uid', width: 130,
+                      render: (v: string) => <Text copyable style={{ fontFamily: 'monospace' }}>{v}</Text>,
+                    },
+                    {
+                      title: '金额', dataIndex: 'amount', width: 150,
+                      render: (v: number) => <span style={{ fontFamily: 'monospace', color: '#fa8c16' }}>{Number(v).toFixed(8)} BTC</span>,
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+
+            {payoutResult.failed.length > 0 && (
+              <Card size="small" title={<Text type="danger">❌ 打款失败（需排查）</Text>}>
+                <Table size="small" dataSource={payoutResult.failed} rowKey="id" pagination={false}
+                  columns={[
+                    { title: 'ID', dataIndex: 'id', width: 60 },
+                    {
+                      title: '失败原因', dataIndex: 'reason', ellipsis: true,
+                      render: (v: string) => <Text type="danger" style={{ fontSize: 12 }}>{v}</Text>,
+                    },
+                  ]}
+                />
+              </Card>
+            )}
+          </>
+        )}
       </Modal>
 
       {/* ─── 拒绝原因弹窗 ─────────────────────────────────── */}

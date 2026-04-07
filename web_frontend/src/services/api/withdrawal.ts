@@ -35,4 +35,12 @@ export const withdrawalAPI = {
   /** 批量拒绝提现 */
   bulkReject: (ids: number[], reason?: string) =>
     request.post('/withdrawal/admin/bulk-reject', { ids, reason }),
+
+  /** 通过币安 API 批量打款（dryRun=true 仅预览，不实际转账） */
+  batchPayout: (params: { ids?: number[]; payAll?: boolean; dryRun?: boolean }) =>
+    request.post('/withdrawal/admin/batch-payout', params),
+
+  /** 验证币安 API Key 是否配置正确且有提现权限 */
+  verifyBinanceKey: () =>
+    request.get('/withdrawal/admin/verify-binance-key'),
 };

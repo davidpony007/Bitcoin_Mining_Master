@@ -115,9 +115,9 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
-    const withdrawAmount = parseFloat(amount);
-    const fee = parseFloat(networkFee || 0);
-    const receivedAmount = withdrawAmount - fee;
+    const withdrawAmount = parseFloat(parseFloat(amount).toFixed(8));
+    const fee = parseFloat(parseFloat(networkFee || 0).toFixed(8));
+    const receivedAmount = parseFloat((withdrawAmount - fee).toFixed(8));
 
     // 2. 验证金额
     if (withdrawAmount <= 0 || receivedAmount <= 0) {
@@ -219,7 +219,7 @@ router.post('/request', authenticateToken, async (req, res) => {
     const withdrawalId = insertResult;
 
     // 9. 记录比特币交易（提现）
-    const newBalanceAfterWithdraw = currentBalance - withdrawAmount;
+    const newBalanceAfterWithdraw = parseFloat((currentBalance - withdrawAmount).toFixed(8));
     const txDescription = isBinanceUID
       ? `Withdrawal to Binance UID: ${walletAddress}`
       : `Withdrawal to ${walletAddress.substring(0, 10)}...${walletAddress.substring(walletAddress.length - 6)} (${network || 'BEP20'})`;
@@ -623,7 +623,23 @@ router.post('/admin/bulk-approve', authenticateToken, requireAdmin, async (req, 
       if (!withdrawal) { results.failed.push({ id, reason: '记录不存在' }); await transaction.rollback(); continue; }
       if (withdrawal.withdrawal_status !== 'pending') { results.failed.push({ id, reason: '状态不是pending' }); await transaction.rollback(); continue; }
 
-      await withdrawal.update({ withdrawal_status: 'success' }, { transaction });
+      await withdrawal.update({ withdrawal_status: 'success', updated_at: new Date() }, { transaction });
+
+      // 更新用户累计提现金额（原 bulk-approve 遗漏此步骤）
+      const userStatus = await UserStatus.findOne({ where: { user_id: withdrawal.user_id }, transaction });
+      if (userStatus) {
+        await userStatus.increment('total_withdrawal_amount', {
+          by: parseFloat(withdrawal.withdrawal_request_amount),
+          transaction,
+        });
+      }
+
+      // 更新对应的比特币交易记录状态
+      await BitcoinTransactionRecord.update(
+        { transaction_status: 'success' },
+        { where: { user_id: withdrawal.user_id, transaction_type: 'withdrawal', transaction_status: 'pending' }, transaction, limit: 1 }
+      );
+
       await transaction.commit();
       results.success.push(id);
     } catch (err) {
@@ -709,6 +725,163 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
   } catch (error) {
     console.error('❌ 提现统计查询失败:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch stats', error: error.message });
+  }
+});
+
+/**
+ * POST /api/withdrawal/admin/batch-payout
+ * 通过币安 API 批量向用户发放 BTC
+ *
+ * Body:
+ *   ids?:    number[]   — 指定提现记录 ID（与 payAll 二选一）
+ *   payAll?: boolean    — true 则处理所有 pending 记录
+ *   dryRun?: boolean    — true 则只预览不实际打款（用于确认单子列表）
+ *
+ * 返回：
+ *   success[]:  { id, binanceId, amount }   — 已通过币安API成功发起
+ *   failed[]:   { id, reason }              — API 调用失败
+ *   manual[]:   { id, uid, amount }         — 币安UID类型，需在币安App手动转账
+ */
+router.post('/admin/batch-payout', authenticateToken, requireAdmin, async (req, res) => {
+  const { ids, payAll, dryRun } = req.body;
+  const { withdrawToAddress, isBinanceUID } = require('../services/binancePayoutService');
+
+  // 1. 获取待处理记录
+  let pendingWithdrawals;
+  try {
+    if (payAll) {
+      pendingWithdrawals = await WithdrawalRecord.findAll({
+        where: { withdrawal_status: 'pending' },
+        order: [['id', 'ASC']],
+      });
+    } else if (Array.isArray(ids) && ids.length > 0) {
+      pendingWithdrawals = await WithdrawalRecord.findAll({
+        where: { id: ids, withdrawal_status: 'pending' },
+        order: [['id', 'ASC']],
+      });
+    } else {
+      return res.status(400).json({ success: false, message: '请提供 ids 数组或设置 payAll=true' });
+    }
+  } catch (err) {
+    return res.status(500).json({ success: false, message: '查询提现记录失败', error: err.message });
+  }
+
+  if (pendingWithdrawals.length === 0) {
+    return res.json({ success: true, message: '没有待处理的提现记录', data: { success: [], failed: [], manual: [], total: 0 } });
+  }
+
+  // 2. 预览模式：仅返回将要处理的单子，不实际打款
+  if (dryRun) {
+    const preview = pendingWithdrawals.map(w => ({
+      id:           w.id,
+      userId:       w.user_id,
+      email:        w.email,
+      walletAddress: w.wallet_address,
+      isUID:        isBinanceUID(w.wallet_address),
+      amount:       parseFloat(w.withdrawal_request_amount),
+      receivedAmount: parseFloat(w.received_amount),
+      networkFee:   parseFloat(w.network_fee),
+    }));
+    return res.json({
+      success: true,
+      message: `预览：共 ${preview.length} 条待处理，其中 ${preview.filter(p => p.isUID).length} 条需手动（币安UID）`,
+      data: { preview, total: preview.length },
+    });
+  }
+
+  // 3. 实际打款
+  const results = { success: [], failed: [], manual: [] };
+
+  for (const withdrawal of pendingWithdrawals) {
+    const address  = withdrawal.wallet_address;
+    const received = parseFloat(withdrawal.received_amount);
+
+    // 币安UID：无法通过链上提现API处理，标记为手动
+    if (isBinanceUID(address)) {
+      results.manual.push({
+        id:     withdrawal.id,
+        uid:    address,
+        userId: withdrawal.user_id,
+        email:  withdrawal.email,
+        amount: received,
+      });
+      continue;
+    }
+
+    // 链上 BTC 提现
+    try {
+      const { binanceId } = await withdrawToAddress({
+        address,
+        amount:        received,
+        coin:          'BTC',
+        network:       'BTC',
+        clientOrderId: `wd_${withdrawal.id}`,
+      });
+
+      // 币安API成功 → 更新DB
+      const transaction = await sequelize.transaction();
+      try {
+        await withdrawal.update({ withdrawal_status: 'success', updated_at: new Date() }, { transaction });
+
+        const userStatus = await UserStatus.findOne({ where: { user_id: withdrawal.user_id }, transaction });
+        if (userStatus) {
+          await userStatus.increment('total_withdrawal_amount', {
+            by: parseFloat(withdrawal.withdrawal_request_amount),
+            transaction,
+          });
+        }
+
+        await BitcoinTransactionRecord.update(
+          { transaction_status: 'success' },
+          { where: { user_id: withdrawal.user_id, transaction_type: 'withdrawal', transaction_status: 'pending' }, transaction, limit: 1 }
+        );
+
+        await transaction.commit();
+        results.success.push({ id: withdrawal.id, binanceId, amount: received });
+      } catch (dbErr) {
+        await transaction.rollback();
+        // 币安已打款但DB更新失败，需人工处理；不应再次打款
+        results.failed.push({ id: withdrawal.id, reason: `⚠️ 币安已打款(${binanceId})但DB更新失败: ${dbErr.message}` });
+      }
+    } catch (apiErr) {
+      const errMsg = apiErr.response?.data?.msg || apiErr.message;
+      results.failed.push({ id: withdrawal.id, reason: errMsg });
+    }
+
+    // 避免触发币安 API 速率限制，每笔间隔 300ms
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  const total = results.success.length + results.failed.length + results.manual.length;
+  res.json({
+    success: true,
+    message: `批量打款完成（共${total}条）：成功${results.success.length}条，失败${results.failed.length}条，需手动处理${results.manual.length}条(UID)`,
+    data: results,
+  });
+});
+
+/**
+ * GET /api/withdrawal/admin/verify-binance-key
+ * 验证币安 API Key 是否配置正确且有提现权限
+ */
+router.get('/admin/verify-binance-key', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { verifyApiKey } = require('../services/binancePayoutService');
+    const info = await verifyApiKey();
+    res.json({
+      success: true,
+      message: info.enableWithdrawals
+        ? '✅ API Key 有效，提现权限已开启'
+        : '⚠️ API Key 有效但未开启提现权限，请在币安后台开启',
+      data: info,
+    });
+  } catch (err) {
+    const msg = err.response?.data?.msg || err.message;
+    res.json({
+      success: false,
+      message: `❌ API Key 验证失败: ${msg}`,
+      error: msg,
+    });
   }
 });
 

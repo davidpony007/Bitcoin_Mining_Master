@@ -89,6 +89,7 @@ class WalletScreenState extends State<WalletScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      ApiService.notifyAppResumed();
       refreshData();
     }
   }

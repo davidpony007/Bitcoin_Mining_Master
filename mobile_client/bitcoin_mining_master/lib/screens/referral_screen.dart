@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/user_repository.dart';
 import '../services/analytics_service.dart';
 import 'transaction_history_screen.dart';
+import '../widgets/info_pages_dialog.dart';
 
 /// 推荐屏幕 - Invite with rebate earnings
 class ReferralScreen extends StatefulWidget {
@@ -49,6 +50,7 @@ class ReferralScreenState extends State<ReferralScreen> with WidgetsBindingObser
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      ApiService.notifyAppResumed();
       refreshInvitedFriends();
     }
   }
@@ -731,7 +733,7 @@ $downloadUrl
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
-            onPressed: _showHelpDialog,
+            onPressed: () => InfoPagesDialog.show(context, initialPage: 2),
           ),
         ],
       ),

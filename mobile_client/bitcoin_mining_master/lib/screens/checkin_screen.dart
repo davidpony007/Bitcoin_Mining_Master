@@ -37,6 +37,7 @@ class _CheckInScreenState extends State<CheckInScreen>
 
   bool _isLoading = true;
   bool _isCheckingIn = false;
+  bool _isClaimingMilestone = false; // 防止重复 claim
   String? _error;
 
   @override
@@ -75,6 +76,7 @@ class _CheckInScreenState extends State<CheckInScreen>
     super.didChangeAppLifecycleState(state);
     // 当应用从后台返回时重新加载数据（例如从广告页面返回）
     if (state == AppLifecycleState.resumed) {
+      ApiService.notifyAppResumed();
       _loadData();
     }
   }
@@ -404,6 +406,8 @@ class _CheckInScreenState extends State<CheckInScreen>
   }
 
   Future<void> _claimMilestone(int days) async {
+    if (_isClaimingMilestone) return;
+    setState(() => _isClaimingMilestone = true);
     try {
       final result = await _apiService.claimMilestone(days);
 
@@ -430,6 +434,8 @@ class _CheckInScreenState extends State<CheckInScreen>
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isClaimingMilestone = false);
     }
   }
 

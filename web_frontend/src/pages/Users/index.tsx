@@ -45,6 +45,8 @@ interface UserRow {
   total_withdrawal_amount: string | null;
   total_invitation_rebate: string | null;
   mining_rate_per_second: string | null;
+  country_multiplier: string | null;
+  miner_level_multiplier: string | null;
 }
 
 interface UserDetail {
@@ -141,6 +143,7 @@ const Users: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [searchField, setSearchField] = useState<string>('');
   const [status, setStatus] = useState<string>('');
   const [systemFilter, setSystemFilter] = useState<string>('');
   const [acquisitionFilter, setAcquisitionFilter] = useState<string>('');
@@ -258,12 +261,13 @@ const Users: React.FC = () => {
 
   const loadList = useCallback(async (
     p = page, s = search, st = status, sys = systemFilter, acq = acquisitionFilter,
-    ctry = countryFilter, lvl = levelFilter, sf = sortField, so = sortOrder
+    ctry = countryFilter, lvl = levelFilter, sf = sortField, so = sortOrder, sfield = searchField
   ) => {
     try {
       setLoading(true);
       const res = await usersApi.list({
         page: p, limit: 20, search: s || undefined,
+        searchField: sfield || undefined,
         status: st || undefined, system: sys || undefined, acquisition: acq || undefined,
         country: ctry || undefined, level: lvl || undefined,
         sortBy: sf || undefined, sortOrder: so || undefined,
@@ -271,7 +275,7 @@ const Users: React.FC = () => {
       if (res?.success) { setList(res.data.list); setTotal(res.data.total); }
     } catch { message.error('加载用户列表失败'); }
     finally { setLoading(false); }
-  }, [page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder]);
+  }, [page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder, searchField]);
 
   useEffect(() => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
@@ -280,7 +284,7 @@ const Users: React.FC = () => {
     loadList(1, '', '');
   }, []);
 
-  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); };
+  const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder, searchField); };
 
   const handleRefresh = () => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
@@ -334,8 +338,10 @@ const Users: React.FC = () => {
     try {
       const values = await btcForm.validateFields();
       setBtcLoading(true);
-      const signedAmount = btcModalType === 'add' ? Math.abs(values.amount) : -Math.abs(values.amount);
-      const res = await usersApi.adjustBtc(btcTargetUser.user_id, signedAmount, values.reason);
+      // 用字符串保留精确精度，避免 JSON number → JS float 的精度丢失
+      const absStr = String(values.amount).trim();
+      const signedAmountStr = btcModalType === 'add' ? absStr : `-${absStr}`;
+      const res = await usersApi.adjustBtc(btcTargetUser.user_id, signedAmountStr, values.reason);
       if (res?.success) {
         message.success(res.message || 'BTC余额已调整');
         setBtcModalOpen(false);
@@ -381,12 +387,30 @@ const Users: React.FC = () => {
       render: (v: number) => <Tag color="gold"><CrownOutlined /> {v}</Tag>,
     },
     {
+      title: '国家倍率', dataIndex: 'country_multiplier', key: 'country_multiplier', width: 80,
+      render: (v: string | null) => <Text style={{ color: '#52c41a' }}>{v ? parseFloat(v).toFixed(2) : '1.00'}</Text>,
+    },
+    {
+      title: '等级倍率', dataIndex: 'miner_level_multiplier', key: 'miner_level_multiplier', width: 80,
+      render: (v: string | null) => <Text style={{ color: '#1890ff' }}>{v ? parseFloat(v).toFixed(2) : '1.00'}</Text>,
+    },
+    {
       title: '积分', dataIndex: 'user_points', key: 'user_points', width: 70,
       sorter: true, sortOrder: getSO('user_points'),
     },
     {
       title: '广告观看次数', dataIndex: 'total_ad_views', key: 'total_ad_views', width: 100,
       sorter: true, sortOrder: getSO('total_ad_views'),
+    },
+    {
+      title: '实时挖矿速率', dataIndex: 'mining_rate_per_second', key: 'mining_rate_per_second', width: 155,
+      sorter: true, sortOrder: getSO('mining_rate_per_second'),
+      render: (v: string | null) => (
+        <span>
+          <Text style={{ color: '#13c2c2', fontWeight: 600 }}>{v ? parseFloat(v).toFixed(18) : '0.000000000000000000'}</Text>
+          <Text type="secondary" style={{ fontSize: 10, marginLeft: 3 }}>BTC/s</Text>
+        </span>
+      ),
     },
     {
       title: 'BTC余额', dataIndex: 'current_bitcoin_balance', key: 'current_bitcoin_balance', width: 130,
@@ -414,16 +438,6 @@ const Users: React.FC = () => {
       title: '邀请返利', dataIndex: 'total_invitation_rebate', key: 'total_invitation_rebate', width: 120,
       sorter: true, sortOrder: getSO('total_invitation_rebate'),
       render: (v: string) => <Text style={{ color: '#722ed1' }}>{fmtBtc(v)}</Text>,
-    },
-    {
-      title: '实时挖矿速率', dataIndex: 'mining_rate_per_second', key: 'mining_rate_per_second', width: 155,
-      sorter: true, sortOrder: getSO('mining_rate_per_second'),
-      render: (v: string | null) => (
-        <span>
-          <Text style={{ color: '#13c2c2', fontWeight: 600 }}>{v ? parseFloat(v).toFixed(18) : '0.000000000000000000'}</Text>
-          <Text type="secondary" style={{ fontSize: 10, marginLeft: 3 }}>BTC/s</Text>
-        </span>
-      ),
     },
     {
       title: '来源', dataIndex: 'acquisition_channel', key: 'acquisition_channel', width: 75,
@@ -757,8 +771,24 @@ const Users: React.FC = () => {
 
       <Card>
         <Space style={{ marginBottom: 16 }} wrap>
-          <Input placeholder="搜索邮箱 / User ID / Google账号" prefix={<SearchOutlined />} style={{ width: 280 }}
-            value={search} onChange={e => setSearch(e.target.value)} onPressEnter={handleSearch} />
+          <Input.Group compact>
+            <Select value={searchField || ''} onChange={(v: string) => setSearchField(v)} style={{ width: 120 }}>
+              <Option value="">全部字段</Option>
+              <Option value="email">邮箱</Option>
+              <Option value="user_id">User ID</Option>
+              <Option value="google_account">Google账号</Option>
+              <Option value="apple_account">Apple账号</Option>
+              <Option value="apple_id">Apple ID</Option>
+              <Option value="device_id">设备ID</Option>
+              <Option value="idfa">IDFA</Option>
+              <Option value="gaid">GAID</Option>
+              <Option value="register_ip">注册IP</Option>
+            </Select>
+            <Input
+              placeholder={searchField ? ({ email:'邮箱', user_id:'User ID', google_account:'Google账号', apple_account:'Apple账号', apple_id:'Apple ID', device_id:'设备ID', idfa:'IDFA', gaid:'GAID', register_ip:'注册IP' } as any)[searchField] || '关键词' : '搜索邮箱 / User ID / Google账号…'}
+              prefix={<SearchOutlined />} style={{ width: 240 }}
+              value={search} onChange={e => setSearch(e.target.value)} onPressEnter={handleSearch} />
+          </Input.Group>
           <Select placeholder="系统平台" style={{ width: 120 }} value={systemFilter || undefined} allowClear
             onChange={(v: string) => { setSystemFilter(v || ''); setPage(1); loadList(1, search, status, v || '', acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); }}>
             <Option value="iOS">iOS</Option>
