@@ -13,19 +13,11 @@ const { requireAdmin } = require('../middleware/role');
 /**
  * @route   GET /api/points/balance
  * @desc    获取用户积分余额
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  */
-router.get('/balance', async (req, res) => {
+router.get('/balance', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     const result = await PointsService.getUserPoints(user_id);
 
@@ -47,22 +39,15 @@ router.get('/balance', async (req, res) => {
 /**
  * @route   GET /api/points/transactions
  * @desc    获取用户积分交易记录
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  * @query   page - 页码 (默认1)
  * @query   limit - 每页数量 (默认20)
  * @query   type - 积分类型筛选 (可选)
  */
-router.get('/transactions', async (req, res) => {
+router.get('/transactions', authenticate, async (req, res) => {
   try {
-    const { user_id, page, limit, type } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
+    const { page, limit, type } = req.query;
 
     const pageNumber = parseInt(page) || 1;
     const limitNumber = parseInt(limit) || 20;
@@ -92,21 +77,14 @@ router.get('/transactions', async (req, res) => {
 /**
  * @route   GET /api/points/history (兼容旧接口)
  * @desc    获取用户积分历史 (重定向到transactions)
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  * @query   page - 页码 (默认1)
  * @query   limit - 每页数量 (默认20)
  */
-router.get('/history', async (req, res) => {
+router.get('/history', authenticate, async (req, res) => {
   try {
-    const { user_id, page, limit } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
+    const { page, limit } = req.query;
 
     const pageNumber = parseInt(page) || 1;
     const limitNumber = parseInt(limit) || 20;
@@ -137,19 +115,11 @@ router.get('/history', async (req, res) => {
 /**
  * @route   GET /api/points/statistics
  * @desc    获取用户积分统计（按类型汇总）
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  */
-router.get('/statistics', async (req, res) => {
+router.get('/statistics', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     const result = await PointsService.getPointsStatistics(user_id);
 
@@ -285,15 +255,12 @@ router.post('/deduct', authenticate, requireAdmin, async (req, res) => {
 /**
  * @route   POST /api/points/claim-app-rating
  * @desc    用户领取应用评分一次性奖励 (+10 积分)，服务端幂等防重复
- * @access  Public (user_id in body)
+ * @access  Private
  */
-router.post('/claim-app-rating', async (req, res) => {
+router.post('/claim-app-rating', authenticate, async (req, res) => {
   const pool = require('../config/database_native');
   try {
-    const { user_id } = req.body;
-    if (!user_id) {
-      return res.status(400).json({ success: false, message: '缺少参数: user_id' });
-    }
+    const user_id = req.user.user_id;
 
     // 服务端幂等：检查是否已领取过（points_transaction 表）
     const connection = await pool.getConnection();

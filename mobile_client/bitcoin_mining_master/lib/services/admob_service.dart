@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'analytics_service.dart';
+import '../constants/app_constants.dart';
 
 /// AdMob广告服务管理类
 /// 负责初始化AdMob SDK、加载和展示激励视频广告
@@ -19,15 +20,11 @@ class AdMobService {
   Function()? onAdLoaded;
   Function(String)? onAdFailedToLoad;
   
-  // Google AdMob测试广告单元ID
+  // 广告位 ID：统一由 AdMobConstants 管理，切换测试/正式只需改一处 _isTestMode
   static String get _rewardedAdUnitId {
-    if (kIsWeb) {
-      return '';
-    } else if (Platform.isAndroid) {
-      return 'ca-app-pub-3940256099942544/5224354917'; // Android测试ID
-    } else if (Platform.isIOS) {
-      return 'ca-app-pub-3940256099942544/1712485313'; // iOS测试ID
-    }
+    if (kIsWeb) return '';
+    if (Platform.isAndroid) return AdMobConstants.androidRewardedAdUnitId;
+    if (Platform.isIOS)     return AdMobConstants.iosRewardedAdUnitId;
     return '';
   }
   
@@ -79,24 +76,7 @@ class AdMobService {
                 'precision': precision.index,
               });
             };
-            
-            // 设置广告事件监听
-            _rewardedAd?.fullScreenContentCallback = FullScreenContentCallback(
-              onAdDismissedFullScreenContent: (ad) {
-                print('📺 广告已关闭');
-                ad.dispose();
-                _rewardedAd = null;
-                _isAdLoaded = false;
-                // 预加载下一个广告
-                loadRewardedAd();
-              },
-              onAdFailedToShowFullScreenContent: (ad, error) {
-                print('❌ 广告展示失败: $error');
-                ad.dispose();
-                _rewardedAd = null;
-                _isAdLoaded = false;
-              },
-            );
+            // fullScreenContentCallback 在 showRewardedAd() 中按需绑定（含 Completer 引用）
           },
           onAdFailedToLoad: (error) {
             print('❌ 广告加载失败: $error');
@@ -115,34 +95,50 @@ class AdMobService {
   }
 
   /// 展示激励视频广告
-  /// 返回值：true表示用户完整观看了广告，false表示广告未加载或用户提前退出
+  /// 返回值：true = 用户完整观看并获得奖励；false = 广告未加载 / 用户提前退出 / 展示失败
+  ///
+  /// 关键修复：将 fullScreenContentCallback 在 show() 调用前绑定，让 Completer 对
+  /// "提前退出"和"展示失败"回调可见，避免原有 30 秒超时导致的 UI 卡死。
   Future<bool> showRewardedAd() async {
     if (_rewardedAd == null || !_isAdLoaded) {
       print('⚠️ 广告未准备好，无法展示');
       return false;
     }
-    
+
     final completer = Completer<bool>();
-    
+
+    // 在 show() 之前绑定回调，确保所有退出路径都能 complete completer
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) {
+        print('📺 广告已关闭');
+        ad.dispose();
+        _rewardedAd = null;
+        _isAdLoaded = false;
+        // 用户提前退出时 reward 回调不会触发，在此以 false 结束等待
+        if (!completer.isCompleted) completer.complete(false);
+        // 预加载下一个广告
+        loadRewardedAd();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        print('❌ 广告展示失败: $error');
+        ad.dispose();
+        _rewardedAd = null;
+        _isAdLoaded = false;
+        if (!completer.isCompleted) completer.complete(false);
+      },
+    );
+
     try {
       await _rewardedAd!.show(
         onUserEarnedReward: (ad, reward) {
           print('🎉 用户获得奖励: ${reward.amount} ${reward.type}');
-          completer.complete(true);
+          if (!completer.isCompleted) completer.complete(true);
         },
       );
-      
-      // 如果30秒内没有回调，返回false
-      return await completer.future.timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          print('⏱️ 广告展示超时');
-          return false;
-        },
-      );
+      return await completer.future;
     } catch (e) {
       print('❌ 展示广告异常: $e');
-      completer.complete(false);
+      if (!completer.isCompleted) completer.complete(false);
       return false;
     }
   }

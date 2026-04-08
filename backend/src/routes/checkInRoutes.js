@@ -12,19 +12,11 @@ const authenticate = require('../middleware/auth');
 /**
  * @route   POST /api/checkin
  * @desc    用户签到（使用新的积分系统）
- * @access  Public
- * @body    user_id - 用户ID
+ * @access  Private
  */
-router.post('/', async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.body;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     // 使用新的CheckInPointsService
     const result = await CheckInPointsService.performCheckIn(user_id);
@@ -44,19 +36,11 @@ router.post('/', async (req, res) => {
 /**
  * @route   GET /api/checkin/status
  * @desc    获取签到状态（使用新的积分系统）
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  */
-router.get('/status', async (req, res) => {
+router.get('/status', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     // 使用新的CheckInPointsService
     const status = await CheckInPointsService.getCheckInStatus(user_id);
@@ -80,20 +64,13 @@ router.get('/status', async (req, res) => {
 /**
  * @route   GET /api/checkin/history
  * @desc    获取签到历史（使用新的积分系统）
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  * @query   days - 查询天数 (默认30天)
  */
-router.get('/history', async (req, res) => {
+router.get('/history', authenticate, async (req, res) => {
   try {
-    const { user_id, days } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
+    const { days } = req.query;
 
     const daysNumber = parseInt(days) || 30;
     
@@ -115,19 +92,11 @@ router.get('/history', async (req, res) => {
 /**
  * @route   GET /api/checkin/milestones
  * @desc    获取可领取的签到里程碑奖励
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  */
-router.get('/milestones', async (req, res) => {
+router.get('/milestones', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     const result = await CheckInPointsService.getAvailableMilestones(user_id);
 
@@ -146,18 +115,18 @@ router.get('/milestones', async (req, res) => {
 /**
  * @route   POST /api/checkin/claim-milestone
  * @desc    领取累计签到里程碑奖励（可以不连续）
- * @access  Public
- * @body    user_id - 用户ID
+ * @access  Private
  * @body    cumulative_days - 累计天数 (3/7/15/30)
  */
-router.post('/claim-milestone', async (req, res) => {
+router.post('/claim-milestone', authenticate, async (req, res) => {
   try {
-    const { user_id, cumulative_days } = req.body;
+    const user_id = req.user.user_id;
+    const { cumulative_days } = req.body;
 
-    if (!user_id || !cumulative_days) {
+    if (!cumulative_days) {
       return res.status(400).json({
         success: false,
-        message: '缺少参数: user_id, cumulative_days'
+        message: '缺少参数: cumulative_days'
       });
     }
 

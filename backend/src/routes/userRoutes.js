@@ -23,17 +23,10 @@ router.get('/', authenticateToken, (req, res) => {
 router.post('/', userController.createUser);
 
 // GET /api/user/bitcoin-balance
-// 获取用户比特币余额
-router.get('/bitcoin-balance', async (req, res) => {
+// 获取用户比特币余额（需要JWT认证，防止IDOR）
+router.get('/bitcoin-balance', authenticateToken, async (req, res) => {
   try {
-    const userId = req.query.userId;
-    
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing userId parameter'
-      });
-    }
+    const userId = req.user.user_id;
 
     // 查询用户状态表获取比特币余额
     const [userStatus] = await sequelize.query(

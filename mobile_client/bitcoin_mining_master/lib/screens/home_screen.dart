@@ -3,7 +3,6 @@ import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/admob_service.dart';
-import '../widgets/welcome_dialog.dart';
 import 'dashboard_screen.dart';
 import 'wallet_screen.dart';
 import 'referral_screen.dart';
@@ -58,76 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
     // 预加载广告
     AdMobService().loadRewardedAd();
-    // 延迟显示欢迎弹窗，确保界面已加载
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showWelcomeDialogIfNeeded();
-    });
   }
-
-  Future<void> _showWelcomeDialogIfNeeded() async {
-    // 注意：不要在这里调用 setLaunched()，让 WelcomeDialog.showIfFirstTime 内部处理。
-    // 若先调用 setLaunched() 再调 showIfFirstTime，后者检查 isFirstLaunch()=false 会直接跳过，
-    // 导致欢迎弹窗永远不显示。
-    if (mounted) {
-      WelcomeDialog.showIfFirstTime(context, _handleReferrerCode);
-    }
-  }
-
-  Future<void> _handleReferrerCode(String? referrerCode) async {
-    if (referrerCode == null || referrerCode.isEmpty) {
-      return;
-    }
-
-    try {
-      final userId = _storageService.getUserId();
-      if (userId == null || userId.isEmpty) {
-        // 用户ID还未生成，将邀请码暂存到本地，待用户ID生成后在 Referral 页面可手动绑定
-        // 同时持久化邀请码，避免丢失
-        await _storageService.saveInvitationCode(referrerCode);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Invitation code saved. Please go to the Referral page to complete binding.'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 5),
-            ),
-          );
-        }
-        return;
-      }
-
-      // 绑定推荐人
-      final response = await _apiService.addReferrer(
-        userId: userId,
-        referrerInvitationCode: referrerCode,
-      );
-
-      if (response['success'] == true) {
-        // 创建免费广告合约
-        final contractResponse = await _apiService.createAdFreeContract(
-          userId: userId,
-        );
-
-        if (mounted && contractResponse['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Referrer added! You got a free mining contract!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      print('Error handling referrer code: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to add referrer: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 
   // 所有屏幕页面已在 initState 中初始化

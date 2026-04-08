@@ -92,6 +92,40 @@ class StoreConstants {
   static const String iosAppStoreId = 'YOUR_APP_STORE_ID';
 }
 
+/// AdMob 广告位常量
+///
+/// ⚠️ 上线前操作清单：
+///   1. 将下方 _isTestMode 改为 false
+///   2. 将 android/app/src/main/AndroidManifest.xml 中的
+///      com.google.android.gms.ads.APPLICATION_ID 替换为正式 App ID:
+///      ca-app-pub-1048949483424060~9044706379
+///   3. 将 ios/Runner/Info.plist 中的 GADApplicationIdentifier
+///      替换为正式 iOS App ID（从 AdMob 后台获取）
+class AdMobConstants {
+  /// 切换为 false 即启用正式广告位（上线前必须设为 false）
+  static const bool _isTestMode = true;
+
+  // ── Android ──────────────────────────────────
+  static const String _androidTestRewardedId =
+      'ca-app-pub-3940256099942544/5224354917';
+  /// 正式 Android 激励广告位 ID（从 AdMob 后台获取后填入）
+  static const String _androidProdRewardedId =
+      'YOUR_ANDROID_REWARDED_AD_UNIT_ID';
+
+  // ── iOS ──────────────────────────────────────
+  static const String _iosTestRewardedId =
+      'ca-app-pub-3940256099942544/1712485313';
+  /// 正式 iOS 激励广告位 ID（从 AdMob 后台获取后填入）
+  static const String _iosProdRewardedId =
+      'YOUR_IOS_REWARDED_AD_UNIT_ID';
+
+  // ── 平台选择器（由 admob_service.dart 使用） ──
+  static String get androidRewardedAdUnitId =>
+      _isTestMode ? _androidTestRewardedId : _androidProdRewardedId;
+  static String get iosRewardedAdUnitId =>
+      _isTestMode ? _iosTestRewardedId : _iosProdRewardedId;
+}
+
 /// 应用常量
 class AppConstants {
   static const String appName = 'Bitcoin Mining Master';

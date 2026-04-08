@@ -126,7 +126,8 @@ app.set('trust proxy', 1); // 信任第一层代理
 // 注册通用中间件
 app.use(globalLimiter);  // 全局限流：每IP每15分钟200次
 app.use(timeout('55s')); // 请求超时 55 秒（payment验证需调用Apple API两次，从国内到Apple服务器网络延迟可达20s+/次，需充分余量；nginx proxy_read_timeout=60s）
-app.use(bodyParser.json({ limit: '50mb' })); // 解析 JSON 请求体，支持大 receipt（IAP 回执最大可达 10MB+）
+app.use(bodyParser.json({ limit: '1mb' })); // 全局限制 1MB，防止大载荷 DoS
+app.use('/api/payment', bodyParser.json({ limit: '50mb' })); // IAP 收据最大可达 10MB+，仅支付路由放开至 50MB
 app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } })); // 记录 HTTP 请求日志到 winston
 app.use(helmet()); // 增强 HTTP 头安全，防止常见 Web 攻击
 

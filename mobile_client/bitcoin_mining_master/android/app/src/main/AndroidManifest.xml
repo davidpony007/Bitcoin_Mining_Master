@@ -11,7 +11,8 @@
         android:label="Bitcoin Mining Master"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icons"
-        android:usesCleartextTraffic="true">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

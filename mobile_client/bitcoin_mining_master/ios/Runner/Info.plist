@@ -111,16 +111,8 @@
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>47.79.232.189</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-				<key>NSIncludesSubdomains</key>
-				<false/>
-			</dict>
-		</dict>
+		<!-- 生产环境使用 HTTPS 域名，无需任何 HTTP 例外 -->
+		<!-- 已移除对 47.79.232.189 的 HTTP 明文例外（原为开发遗留） -->
 	</dict>
         <key>UIApplicationSceneManifest</key>
         <dict>

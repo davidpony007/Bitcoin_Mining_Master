@@ -12,20 +12,13 @@ const authenticate = require('../middleware/auth');
 /**
  * @route   POST /api/ad/watch
  * @desc    记录广告观看并奖励积分（使用新的积分系统）
- * @access  Public
- * @body    user_id - 用户ID
+ * @access  Private
  * @body    ad_type - 广告类型 (可选，默认REWARD_AD)
  */
-router.post('/watch', async (req, res) => {
+router.post('/watch', authenticate, async (req, res) => {
   try {
-    const { user_id, ad_type = 'REWARD_AD' } = req.body;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
+    const { ad_type = 'REWARD_AD' } = req.body;
 
     // 使用新的AdPointsService，集成积分系统
     const result = await AdPointsService.recordAdViewAndReward(user_id);
@@ -45,19 +38,11 @@ router.post('/watch', async (req, res) => {
 /**
  * @route   GET /api/ad/today
  * @desc    获取今日广告观看记录（使用新的积分系统）
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  */
-router.get('/today', async (req, res) => {
+router.get('/today', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     // 使用新的AdPointsService
     const result = await AdPointsService.getTodayAdRecord(user_id);
@@ -77,19 +62,11 @@ router.get('/today', async (req, res) => {
 /**
  * @route   GET /api/ad/count (兼容旧接口)
  * @desc    获取广告观看次数
- * @access  Public
- * @query   user_id - 用户ID
+ * @access  Private
  */
-router.get('/count', async (req, res) => {
+router.get('/count', authenticate, async (req, res) => {
   try {
-    const { user_id } = req.query;
-
-    if (!user_id) {
-      return res.status(400).json({
-        success: false,
-        message: '缺少参数: user_id'
-      });
-    }
+    const user_id = req.user.user_id;
 
     const result = await AdPointsService.getTodayAdRecord(user_id);
 

@@ -13,6 +13,7 @@ const { QueryTypes } = require('sequelize');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const axios = require('axios');
 
 // ─── 实时 BTC 价格缓存（60s TTL，避免每次报表请求都打外部接口）────────────────
@@ -54,7 +55,28 @@ router.post('/login', adminLoginLimiter, (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
-  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+  // 使用时序安全比较防止时序攻击（timing attack）
+  // Buffer 长度必须相同，否则 timingSafeEqual 抛出异常
+  let usernameMatch = false;
+  let passwordMatch = false;
+  try {
+    const inputUserBuf = Buffer.from(String(username));
+    const storedUserBuf = Buffer.from(String(ADMIN_USERNAME));
+    const inputPassBuf  = Buffer.from(String(password));
+    const storedPassBuf = Buffer.from(String(ADMIN_PASSWORD));
+    // 填充至相同长度后比较，防止长度差异泄露信息
+    const compareBuffers = (a, b) => {
+      const maxLen = Math.max(a.length, b.length);
+      const paddedA = Buffer.concat([a, Buffer.alloc(maxLen - a.length)]);
+      const paddedB = Buffer.concat([b, Buffer.alloc(maxLen - b.length)]);
+      return crypto.timingSafeEqual(paddedA, paddedB) && a.length === b.length;
+    };
+    usernameMatch = compareBuffers(inputUserBuf, storedUserBuf);
+    passwordMatch = compareBuffers(inputPassBuf, storedPassBuf);
+  } catch {
+    return res.status(401).json({ error: '用户名或密码错误' });
+  }
+  if (!usernameMatch || !passwordMatch) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }
   const token = jwt.sign({ user_id: 'admin', role: 'admin' }, secret, { expiresIn: '7d' });

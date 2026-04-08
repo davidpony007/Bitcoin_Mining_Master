@@ -3,6 +3,17 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const authenticate = require('../middleware/auth');
+
+// 将 JWT 中的 user_id 注入到 req.body 和 req.query，覆盖客户端传入值，防止 IDOR
+const injectUserId = (req, _res, next) => {
+  const jwtUserId = req.user && req.user.user_id;
+  if (jwtUserId) {
+    req.body = { ...req.body, user_id: jwtUserId };
+    req.query = { ...req.query, user_id: jwtUserId };
+  }
+  next();
+};
 
 // POST /api/auth/device-login
 // 设备自动登录/注册接口
@@ -18,8 +29,8 @@ router.post('/email-register', authController.emailRegister);
 router.post('/email-login', authController.emailLogin);
 
 // POST /api/auth/bind-google
-// 绑定Google账号
-router.post('/bind-google', authController.bindGoogleAccount);
+// 绑定Google账号（需要JWT认证，防止IDOR）
+router.post('/bind-google', authenticate, injectUserId, authController.bindGoogleAccount);
 
 // POST /api/auth/google-login-create
 // Google登录或创建用户（如果Google账号已绑定则登录，否则创建新用户）
@@ -51,26 +62,26 @@ router.post('/unbind-google', authController.unbindGoogleAccount);
 router.get('/google-binding-status/:userId', authController.getGoogleBindingStatus);
 
 // GET /api/auth/invitation-info
-// 查询用户的邀请关系信息
-router.get('/invitation-info', authController.getInvitationInfo);
+// 查询用户的邀请关系信息（需要JWT认证，防止IDOR）
+router.get('/invitation-info', authenticate, injectUserId, authController.getInvitationInfo);
 
 // GET /api/auth/user-status
-// 查询用户状态(余额、挖矿统计等)
-router.get('/user-status', authController.getUserStatus);
+// 查询用户状态(余额、挖矿统计等)（需要JWT认证，防止IDOR）
+router.get('/user-status', authenticate, injectUserId, authController.getUserStatus);
 
 // POST /api/auth/add-referrer
-// 后期添加推荐人邀请码
-router.post('/add-referrer', authController.addReferrer);
+// 后期添加推荐人邀请码（需要JWT认证，防止IDOR）
+router.post('/add-referrer', authenticate, injectUserId, authController.addReferrer);
 
 // POST /api/auth/create-ad-contract
-// 创建免费广告挖矿合约
-router.post('/create-ad-contract', authController.createAdFreeContract);
+// 创建免费广告挖矿合约（需要JWT认证，防止IDOR）
+router.post('/create-ad-contract', authenticate, injectUserId, authController.createAdFreeContract);
 
 // POST /api/auth/activate-ad-contract
-// 激活免费广告挖矿合约
-router.post('/activate-ad-contract', authController.activateAdFreeContract);
+// 激活免费广告挖矿合约（需要JWT认证，防止IDOR）
+router.post('/activate-ad-contract', authenticate, injectUserId, authController.activateAdFreeContract);
 
-router.get('/invitation-rebate', authController.getInvitationRebate);
+router.get('/invitation-rebate', authenticate, injectUserId, authController.getInvitationRebate);
 
 // GET /api/auth/ban-status?user_id=xxx
 // 查询用户禁用状态（无需登录，仅用于客户端展示提示）
