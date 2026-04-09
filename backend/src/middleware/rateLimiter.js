@@ -40,7 +40,7 @@ const authLimiter = rateLimit({
 
 /**
  * 提现接口严格限流：每个IP每小时最多10次
- * 防止恶意刷取提现请求
+ * 仅限用户侧提现申请接口，管理员路由(/admin/*)自动跳过
  */
 const withdrawalLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1小时
@@ -51,7 +51,9 @@ const withdrawalLimiter = rateLimit({
     success: false,
     error: '提现请求过于频繁，请1小时后再试',
     code: 'WITHDRAWAL_RATE_LIMIT_EXCEEDED'
-  }
+  },
+  // 管理员操作路由不受限流约束
+  skip: (req) => req.path.startsWith('/admin/')
 });
 
 /**

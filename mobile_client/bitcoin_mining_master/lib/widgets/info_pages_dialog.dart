@@ -359,6 +359,10 @@ class _PointsGuidePage extends StatelessWidget {
             _item('Check in for 30 days\n(cumulative)', 'Extra +60 points, one-time'),
           ]),
           _divider(),
+          _section('App Rating Reward', Icons.star_outline, [
+            _item('Rate the app on App Store / Google Play', '+10 points, one-time'),
+          ]),
+          _divider(),
           _section('Paid Subscription Reward', Icons.workspace_premium_outlined, [
             _item('Subscribe to any paid plan', '+20 points per tier'),
             _item(

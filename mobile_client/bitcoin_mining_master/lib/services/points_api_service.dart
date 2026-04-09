@@ -31,8 +31,18 @@ class PointsApiService {
       error: true,
     ));
 
-    // 积分系统不需要JWT认证，只使用user_id参数
-    // 已移除认证拦截器
+    // 自动注入 JWT token（后端 checkin/points 接口均已要求认证）
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          final token = _storageService.getAuthToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
+      ),
+    );
   }
 
   /// 设置认证token

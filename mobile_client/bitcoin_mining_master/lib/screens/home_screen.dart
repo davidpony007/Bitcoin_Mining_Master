@@ -58,7 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
     // 预加载广告
     AdMobService().loadRewardedAd();
   }
-  }
 
   // 所有屏幕页面已在 initState 中初始化
   // 底部导航栏项目

@@ -118,11 +118,18 @@ class UserProvider with ChangeNotifier {
         _setError('Network connection lost, using offline mode');
         // 从后台恢复的静默窗口期内不弹 Toast（网络重建的正常抖动）
         if (!inWindow) {
-          Fluttertoast.showToast(
-            msg: 'Network connection error, please try again!',
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.CENTER,
-          );
+          // 若 ApiService 近 30 秒内已弹过网络错误 Toast，跳过此次，避免重复打扰用户
+          final lastApiToast = ApiService.lastNetworkErrorToastTime;
+          final now = DateTime.now();
+          final recentlyShown = lastApiToast != null &&
+              now.difference(lastApiToast).inSeconds < 30;
+          if (!recentlyShown) {
+            Fluttertoast.showToast(
+              msg: 'Network connection error, please try again!',
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.CENTER,
+            );
+          }
         }
       });
     }

@@ -87,7 +87,7 @@ class _WithdrawalHistoryScreenState extends State<WithdrawalHistoryScreen>
               completedAt: json['updatedAt'] != null 
                 ? DateTime.parse(json['updatedAt']) 
                 : null,
-              rejectedReason: json['rejectedReason'] as String?,
+              rejectedReason: json['rejectReason'] as String?,
             );
           }).toList();
           _isLoading = false;

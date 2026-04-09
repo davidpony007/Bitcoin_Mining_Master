@@ -652,6 +652,8 @@ class ApiService {
           'offset': offset,
           if (type != 'all') 'type': type,
         },
+        // 自动加载的只读请求：网络失败时静默处理，不弹 toast 打扰用户
+        options: Options(extra: {'suppressToast': true}),
       );
 
       if (response.data['success'] == true) {
@@ -672,7 +674,10 @@ class ApiService {
   /// 检查用户是否有活跃的挖矿合约
   Future<Map<String, dynamic>> checkActiveContracts(String userId) async {
     try {
-      final response = await _dio.get('/contract-status/has-active/$userId');
+      final response = await _dio.get(
+        '/contract-status/has-active/$userId',
+        options: Options(extra: {'suppressToast': true}),
+      );
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
@@ -738,15 +743,18 @@ class ApiService {
     // receive timeout：连接成功但无响应——通常由 VPN 拦截 HTTP 回包导致
     final bool isReceiveTimeout = error.type == DioExceptionType.receiveTimeout;
 
-    if (isNetworkError) {
+    // 调用方通过 options.extra['suppressToast']=true 声明静默处理（如自动加载的只读请求）
+    final bool suppressToast = error.requestOptions.extra['suppressToast'] == true;
+
+    if (isNetworkError && !suppressToast) {
       // 从后台恢复后 6 秒静默窗口内不弹 Toast（网络重建的正常抖动）
       final inWindow = isInResumeSilenceWindow;
       print('🔕 [ApiService] 网络错误 type=${error.type}, inSilenceWindow=$inWindow, resumeTime=$_lastResumeTime');
       if (!inWindow) {
         final now = DateTime.now();
         final lastShown = lastNetworkErrorToastTime;
-        // 5 秒内只弹一次，避免多个并发请求同时失败时重复弹出
-        if (lastShown == null || now.difference(lastShown).inSeconds >= 5) {
+        // 30 秒内只弹一次，避免 VPN 切换 / 多并发请求同时失败时重复弹出
+        if (lastShown == null || now.difference(lastShown).inSeconds >= 30) {
           lastNetworkErrorToastTime = now;
           final msg = isReceiveTimeout
               ? 'Connection timed out. If you have a VPN enabled, please disable it and try again.'
