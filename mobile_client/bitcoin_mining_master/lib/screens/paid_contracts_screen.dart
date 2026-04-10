@@ -8,6 +8,7 @@ import '../services/google_play_billing_service.dart';
 import '../services/apple_in_app_purchase_service.dart';
 import '../services/analytics_service.dart';
 import '../services/storage_service.dart';
+import '../widgets/paid_contract_success_dialog.dart';
 
 class PaidContractsScreen extends StatefulWidget {
   final String? highlightProductId; // 续订时高亮指定档位
@@ -150,16 +151,12 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       // 只有用户有主动购买意图（purchasedProductId != null）时才显示 SnackBar
       // 后台 StoreKit 重播交易（_loadingTierId == null）无论成功还是失败都不弹提示，
       // 避免无操作时持续弹出错误提示（如旧测试交易回放验证失败）
-      if (purchasedProductId != null) {
-        _showPurchaseResult(success, message);
+      if (purchasedProductId != null && !success) {
+        _showPurchaseResult(false, message);
       }
       if (success && purchasedProductId != null) {
         // 只有用户主动发起购买（_loadingTierId != null）时才关闭页面
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            Navigator.pop(context, purchasedProductId);
-          }
-        });
+        _showSuccessAndPop(purchasedProductId);
       }
     };
     _billingService.onPointsAwarded = (int pts) {
@@ -207,16 +204,12 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       // 只有用户有主动购买意图（purchasedProductId != null）时才显示 SnackBar
       // 后台 StoreKit 重播交易（_loadingTierId == null）无论成功还是失败都不弹提示，
       // 避免无操作时持续弹出错误提示（如旧测试交易回放验证失败）
-      if (purchasedProductId != null) {
-        _showPurchaseResult(success, message);
+      if (purchasedProductId != null && !success) {
+        _showPurchaseResult(false, message);
       }
       if (success && purchasedProductId != null) {
         // 只有用户主动发起购买（_loadingTierId != null）时才关闭页面
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            Navigator.pop(context, purchasedProductId);
-          }
-        });
+        _showSuccessAndPop(purchasedProductId);
       }
     };
     _appleService.onPointsAwarded = (int pts) {
@@ -269,6 +262,25 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         duration: const Duration(seconds: 5),
       ),
     );
+  }
+
+  /// 购买成功后展示庆祝弹窗，用户点击确认后再 pop 返回合约页
+  Future<void> _showSuccessAndPop(String productId) async {
+    final tier = _contractTiers.firstWhere(
+      (t) => t['id'] == productId,
+      orElse: () => <String, dynamic>{},
+    );
+    final tierName = (tier['name'] as String?) ?? 'Mining Contract';
+    final tierPrice = (tier['price'] as num?)?.toDouble() ?? 0.0;
+    final tierDuration = (tier['duration'] as num?)?.toInt() ?? 30;
+    if (!mounted) return;
+    await PaidContractSuccessDialog.show(
+      context,
+      planName: tierName,
+      price: tierPrice,
+      durationDays: tierDuration,
+    );
+    if (mounted) Navigator.pop(context, productId);
   }
 
   void _showPurchaseResult(bool success, String message) {
@@ -857,11 +869,12 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
       // 导致跳过 Apple 支付确认弹窗、直接显示"订阅成功"
       await _appleService.clearPendingTransactions();
       await _appleService.buyProduct(storeId, preCheckConfirmedClean: preCheckConfirmedClean);
-      // 安全超时：buyProduct 返回后若 35 秒内 onPurchaseUpdate 仍未回调
-      // （storekit_duplicate_product_object 后 StoreKit 未重放，或其他异常），
+      // 安全超时：buyProduct 返回后若 120 秒内 onPurchaseUpdate 仍未回调，
       // 自动清除 loading 防止永久转圈，让用户可以再次尝试。
+      // 注意：Apple 支付流程（输入密码 + Face ID + 服务器验证）本身可能耗时 30-60 s，
+      // 20 s 超时会在支付成功前误触，设为 120 s 留足余量。
       final capturedTierId = tier['id'] as String;
-      Future.delayed(const Duration(seconds: 20), () {
+      Future.delayed(const Duration(seconds: 120), () {
         if (mounted && _loadingTierId == capturedTierId) {
           setState(() => _loadingTierId = null);
           _showPurchaseResult(false, 'Purchase is taking too long. Please try again.');

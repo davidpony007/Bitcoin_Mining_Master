@@ -8,6 +8,7 @@ import '../services/user_repository.dart';
 import '../services/analytics_service.dart';
 import 'transaction_history_screen.dart';
 import '../widgets/info_pages_dialog.dart';
+import '../widgets/referral_success_dialog.dart';
 
 /// 推荐屏幕 - Invite with rebate earnings
 class ReferralScreen extends StatefulWidget {
@@ -471,24 +472,25 @@ $downloadUrl
           _referrerInvitationCode =
               response['data']?['referrer_invitation_code'] as String?;
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response['message'] ?? 'Referrer added successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        
+
         // 重新加载数据
         _loadInvitationData();
-        
+
         // 立即触发合约列表刷新，无需等待 30 秒定时器
         widget.onContractRefreshNeeded?.call();
-        
+
+        // 🎉 弹出庆祝弹窗（被邀请方）
+        if (mounted) {
+          await ReferralSuccessDialog.show(
+            context,
+            role: ReferralRole.referree,
+          );
+        }
+
         return {'success': true};
       } else {
         // 检查是否是邀请码不存在的错误
-        String errorMsg = response['message'] ?? 'Failed to add referrer';
+        String errorMsg = response['message'] ?? response['error'] ?? 'Failed to add referrer';
         if (errorMsg.toLowerCase().contains('not found') || 
             errorMsg.toLowerCase().contains('not exist') ||
             errorMsg.toLowerCase().contains('not exist') ||

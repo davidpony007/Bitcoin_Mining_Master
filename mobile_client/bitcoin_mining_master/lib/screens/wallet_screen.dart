@@ -331,7 +331,11 @@ class WalletScreenState extends State<WalletScreen>
   }
 
   Widget _buildTransactionHistory(UserProvider provider) {
-    final transactions = provider.transactions;
+    // 只在预览 widget 中展示最近 3 天的记录，完整历史由 TransactionHistoryScreen 展示
+    final threeDaysAgo = DateTime.now().subtract(const Duration(days: 3));
+    final transactions = provider.transactions
+        .where((tx) => tx.createdAt.isAfter(threeDaysAgo))
+        .toList();
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),

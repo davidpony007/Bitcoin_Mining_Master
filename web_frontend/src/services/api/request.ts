@@ -16,10 +16,14 @@ const instance: AxiosInstance = axios.create({
  */
 instance.interceptors.request.use(
   (config) => {
-    // 添加token
+    // 添加 JWT token
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // 管理员 API 加自定义密钥头（nginx 第一道防线，与 JWT 不冲突）
+    if (config.url && config.url.includes('/admin/')) {
+      config.headers['X-Admin-Key'] = 'BtcAdmin!Ng1nx@2026';
     }
     return config;
   },

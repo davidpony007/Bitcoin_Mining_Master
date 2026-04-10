@@ -4,6 +4,12 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
 const authenticate = require('../middleware/auth');
+let authLimiter;
+try {
+  ({ authLimiter } = require('../middleware/rateLimiter'));
+} catch (e) {
+  authLimiter = (_req, _res, next) => next(); // 限流不可用时直接放行
+}
 
 // 将 JWT 中的 user_id 注入到 req.body 和 req.query，覆盖客户端传入值，防止 IDOR
 const injectUserId = (req, _res, next) => {
@@ -18,15 +24,15 @@ const injectUserId = (req, _res, next) => {
 // POST /api/auth/device-login
 // 设备自动登录/注册接口
 // 用户首次打开APP时自动创建账号或登录
-router.post('/device-login', authController.deviceLogin);
+router.post('/device-login', authLimiter, authController.deviceLogin);
 
 // POST /api/auth/email-register
 // 邮箱注册接口
-router.post('/email-register', authController.emailRegister);
+router.post('/email-register', authLimiter, authController.emailRegister);
 
 // POST /api/auth/email-login
 // 邮箱+密码登录接口
-router.post('/email-login', authController.emailLogin);
+router.post('/email-login', authLimiter, authController.emailLogin);
 
 // POST /api/auth/bind-google
 // 绑定Google账号（需要JWT认证，防止IDOR）
@@ -34,12 +40,12 @@ router.post('/bind-google', authenticate, injectUserId, authController.bindGoogl
 
 // POST /api/auth/google-login-create
 // Google登录或创建用户（如果Google账号已绑定则登录，否则创建新用户）
-router.post('/google-login-create', authController.googleLoginOrCreate);
+router.post('/google-login-create', authLimiter, authController.googleLoginOrCreate);
 
 // POST /api/auth/apple-login-create
 // Apple登录或创建用户（仅 iOS 设备使用）
 // apple_id 为 Apple sub，首次授权后固定；email/name 仅首次提供
-router.post('/apple-login-create', authController.appleLoginOrCreate);
+router.post('/apple-login-create', authLimiter, authController.appleLoginOrCreate);
 
 // POST /api/auth/bind-apple
 // 访客用户在 Settings 页 Sign In With Apple 绑定 Apple ID

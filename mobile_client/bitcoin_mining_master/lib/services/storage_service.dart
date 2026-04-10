@@ -234,4 +234,16 @@ class StorageService {
   bool isBanned() {
     return _prefs?.getBool('is_banned') ?? false;
   }
+
+  /// 设置"待展示被邀请方绑定成功庆祝弹窗"标志（下次进入 HomeScreen 时触发）
+  Future<void> setPendingReferralSuccessDialog() async {
+    await _prefs?.setBool('pending_referral_success_dialog', true);
+  }
+
+  /// 读取并清除标志
+  bool consumePendingReferralSuccessDialog() {
+    final has = _prefs?.getBool('pending_referral_success_dialog') ?? false;
+    if (has) _prefs?.remove('pending_referral_success_dialog');
+    return has;
+  }
 }

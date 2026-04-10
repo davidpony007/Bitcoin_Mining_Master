@@ -623,6 +623,9 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (response['success'] == true) {
         print('✅ Referrer code added successfully');
+        // 设置 pending 标志，进入 HomeScreen 后弹出庆祝窗
+        final storage = StorageService();
+        await storage.setPendingReferralSuccessDialog();
         return true;  // 验证成功，允许继续登录
       } else {
         final errorCode = response['errorCode']?.toString() ?? '';

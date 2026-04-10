@@ -97,20 +97,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
         ),
         centerTitle: true,
         titleSpacing: 0,
-        flexibleSpace: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 52),
-            child: Text(
-              'Last 3 Days',
-              style: TextStyle(
-                color: AppColors.primary.withOpacity(0.85),
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
+
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppColors.primary,
@@ -166,14 +153,6 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
                 style: TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'in the last 3 days',
-                style: TextStyle(
-                  color: AppColors.textSecondary.withOpacity(0.6),
-                  fontSize: 13,
                 ),
               ),
             ],

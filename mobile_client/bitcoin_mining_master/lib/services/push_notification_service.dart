@@ -13,6 +13,7 @@ import 'storage_service.dart';
 ///   2. 获取 FCM token 并上报到后端
 ///   3. App 进入前台时上报活跃心跳（供沉默用户召回判断）
 ///   4. 处理前台通知展示
+///   5. 收到 invitation_accepted 推送时触发回调（邀请方庆祝弹窗）
 class PushNotificationService {
   static final PushNotificationService _instance =
       PushNotificationService._internal();
@@ -20,6 +21,9 @@ class PushNotificationService {
   PushNotificationService._internal();
 
   bool _initialized = false;
+
+  /// 当收到「好友接受邀请」推送时调用（由 HomeScreen 注册）
+  static void Function()? onInvitationAccepted;
 
   /// 初始化推送通知（在 main() 的 WidgetsFlutterBinding.ensureInitialized() 之后调用）
   static Future<void> initialize() async {
@@ -56,7 +60,11 @@ class PushNotificationService {
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
           debugPrint(
               '📲 [push] 前台通知: ${message.notification?.title} - ${message.notification?.body}');
-          // 可在此展示应用内横幅，当前版本静默处理（系统通知由后台触发时已弹出）
+          // 检测「好友接受邀请」事件 → 触发邀请方庆祝弹窗
+          final type = message.data['type'];
+          if (type == 'invitation_accepted' && onInvitationAccepted != null) {
+            onInvitationAccepted!();
+          }
         });
 
         debugPrint('✅ [push] 推送通知初始化完成');

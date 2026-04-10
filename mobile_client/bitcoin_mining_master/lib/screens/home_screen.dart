@@ -3,6 +3,8 @@ import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/api_service.dart';
 import '../services/admob_service.dart';
+import '../services/push_notification_service.dart';
+import '../widgets/referral_success_dialog.dart';
 import 'dashboard_screen.dart';
 import 'wallet_screen.dart';
 import 'referral_screen.dart';
@@ -57,9 +59,42 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
     // 预加载广告
     AdMobService().loadRewardedAd();
+
+    // 注册推送回调：收到「好友接受邀请」前台推送时弹出邀请方庆祝弹窗
+    PushNotificationService.onInvitationAccepted = () {
+      if (mounted) _showReferrerCelebration();
+    };
+
+    // 登录时绑定邀请码成功：延迟弹出被邀请方庆祝弹窗
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_storageService.consumePendingReferralSuccessDialog()) {
+        _showRefereeCelebration();
+      }
+    });
+
   }
 
-  // 所有屏幕页面已在 initState 中初始化
+  /// 被邀请方庆祝弹窗（登录时绑定邀请码接入）
+  void _showRefereeCelebration() {
+    if (!mounted) return;
+    ReferralSuccessDialog.show(
+      context,
+      role: ReferralRole.referree,
+      onClose: () {
+        // 自动切换到 Contracts 页面让用户看到新合约
+        switchToTab(1);
+      },
+    );
+  }
+
+  /// 邀请方庆祝弹窗（前台收到 FCM 推送）
+  void _showReferrerCelebration() {
+    if (!mounted) return;
+    ReferralSuccessDialog.show(
+      context,
+      role: ReferralRole.referrer,
+    );
+  }
   // 底部导航栏项目
   final List<BottomNavigationBarItem> _navigationItems = const [
     BottomNavigationBarItem(

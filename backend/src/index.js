@@ -137,7 +137,7 @@ app.use('/api/user', userRoutes); // 用户相关接口（单数形式）
 app.use('/api/userInformation', userInformationRoutes); // 用户信息表接口
 app.use('/api/userStatus', userStatusRoutes); // 用户状态接口
 app.use('/api/mining', miningRoutes); // 挖矿相关接口
-app.use('/api/auth', authLimiter, authRoutes); // 认证相关接口（含严格限流：每IP每15分钟30次）
+app.use('/api/auth', authRoutes); // 认证相关接口（登录类路由在 authRoutes.js 内单独限流）
 app.use('/api/withdrawal', withdrawalLimiter, withdrawalRoutes); // 提现接口（含严格限流：每IP每小时10次）
 app.use('/api/public', publicRoutes); // 公共信息接口
 app.use('/api/admin', adminRoutes); // 管理员相关接口

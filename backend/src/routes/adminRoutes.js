@@ -36,6 +36,18 @@ async function getLiveBtcPrice() {
   }
 }
 
+// ─── 管理员 API 密钥中间件（第一道防线，防止未授权扫描）─────────────────────────
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'BtcAdmin!Ng1nx@2026';
+const requireAdminKey = (req, res, next) => {
+  // 登录接口本身不做密钥校验（密钥由登录后的 JWT 保护）
+  if (req.path === '/login') return next();
+  if (req.headers['x-admin-key'] !== ADMIN_API_KEY) {
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+  }
+  next();
+};
+router.use(requireAdminKey);
+
 // ─── Admin Login ─────────────────────────────────────────────────────────────
 
 /**

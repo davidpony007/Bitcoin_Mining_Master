@@ -9,10 +9,35 @@ const UserStatus = require('../models/userStatus');
 const FreeContractRecord = require('../models/freeContractRecord');
 const InvitationRewardService = require('../services/invitationRewardService');
 const InvitationValidationService = require('../services/invitationValidationService');
+const { sendBatch } = require('../services/notificationService');
+const pool = require('../config/database_native');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const axios = require('axios');
 const geoip = require('geoip-lite');
+
+/**
+ * 通过 IP 检测国家，优先使用本地 geoip-lite，失败时降级到 ip-api.com 在线查询
+ * @param {string} ip
+ * @returns {Promise<string|null>} 两位国家代码，如 "HK"，识别失败返回 null
+ */
+async function detectCountryByIp(ip) {
+  // 1. 本地 geoip-lite（快，无网络依赖）
+  const geo = geoip.lookup(ip);
+  if (geo && geo.country) return geo.country;
+
+  // 2. 在线 ip-api.com 降级（免费，每分钟45次，超时3s不影响正常流程）
+  try {
+    const resp = await axios.get(`http://ip-api.com/json/${ip}?fields=status,countryCode`, { timeout: 3000 });
+    if (resp.data && resp.data.status === 'success' && resp.data.countryCode) {
+      console.log(`   🌐 [geoip fallback] ip-api.com 识别 ${ip} → ${resp.data.countryCode}`);
+      return resp.data.countryCode;
+    }
+  } catch (e) {
+    console.log(`   ⚠️ [geoip fallback] ip-api.com 查询失败: ${e.message}`);
+  }
+  return null;
+}
 
 /**
  * 判断用户来源渠道
@@ -161,17 +186,20 @@ exports.deviceLogin = async (req, res) => {
       req.connection.remoteAddress ||
       '未知';
 
-    // 🌍 仅使用IP检测国家，不使用前端传入的 country 参数
-    // 设备 locale 不能代表地理位置（iOS en-US 用户不一定在美国）
+    // 🌍 IP优先检测国家（本地 geoip-lite 优先，失败自动降级到 ip-api.com），device locale 作为最终备选
     let detectedCountry = null;
     if (register_ip !== '未知') {
-      const geo = geoip.lookup(register_ip);
-      if (geo && geo.country) {
-        detectedCountry = geo.country;
+      detectedCountry = await detectCountryByIp(register_ip);
+      if (detectedCountry) {
         console.log(`📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
       } else {
-        console.log(`⚠️ 无法从IP ${register_ip} 检测国家，country_code 将置空`);
+        console.log(`⚠️ 无法从IP ${register_ip} 检测国家，尝试使用设备Locale`);
       }
+    }
+    // IP检测失败时，使用客户端上报的设备locale国家码作为兜底
+    if (!detectedCountry && country && country.trim() !== '') {
+      detectedCountry = country.trim().toUpperCase();
+      console.log(`   📱 [Device Login] IP检测失败，使用设备locale国家(fallback): ${detectedCountry}`);
     }
 
     // 获取国家信息（中文名称和挖矿倍率）
@@ -640,10 +668,8 @@ const { google_id, google_account, google_name, gaid, country, device_country, s
     // 已有国家的用户不再覆盖，防止VPN/locale误判导致数据污染
     let detectedCountry = null;
     if (register_ip !== '未知') {
-      const geoip = require('geoip-lite');
-      const geo = geoip.lookup(register_ip);
-      if (geo && geo.country) {
-        detectedCountry = geo.country;
+      detectedCountry = await detectCountryByIp(register_ip);
+      if (detectedCountry) {
         console.log(`   📍 从IP ${register_ip} 检测到国家: ${detectedCountry}`);
       }
     }
@@ -1281,6 +1307,28 @@ exports.addReferrer = async (req, res) => {
       console.error('创建被邀请人绑定推荐人挖矿合约失败:', bindErr);
     }
 
+    // 10. 📲 给推荐人发送 FCM 推送通知（前台时触发庆祝弹窗）
+    try {
+      const [tokenRows] = await pool.query(
+        'SELECT user_id, fcm_token, platform FROM push_tokens WHERE user_id = ? LIMIT 1',
+        [referrer.user_id]
+      );
+      if (tokenRows.length > 0) {
+        await sendBatch(
+          [{ userId: referrer.user_id, fcmToken: tokenRows[0].fcm_token, platform: tokenRows[0].platform }],
+          'invitation_accepted',
+          user.user_id,   // referenceId = 被邀请人，用于去重
+          '🎉 New Friend Joined!',
+          'Someone accepted your invitation! Your mining contract has been extended.',
+          { type: 'invitation_accepted', referee_user_id: user.user_id },
+          72
+        );
+        console.log(`📲 已向推荐人 ${referrer.user_id} 发送邀请绑定成功推送`);
+      }
+    } catch (pushErr) {
+      console.warn('⚠️ 发送推荐人 FCM 推送失败（不影响主流程）:', pushErr.message);
+    }
+
     res.json({
       success: true,
       message: 'Referrer bound successfully, you have received a 2-hour free mining contract',
@@ -1292,12 +1340,9 @@ exports.addReferrer = async (req, res) => {
         refereeContract: refereeContractResult
       }
     });
-
-  } catch (err) {
-    console.error('Failed to add referrer:', err);
     res.status(500).json({
       success: false,
-      error: 'Binding failed',
+      message: 'Binding failed. Please try again.',
       details: err.message
     });
   }

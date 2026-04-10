@@ -555,14 +555,16 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
       // 使用 /api/ad/watch（正确的非管理员端点，含每日限制与 ad_view_record 记录）
       final apiUrl = '${ApiConstants.baseUrl}/ad/watch';
       print('📍 广告积分API URL: $apiUrl');
+      final token = _storageService.getAuthToken();
       try {
         response = await http.post(
           Uri.parse(apiUrl),
           headers: {
             'Content-Type': 'application/json',
+            if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
           },
           body: json.encode({
-            'user_id': userId,
+            'ad_type': 'REWARD_AD',
           }),
         ).timeout(
           const Duration(seconds: 30),

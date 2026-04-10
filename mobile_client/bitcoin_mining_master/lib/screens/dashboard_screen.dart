@@ -14,6 +14,7 @@ import 'checkin_screen.dart';
 import 'paid_contracts_screen.dart';
 import 'ad_reward_screen.dart';
 import '../widgets/info_pages_dialog.dart';
+import '../widgets/level_up_dialog.dart';
 
 
 /// 仪表盘屏幕 - Dashboard with 48-slot hashrate pool
@@ -51,6 +52,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   String _levelName = 'LV.1 新手矿工';
   double _progressPercentage = 0.0;
   bool _isLoadingLevel = true;
+  bool _levelEverLoaded = false; // 首次加载后置为 true，防止初始化时误触发升级通知
   bool _isNavigating = false; // 防止按钮多次点击重复 push
 
   // 比特币价格
@@ -929,24 +931,39 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
+        final newLevel = (data['level'] ?? 1) as int;
+        final levelApiPoints = (data['points'] ?? 0) as int;
+        // 仅在已完成过一次加载（非首次初始化）时才检测升级，避免 _userLevel=1 初始值误触发
+        final didLevelUp = _levelEverLoaded && newLevel > _userLevel;
+
         setState(() {
-          _userLevel = data['level'] ?? 1;
-          // 取当前值和 level API 返回值中的最大值，防止 level 缓存过时数据覆盖
-          // _loadPointsData() 的 getPointsBalance() 是更权威的积分来源
-          final levelApiPoints = (data['points'] ?? 0) as int;
-          if (levelApiPoints > _userPoints) {
-            _userPoints = levelApiPoints;
-          }
+          _userLevel = newLevel;
+          // 直接使用 level API 返回的积分值；_loadPointsData() 会同步覆盖，
+          // 两者应相同。不再使用 max() 逻辑 ——
+          // 升级后积分从溢出值重置（可能比旧值小），max() 会错误保留旧值。
+          _userPoints = levelApiPoints;
           _maxPoints = data['maxPoints'] ?? 20;
           _levelName = data['levelName'] ?? 'LV.1 新手矿工';
           _progressPercentage = (data['progressPercentage'] ?? 0.0).toDouble();
           _isLoadingLevel = false;
         });
 
+        // 首次加载完成后标记，后续调用才会检测升级
+        _levelEverLoaded = true;
+
         // 同步到本地存储
         await _storageService.saveUserLevel(_userLevel);
 
-        print('✅ 等级加载成功: Lv.$_userLevel ($_userPoints/$_maxPoints)');
+        // 升级通知
+        if (didLevelUp && mounted) {
+          LevelUpDialog.show(
+            context,
+            newLevel: newLevel,
+            levelName: _levelName,
+          );
+        }
+
+        print('✅ 等级加载成功: Lv.$_userLevel ($_userPoints/$_maxPoints)${didLevelUp ? " (已升级!)" : ""}');
       } else {
         print('⚠️ API返回失败，使用本地缓存');
         _loadUserLevelFromCache();

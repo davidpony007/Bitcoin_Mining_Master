@@ -70,8 +70,10 @@ class AdPointsService {
 
       // 2. 增加用户积分（仅在未达上限时）
       let pointsAwarded = 0;
+      let levelChanged = false;
+      let newLevel = null;
       if (viewCount <= this.DAILY_AD_LIMIT) {
-        await PointsService.addPoints(
+        const pointsResult = await PointsService.addPoints(
           userId,
           this.AD_REWARD_POINTS,
           PointsService.POINTS_TYPES.AD_VIEW,
@@ -79,6 +81,10 @@ class AdPointsService {
           null
         );
         pointsAwarded = this.AD_REWARD_POINTS;
+        if (pointsResult && pointsResult.levelChanged) {
+          levelChanged = true;
+          newLevel = pointsResult.currentLevel;
+        }
       }
 
       // 2.5. 累加用户总广告观看次数（所有渠道）
@@ -115,6 +121,8 @@ class AdPointsService {
         dailyLimit: this.DAILY_AD_LIMIT,
         remainingViews: Math.max(0, this.DAILY_AD_LIMIT - viewCount),
         isLimitReached: viewCount >= this.DAILY_AD_LIMIT,
+        levelChanged,
+        newLevel,
         subordinateReward,
         referralReward
       };
