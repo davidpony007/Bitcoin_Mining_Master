@@ -32,6 +32,12 @@ export const usersApi = {
   /** 手动调整BTC余额 (amount正=增加,负=减少，以字符串传输避免浮点精度丢失) */
   adjustBtc: (userId: string, amount: string, reason: string) =>
     request.post(`/admin/users/${userId}/adjust-btc`, { amount, reason }),
+  /** 手动调整积分 (amount正=增加,负=减少) */
+  adjustPoints: (userId: string, amount: number, reason: string) =>
+    request.post(`/admin/users/${userId}/adjust-points`, { amount, reason }),
+  /** 修改用户国家信息 */
+  updateCountry: (userId: string, country_code: string, country_name_cn: string) =>
+    request.put(`/admin/users/${userId}/update-country`, { country_code, country_name_cn }),
   /** 获取比特币实时美元价格 */
   getBtcPrice: () => request.get('/admin/btc-price'),
   /** 删除单个用户（级联删除所有数据） */
@@ -44,7 +50,7 @@ export const usersApi = {
 
 export const ordersApi = {
   /** 分页订单列表 */
-  list: (params: { page?: number; limit?: number; uid?: string; search?: string; status?: string; platform?: string; startDate?: string; endDate?: string }) =>
+  list: (params: { page?: number; limit?: number; uid?: string; search?: string; status?: string; platform?: string; startDate?: string; endDate?: string; orderType?: string }) =>
     request.get('/admin/orders/list', { params }),
   /** 订单统计概要 */
   stats: () => request.get('/admin/orders/stats'),

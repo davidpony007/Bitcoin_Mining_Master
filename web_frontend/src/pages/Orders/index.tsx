@@ -46,6 +46,8 @@ interface OrderRow {
   country_code: string | null;
   payment_gateway_id: string;
   payment_network_id: string;
+  sub_seq: number;   // 该用户该产品第几次订阅（1=首购）
+  user_seq: number;  // 该用户第几笔订单总
 }
 
 const PRODUCTS = [
@@ -78,6 +80,7 @@ const Orders: React.FC = () => {
   const [pageSize, setPageSize]     = useState(10);
   const [uid, setUid]               = useState('');
   const [platform, setPlatform]     = useState('');
+  const [orderType, setOrderType]   = useState('');
   const [startDate, setStartDate]   = useState<dayjs.Dayjs>(dayjs().subtract(6, 'day'));
   const [endDate, setEndDate]       = useState<dayjs.Dayjs>(dayjs());
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -97,7 +100,7 @@ const Orders: React.FC = () => {
   };
 
   const fetchList = useCallback(async (
-    p: number, ps: number, u: string, pl: string, sd: string, ed: string
+    p: number, ps: number, u: string, pl: string, sd: string, ed: string, ot: string
   ) => {
     setLoading(true);
     try {
@@ -107,6 +110,7 @@ const Orders: React.FC = () => {
         platform: pl || undefined,
         startDate: sd || undefined,
         endDate: ed || undefined,
+        orderType: ot || undefined,
       });
       if (res?.success) { setList(res.data.list); setTotal(res.data.total); }
     } catch { message.error('加载订单失败'); }
@@ -114,12 +118,12 @@ const Orders: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchList(1, 10, '', '', dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD'));
+    fetchList(1, 10, '', '', dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD'), '');
   }, []);
 
   const doSearch = () => {
     setPage(1); setSelectedIds([]);
-    fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+    fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
   };
 
   const handleBulkDelete = () => {
@@ -132,7 +136,7 @@ const Orders: React.FC = () => {
           await ordersApi.bulkDelete(selectedIds);
           message.success('删除成功');
           setSelectedIds([]);
-          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
         } catch { message.error('删除失败'); }
       },
     });
@@ -145,7 +149,7 @@ const Orders: React.FC = () => {
         try {
           await ordersApi.deleteOne(id);
           message.success('删除成功');
-          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
         } catch { message.error('删除失败'); }
       },
     });
@@ -163,7 +167,7 @@ const Orders: React.FC = () => {
       message.success('添加成功');
       setAddVisible(false);
       addForm.resetFields();
-      fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+      fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
     } catch { message.error('添加失败'); }
   };
 
@@ -180,10 +184,23 @@ const Orders: React.FC = () => {
     a.click();
   };
 
+  const renderSubType = (record: OrderRow) => {
+    const { sub_seq, user_seq } = record;
+    if (sub_seq === 1 && user_seq === 1)
+      return <Tag color="green">&#x1F195;新用户首购</Tag>;
+    if (sub_seq === 1)
+      return <Tag color="blue">&#x1F504;跨产品首购</Tag>;
+    return <Tag color="orange">&#x267B;续订 #{sub_seq}</Tag>;
+  };
+
   const baseColumns: ColumnsType<OrderRow> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 90, fixed: 'left' },
     { title: '用户id', dataIndex: 'user_id', key: 'user_id', width: 110 },
     { title: '标题', dataIndex: 'product_name', key: 'product_name', width: 180 },
+    {
+      title: '订阅类型', key: 'sub_type', width: 130,
+      render: (_: any, record: OrderRow) => renderSubType(record),
+    },
     { title: '订单号', dataIndex: 'payment_network_id', key: 'payment_network_id', width: 200, ellipsis: true },
     {
       title: '实付金额', dataIndex: 'product_price', key: 'product_price', width: 90,
@@ -225,11 +242,17 @@ const Orders: React.FC = () => {
           format="YYYY-MM-DD" style={{ width: 130 }} allowClear={false} />
         <Input placeholder="请输入uid/show_id" value={uid} onChange={e => setUid(e.target.value)}
           onPressEnter={doSearch} style={{ width: 200 }} allowClear />
-        <span>类型：</span>
-        <Select value={platform || '全部'} onChange={v => setPlatform(v === '全部' ? '' : v)} style={{ width: 110 }}>
+        <span>平台：</span>
+        <Select value={platform || '全部'} onChange={v => setPlatform(v === '全部' ? '' : v)} style={{ width: 100 }}>
           <Option value="全部">全部</Option>
           <Option value="iOS">iOS</Option>
           <Option value="Android">Android</Option>
+        </Select>
+        <span>订阅：</span>
+        <Select value={orderType || '全部'} onChange={v => setOrderType(v === '全部' ? '' : v)} style={{ width: 110 }}>
+          <Option value="全部">全部</Option>
+          <Option value="first">首购</Option>
+          <Option value="renewal">续订</Option>
         </Select>
         <Button type="primary" icon={<SearchOutlined />} onClick={doSearch}
           style={{ background: '#0dab9a', borderColor: '#0dab9a' }} />
@@ -268,7 +291,7 @@ const Orders: React.FC = () => {
           showTotal: t => `共 ${t} 条`,
           onChange: (p, ps) => {
             setPage(p); setPageSize(ps); setSelectedIds([]);
-            fetchList(p, ps, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'));
+            fetchList(p, ps, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
           },
         }}
       />
@@ -297,6 +320,7 @@ const Orders: React.FC = () => {
             <Descriptions.Item label="流水号" span={2}>{selected.payment_gateway_id}</Descriptions.Item>
             <Descriptions.Item label="支付时间" span={2}>{fmtTime(selected.payment_time)}</Descriptions.Item>
             <Descriptions.Item label="创建时间" span={2}>{fmtTime(selected.order_creation_time)}</Descriptions.Item>
+            <Descriptions.Item label="订阅类型" span={2}>{renderSubType(selected)}</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>

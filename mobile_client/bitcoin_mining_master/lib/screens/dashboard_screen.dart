@@ -63,6 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   late List<BatteryState> _batteries;
   Timer? _miningTimer;
   Timer? _uiRefreshTimer; // 100ms 轻量UI刷新，让余额数字平滑递增
+  final _balanceTick = ValueNotifier<int>(0); // 仅驱动 BalanceCard 重建，不触发全页 setState
   int _syncCounter = 9; // 提升为类字段，便于激活挖矿后立即触发同步
   DateTime? _pausedAt; // 记录进入后台的时刻，用于恢复时补算elapsed时间
   late AnimationController _breathingController;
@@ -80,14 +81,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       vsync: this,
     )..repeat(reverse: true);
 
-    // 启动 100ms UI刷新定时器：直接读取 provider.bitcoinBalance（毫秒精度实时计算值）
-    // 无需 Tween/动画，数字每 100ms 刷新一次，视觉极其平滑
+    // 启动 100ms UI刷新定时器：仅更新 ValueNotifier，BalanceCard 单独重建
+    // 不再触发全页 setState，避免 iOS RefreshIndicator 手势状态被打断
     _uiRefreshTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-      if (mounted) setState(() {});
+      if (mounted) _balanceTick.value++;
     });
     
-    _loadPointsData();
-    _loadUserLevel(); // 加载用户等级
+    _loadUserLevel().then((_) => _loadPointsData()); // 等级先跑完，积分最后写入保证准确
     _loadContractAndUpdateBatteries();
 
     // 立即同步一次余额和挖矿速率，避免等待10秒计时器才更新
@@ -150,8 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
         _loadContractAndUpdateBatteries();
-        _loadPointsData();
-        _loadUserLevel();
+        _loadUserLevelAndNotify().then((_) => _loadPointsData());
         context.read<UserProvider>().fetchBitcoinBalance();
       });
     }
@@ -276,7 +275,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
           }
           await _loadContractAndUpdateBatteries();
-          await _loadUserLevel();
+          final leveledUp = await _loadUserLevel();
           await _loadPointsData();
           // 立即通知 Contracts 页面刷新，无需等待 30 秒轮询
           widget.onContractRefreshNeeded?.call();
@@ -289,6 +288,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                 duration: Duration(seconds: 2),
               ),
             );
+          }
+          // 升级庆祝弹窗在成功提示出现后再弹出，避免被奖励页覆盖
+          if (leveledUp && mounted) {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            if (mounted) {
+              LevelUpDialog.show(
+                context,
+                newLevel: _userLevel,
+                levelName: _levelName,
+              );
+            }
           }
         } else {
           if (mounted) {
@@ -441,7 +451,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             if (mounted) await context.read<UserProvider>().fetchBitcoinBalance();
           }
           await _loadContractAndUpdateBatteries();
-          await _loadUserLevel();
+          final leveledUp = await _loadUserLevel();
           await _loadPointsData();
           
           if (mounted) {
@@ -452,6 +462,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                 duration: Duration(seconds: 2),
               ),
             );
+          }
+          // 升级庆祝弹窗在成功提示出现后再弹出
+          if (leveledUp && mounted) {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            if (mounted) {
+              LevelUpDialog.show(
+                context,
+                newLevel: _userLevel,
+                levelName: _levelName,
+              );
+            }
           }
         } else {
           if (mounted) {
@@ -602,18 +623,17 @@ class _DashboardScreenState extends State<DashboardScreen>
     _uiRefreshTimer?.cancel();
     _priceUpdateTimer?.cancel();
     _breathingController.dispose();
+    _balanceTick.dispose();
     super.dispose();
   }
 
   Future<void> _loadPointsData() async {
+    // 积分与广告信息分开请求：任一失败不影响另一个
     try {
       final balance = await _pointsApi.getPointsBalance();
-      final adInfo = await _pointsApi.getTodayAdInfo();
-
       if (mounted) {
         setState(() {
           _pointsBalance = balance;
-          _todayAdInfo = adInfo;
           // 同步 Experience 积分：与 Points Center 使用同一数据源，保证两处显示一致
           _userPoints = balance.availablePoints;
           _isLoadingPoints = false;
@@ -623,6 +643,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (mounted) {
         setState(() => _isLoadingPoints = false);
       }
+    }
+    // 广告信息单独请求，失败不影响积分显示
+    try {
+      final adInfo = await _pointsApi.getTodayAdInfo();
+      if (mounted) {
+        setState(() {
+          _todayAdInfo = adInfo;
+        });
+      }
+    } catch (_) {
+      // 广告信息加载失败不影响页面主功能
     }
   }
 
@@ -785,8 +816,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       context,
       MaterialPageRoute(builder: (context) => const CheckInScreen()),
     ).then((_) {
-      _loadPointsData();
-      _loadUserLevel();
+      _loadUserLevelAndNotify().then((_) => _loadPointsData());
     });
   }
 
@@ -795,8 +825,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       context,
       MaterialPageRoute(builder: (context) => const PointsScreen()),
     ).then((_) {
-      _loadPointsData();
-      _loadUserLevel();
+      _loadUserLevelAndNotify().then((_) => _loadPointsData());
     });
   }
 
@@ -823,8 +852,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       body: RefreshIndicator(
         onRefresh: () async {
+          // 先拉等级/余额，最后拉积分（积分 API 是积分唯一数据源，必须最后写入）
+          await Future.wait([
+            _loadUserLevelAndNotify(),
+            context.read<UserProvider>().fetchBitcoinBalance(),
+          ]);
           await _loadPointsData();
-          await _loadUserLevel(); // 刷新等级信息
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -834,9 +867,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               const SizedBox(height: 16),
 
               // Balance Card with gradient
-              // 直接读取 UserProvider（不经过 Consumer），确保 100ms _uiRefreshTimer 的
-              // setState 能实时触发重新计算 bitcoinBalance getter
-              _buildBalanceCard(context.read<UserProvider>()),
+              // ValueListenableBuilder 隔离重建范围：100ms tick 只重建此卡片
+              // 不再引发全页 setState，iOS RefreshIndicator 手势不受干扰
+              ValueListenableBuilder<int>(
+                valueListenable: _balanceTick,
+                builder: (ctx, _, __) =>
+                    _buildBalanceCard(ctx.read<UserProvider>()),
+              ),
 
               const SizedBox(height: 16),
 
@@ -871,8 +908,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ).then((_) {
                         if (mounted) {
                           _loadContractAndUpdateBatteries();
-                          _loadUserLevel();
-                          _loadPointsData();
+                          _loadUserLevelAndNotify().then((_) => _loadPointsData());
                           context.read<UserProvider>().fetchBitcoinBalance();
                           widget.onContractRefreshNeeded?.call();
                         }
@@ -914,8 +950,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  // 加载用户等级信息
-  Future<void> _loadUserLevel() async {
+  // 加载用户等级信息，返回是否发生了升级
+  Future<bool> _loadUserLevel() async {
     try {
       final userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) {
@@ -923,7 +959,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         setState(() {
           _isLoadingLevel = false;
         });
-        return;
+        return false;
       }
 
       print('📊 开始加载用户等级 - userId: $userId');
@@ -932,16 +968,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
         final newLevel = (data['level'] ?? 1) as int;
-        final levelApiPoints = (data['points'] ?? 0) as int;
         // 仅在已完成过一次加载（非首次初始化）时才检测升级，避免 _userLevel=1 初始值误触发
         final didLevelUp = _levelEverLoaded && newLevel > _userLevel;
 
         setState(() {
           _userLevel = newLevel;
-          // 直接使用 level API 返回的积分值；_loadPointsData() 会同步覆盖，
-          // 两者应相同。不再使用 max() 逻辑 ——
-          // 升级后积分从溢出值重置（可能比旧值小），max() 会错误保留旧值。
-          _userPoints = levelApiPoints;
+          // 不从等级 API 设置 _userPoints：等级 API 的 points 字段来自
+          // user_information.user_points（缓存列），可能落后于实际积分；
+          // _userPoints 由 _loadPointsData()（查 user_points 表）唯一负责。
           _maxPoints = data['maxPoints'] ?? 20;
           _levelName = data['levelName'] ?? 'LV.1 新手矿工';
           _progressPercentage = (data['progressPercentage'] ?? 0.0).toDouble();
@@ -954,23 +988,29 @@ class _DashboardScreenState extends State<DashboardScreen>
         // 同步到本地存储
         await _storageService.saveUserLevel(_userLevel);
 
-        // 升级通知
-        if (didLevelUp && mounted) {
-          LevelUpDialog.show(
-            context,
-            newLevel: newLevel,
-            levelName: _levelName,
-          );
-        }
-
         print('✅ 等级加载成功: Lv.$_userLevel ($_userPoints/$_maxPoints)${didLevelUp ? " (已升级!)" : ""}');
+        return didLevelUp;
       } else {
         print('⚠️ API返回失败，使用本地缓存');
         _loadUserLevelFromCache();
+        return false;
       }
     } catch (e) {
       print('❌ 加载等级失败: $e');
       _loadUserLevelFromCache();
+      return false;
+    }
+  }
+
+  // 加载等级并在升级时立即弹出庆祝对话框（非奖励流程的通用调用）
+  Future<void> _loadUserLevelAndNotify() async {
+    final didLevelUp = await _loadUserLevel();
+    if (didLevelUp && mounted) {
+      LevelUpDialog.show(
+        context,
+        newLevel: _userLevel,
+        levelName: _levelName,
+      );
     }
   }
 
@@ -1465,7 +1505,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             MaterialPageRoute(
                               builder: (context) => const AdRewardScreen(isDailyCheckIn: false),
                             ),
-                          ).then((result) {
+                          ).then((result) async {
                             _isNavigating = false;
                             print('✅ 从AdRewardScreen返回, result=$result');
                             if (result == true) {
@@ -1476,8 +1516,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                             }
                             // 后台刷新本页数据
                             _loadContractAndUpdateBatteries();
-                            _loadUserLevel();
-                            _loadPointsData();
+                            // 等待页面转场动画完成后再检测升级，避免弹窗被过渡动画覆盖
+                            await Future.delayed(const Duration(milliseconds: 400));
+                            final leveledUp = await _loadUserLevel();
+                            await _loadPointsData();
+                            if (leveledUp && mounted) {
+                              // 再延迟一点，确保 Dashboard 完全回到前台
+                              await Future.delayed(const Duration(milliseconds: 300));
+                              if (mounted) {
+                                LevelUpDialog.show(
+                                  context,
+                                  newLevel: _userLevel,
+                                  levelName: _levelName,
+                                );
+                              }
+                            }
                           });
                         },
                   style: ElevatedButton.styleFrom(
@@ -1569,16 +1622,33 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     );
                     _isNavigating = false;
-                    // 签到成功后刷新数据（不需要跳转，AdRewardScreen已经处理）
+                    // 签到成功后刷新数据，然后跳转到 CheckInScreen，最后弹出升级庆祝
                     if (result == true && mounted) {
                       print('✅ [Dashboard] 签到成功，刷新数据');
                       // 刷新余额和挖矿速率，确保 0.1s 递增立即启动
                       await _refreshBalanceAfterMiningStart();
                       await _loadContractAndUpdateBatteries();
-                      await _loadUserLevel();
+                      final leveledUp = await _loadUserLevel();
                       await _loadPointsData();
                       // 立即通知 Contracts 页刷新
                       widget.onContractRefreshNeeded?.call();
+                      // 跳转到 CheckInScreen 展示签到成功详情
+                      if (mounted) {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CheckInScreen(shouldRefresh: true),
+                          ),
+                        );
+                      }
+                      // CheckInScreen 关闭后，若发生了升级则弹出庆祝弹窗
+                      if (leveledUp && mounted) {
+                        LevelUpDialog.show(
+                          context,
+                          newLevel: _userLevel,
+                          levelName: _levelName,
+                        );
+                      }
                     }
                   },
                   style: ElevatedButton.styleFrom(

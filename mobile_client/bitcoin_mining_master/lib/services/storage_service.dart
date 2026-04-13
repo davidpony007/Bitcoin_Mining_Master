@@ -246,4 +246,14 @@ class StorageService {
     if (has) _prefs?.remove('pending_referral_success_dialog');
     return has;
   }
+
+  /// 获取邀请人已"庆祝"过的 Invite Friend Reward 合约数量
+  int getSeenInviteRewardCount() {
+    return _prefs?.getInt('seen_invite_reward_count') ?? 0;
+  }
+
+  /// 更新邀请人已"庆祝"过的 Invite Friend Reward 合约数量
+  Future<void> setSeenInviteRewardCount(int count) async {
+    await _prefs?.setInt('seen_invite_reward_count', count);
+  }
 }

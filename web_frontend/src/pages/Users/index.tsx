@@ -203,6 +203,19 @@ const Users: React.FC = () => {
   const [btcForm] = Form.useForm();
   const [btcLoading, setBtcLoading] = useState(false);
 
+  // ─── 积分调整 ─────────────────────────────────────────────────────────
+  const [ptModalOpen, setPtModalOpen] = useState(false);
+  const [ptModalType, setPtModalType] = useState<'add' | 'deduct'>('add');
+  const [ptTargetUser, setPtTargetUser] = useState<UserRow | null>(null);
+  const [ptForm] = Form.useForm();
+  const [ptLoading, setPtLoading] = useState(false);
+
+  // ─── 国家编辑 ─────────────────────────────────────────────────────────
+  const [countryModalOpen, setCountryModalOpen] = useState(false);
+  const [countryTargetUser, setCountryTargetUser] = useState<UserRow | null>(null);
+  const [countryForm] = Form.useForm();
+  const [countryLoading, setCountryLoading] = useState(false);
+
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -331,6 +344,56 @@ const Users: React.FC = () => {
 
   const openBtcModal = (record: UserRow, type: 'add' | 'deduct') => {
     setBtcTargetUser(record); setBtcModalType(type); btcForm.resetFields(); setBtcModalOpen(true);
+  };
+
+  const openPtModal = (record: UserRow, type: 'add' | 'deduct') => {
+    setPtTargetUser(record); setPtModalType(type); ptForm.resetFields(); setPtModalOpen(true);
+  };
+
+  const openCountryModal = (record: UserRow) => {
+    setCountryTargetUser(record);
+    countryForm.setFieldsValue({
+      country_code: record.country_code || '',
+      country_name_cn: record.country_name_cn || '',
+    });
+    setCountryModalOpen(true);
+  };
+
+  const handlePtSubmit = async () => {
+    if (!ptTargetUser) return;
+    try {
+      const values = await ptForm.validateFields();
+      setPtLoading(true);
+      const signed = ptModalType === 'add' ? Math.abs(values.amount) : -Math.abs(values.amount);
+      const res = await usersApi.adjustPoints(ptTargetUser.user_id, signed, values.reason);
+      if (res?.success) {
+        message.success(res.message || '积分已调整');
+        setPtModalOpen(false);
+        loadList(page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder);
+        if (detailOpen && detailData?.basic.user_id === ptTargetUser.user_id) openDetail(ptTargetUser);
+      } else { message.error(res?.message || '操作失败'); }
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err?.response?.data?.message || '操作失败');
+    } finally { setPtLoading(false); }
+  };
+
+  const handleCountrySubmit = async () => {
+    if (!countryTargetUser) return;
+    try {
+      const values = await countryForm.validateFields();
+      setCountryLoading(true);
+      const res = await usersApi.updateCountry(countryTargetUser.user_id, values.country_code, values.country_name_cn);
+      if (res?.success) {
+        message.success(res.message || '国家信息已更新');
+        setCountryModalOpen(false);
+        loadList(page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder);
+        if (detailOpen && detailData?.basic.user_id === countryTargetUser.user_id) openDetail(countryTargetUser);
+      } else { message.error(res?.message || '操作失败'); }
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(err?.response?.data?.message || '操作失败');
+    } finally { setCountryLoading(false); }
   };
 
   const handleBtcSubmit = async () => {
@@ -467,7 +530,7 @@ const Users: React.FC = () => {
       render: (v: string) => new Date(v).toISOString().slice(0, 19).replace('T', ' '),
     },
     {
-      title: '操作', key: 'action', width: 270, fixed: 'right' as const,
+      title: '操作', key: 'action', width: 390, fixed: 'right' as const,
       render: (_: any, record: UserRow) => (
         <Space size={4} wrap>
           <Button size="small" icon={<InfoCircleOutlined />} onClick={() => openDetail(record)}>详情</Button>
@@ -476,6 +539,14 @@ const Users: React.FC = () => {
             onClick={() => openBtcModal(record, 'add')}>加BTC</Button>
           <Button size="small" danger ghost icon={<MinusCircleOutlined />}
             onClick={() => openBtcModal(record, 'deduct')}>减BTC</Button>
+          <Button size="small" icon={<PlusCircleOutlined />}
+            style={{ borderColor: '#722ed1', color: '#722ed1' }}
+            onClick={() => openPtModal(record, 'add')}>加积分</Button>
+          <Button size="small" icon={<MinusCircleOutlined />}
+            style={{ borderColor: '#fa8c16', color: '#fa8c16' }}
+            onClick={() => openPtModal(record, 'deduct')}>减积分</Button>
+          <Button size="small" icon={<InfoCircleOutlined />}
+            onClick={() => openCountryModal(record)}>改国家</Button>
           {record.is_banned ? (
             <Popconfirm title="确认解除禁用？" okText="确认" cancelText="取消" onConfirm={() => handleUnban(record)}>
               <Button size="small">启用</Button>
@@ -868,6 +939,14 @@ const Users: React.FC = () => {
                 onClick={() => openBtcModal(detailData.basic as unknown as UserRow, 'add')}>加BTC</Button>
               <Button size="small" danger ghost icon={<MinusCircleOutlined />}
                 onClick={() => openBtcModal(detailData.basic as unknown as UserRow, 'deduct')}>减BTC</Button>
+              <Button size="small" icon={<PlusCircleOutlined />}
+                style={{ borderColor: '#722ed1', color: '#722ed1' }}
+                onClick={() => openPtModal(detailData.basic as unknown as UserRow, 'add')}>加积分</Button>
+              <Button size="small" icon={<MinusCircleOutlined />}
+                style={{ borderColor: '#fa8c16', color: '#fa8c16' }}
+                onClick={() => openPtModal(detailData.basic as unknown as UserRow, 'deduct')}>减积分</Button>
+              <Button size="small" icon={<InfoCircleOutlined />}
+                onClick={() => openCountryModal(detailData.basic as unknown as UserRow)}>改国家</Button>
             </Space>
           ) : null
         }
@@ -917,6 +996,90 @@ const Users: React.FC = () => {
             rules={[{ required: true, message: '请填写操作原因' }]}>
             <Input.TextArea rows={3} placeholder="请详细说明操作原因，此内容将记录在交易日志中" maxLength={200} showCount />
           </Form.Item>
+        </Form>
+      </Modal>
+      {/* 积分调整弹窗 */}
+      <Modal
+        title={
+          <Space>
+            {ptModalType === 'add'
+              ? <><PlusCircleOutlined style={{ color: '#722ed1' }} /> 手动增加积分</>
+              : <><MinusCircleOutlined style={{ color: '#fa8c16' }} /> 手动减少积分</>}
+          </Space>
+        }
+        open={ptModalOpen}
+        onCancel={() => setPtModalOpen(false)}
+        onOk={handlePtSubmit}
+        confirmLoading={ptLoading}
+        okText="确认操作"
+        okButtonProps={{ style: ptModalType === 'add' ? { background: '#722ed1', borderColor: '#722ed1' } : { background: '#fa8c16', borderColor: '#fa8c16' } }}
+        destroyOnClose
+      >
+        {ptTargetUser ? (
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+            <Space direction="vertical" size={2}>
+              <Text type="secondary" style={{ fontSize: 12 }}>操作用户：</Text>
+              <Text strong>{ptTargetUser.email || ptTargetUser.user_id}</Text>
+              <Text style={{ fontSize: 12 }}>当前积分：<Text style={{ color: '#722ed1' }}>{ptTargetUser.user_points} 分</Text></Text>
+            </Space>
+          </div>
+        ) : null}
+        <Form form={ptForm} layout="vertical">
+          <Form.Item
+            name="amount"
+            label={`${ptModalType === 'add' ? '增加' : '减少'} 积分数量`}
+            rules={[
+              { required: true, message: '请输入积分数量' },
+              { validator: (_: any, v: number) => v > 0 ? Promise.resolve() : Promise.reject(new Error('积分必须大于0')) },
+            ]}
+          >
+            <InputNumber style={{ width: '100%' }} min={1} precision={0} placeholder="输入整数积分，如 100" addonAfter="分" />
+          </Form.Item>
+          <Form.Item name="reason" label="操作原因（必填）"
+            rules={[{ required: true, message: '请填写操作原因' }]}>
+            <Input.TextArea rows={3} placeholder="请详细说明操作原因，此内容将记录在积分流水中" maxLength={200} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 国家信息编辑弹窗 */}
+      <Modal
+        title={<Space><InfoCircleOutlined style={{ color: '#1890ff' }} /> 修改用户国家信息</Space>}
+        open={countryModalOpen}
+        onCancel={() => setCountryModalOpen(false)}
+        onOk={handleCountrySubmit}
+        confirmLoading={countryLoading}
+        okText="确认修改"
+        destroyOnClose
+      >
+        {countryTargetUser ? (
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fafafa', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+            <Space direction="vertical" size={2}>
+              <Text type="secondary" style={{ fontSize: 12 }}>操作用户：</Text>
+              <Text strong>{countryTargetUser.email || countryTargetUser.user_id}</Text>
+              <Text style={{ fontSize: 12 }}>当前国家：<Text style={{ color: '#1890ff' }}>{countryTargetUser.country_code || '-'}{countryTargetUser.country_name_cn ? `（${countryTargetUser.country_name_cn}）` : ''}</Text></Text>
+            </Space>
+          </div>
+        ) : null}
+        <Form form={countryForm} layout="vertical">
+          <Form.Item
+            name="country_code"
+            label="国家代码（2-3位大写字母）"
+            rules={[
+              { required: true, message: '请输入国家代码' },
+              { pattern: /^[A-Za-z]{2,3}$/, message: '格式：2-3位字母，如 CN、US、HK' },
+            ]}
+          >
+            <Input placeholder="如 CN、US、HK、SG" maxLength={3} style={{ textTransform: 'uppercase' }} />
+          </Form.Item>
+          <Form.Item
+            name="country_name_cn"
+            label="国家中文名称"
+            rules={[{ required: true, message: '请输入国家中文名称' }]}
+          >
+            <Input placeholder="如 中国、美国、香港、新加坡" maxLength={50} />
+          </Form.Item>
+          <Text type="secondary" style={{ fontSize: 12 }}>提示：修改后将自动同步该国家在系统中的挖矿倍率配置（若存在）</Text>
         </Form>
       </Modal>
     </div>

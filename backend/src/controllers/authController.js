@@ -1340,6 +1340,8 @@ exports.addReferrer = async (req, res) => {
         refereeContract: refereeContractResult
       }
     });
+  } catch (err) {
+    console.error('addReferrer error:', err);
     res.status(500).json({
       success: false,
       message: 'Binding failed. Please try again.',

@@ -310,7 +310,7 @@ class _PaidContractSuccessDialogState extends State<PaidContractSuccessDialog>
                   ],
                 ),
                 const SizedBox(height: 13),
-                _detailRow('⏱  Duration', '${widget.durationDays} Days'),
+                _detailRow('⏱  Duration', '${(widget.durationDays / 30).round()} Month'),
                 const SizedBox(height: 8),
                 _detailRow(
                   '💰  Amount Paid',

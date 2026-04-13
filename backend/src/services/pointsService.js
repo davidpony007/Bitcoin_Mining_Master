@@ -91,7 +91,7 @@ class PointsService {
 
       // 1. 获取用户当前积分和等级
       const [userRows] = await connection.query(
-        'SELECT user_level, user_points FROM user_information WHERE user_id = ? FOR UPDATE',
+        'SELECT user_level, user_points, total_ad_views FROM user_information WHERE user_id = ? FOR UPDATE',
         [userId]
       );
 
@@ -177,6 +177,18 @@ class PointsService {
 
       await connection.commit();
 
+      // 5.5. 邀请人奖励：AD_VIEW 类型时，检查被邀请人是否首次达到5次广告观看
+      if (pointsType === PointsService.POINTS_TYPES.AD_VIEW) {
+        const totalAdViews = parseInt(userRows[0].total_ad_views || 0);
+        if (totalAdViews >= 5) {
+          try {
+            await PointsService.checkAndGiveReferralReward(userId);
+          } catch (referralErr) {
+            console.error(`❌ 邀请奖励触发失败 [userId=${userId}]:`, referralErr.message);
+          }
+        }
+      }
+
       // 6. 更新 Redis 缓存（available = 当前等级进度，与 user_information.user_points 保持一致）
       if (redisClient.isReady()) {
         await redisClient.cacheUserPoints(userId, newPoints, newPoints);
@@ -205,6 +217,46 @@ class PointsService {
     } finally {
       connection.release();
     }
+  }
+
+  /**
+   * 检查并发放邀请人奖励（被邀请人完成5次广告观看时触发）
+   * 内置去重，可放心重复调用
+   */
+  static async checkAndGiveReferralReward(refereeUserId) {
+    // 1. 查找邀请人
+    const [relationRows] = await pool.query(
+      'SELECT referrer_user_id FROM invitation_relationship WHERE user_id = ?',
+      [refereeUserId]
+    );
+    if (relationRows.length === 0 || !relationRows[0].referrer_user_id) return;
+    const referrerId = relationRows[0].referrer_user_id;
+
+    // 2. 去重：是否已为该邀请人+被邀请人发放过 REFERRAL_1
+    const [existingRows] = await pool.query(
+      `SELECT id FROM points_transaction WHERE user_id = ? AND related_user_id = ? AND points_type = 'REFERRAL_1' LIMIT 1`,
+      [referrerId, refereeUserId]
+    );
+    if (existingRows.length > 0) return;
+
+    // 3. 给邀请人发放6积分
+    await PointsService.addPoints(
+      referrerId,
+      6,
+      PointsService.POINTS_TYPES.REFERRAL_1,
+      `成功邀请好友 ${refereeUserId}（完成5次广告观看）`,
+      refereeUserId
+    );
+
+    // 4. 记录里程碑（非关键，失败不影响积分已发放）
+    try {
+      await pool.query(
+        `INSERT INTO referral_milestone (user_id, milestone_type, milestone_count, total_referrals_at_claim, points_earned) VALUES (?, '1_FRIEND', 1, 1, 6)`,
+        [referrerId]
+      );
+    } catch (_) { /* ignore */ }
+
+    console.log(`✅ 邀请奖励：${referrerId} 获得6积分（被邀请人 ${refereeUserId} 完成5次广告）`);
   }
 
   /**

@@ -67,6 +67,30 @@ class PushNotificationService {
           }
         });
 
+        // 后台通知被点击后打开 App 时处理
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+          debugPrint('📲 [push] 后台通知点击打开: ${message.data}');
+          final type = message.data['type'];
+          if (type == 'invitation_accepted' && onInvitationAccepted != null) {
+            onInvitationAccepted!();
+          }
+        });
+
+        // App 从终止状态被通知点击启动时处理
+        final initialMessage = await messaging.getInitialMessage();
+        if (initialMessage != null) {
+          debugPrint('📲 [push] 终止状态通知启动: ${initialMessage.data}');
+          final type = initialMessage.data['type'];
+          if (type == 'invitation_accepted') {
+            // App 刚启动，HomeScreen 的回调还未注册，延迟触发
+            Future.delayed(const Duration(seconds: 2), () {
+              if (onInvitationAccepted != null) {
+                onInvitationAccepted!();
+              }
+            });
+          }
+        }
+
         debugPrint('✅ [push] 推送通知初始化完成');
       } else {
         debugPrint('⚠️ [push] 用户拒绝了通知权限，不上报 token');
@@ -74,6 +98,16 @@ class PushNotificationService {
     } catch (e) {
       // 推送初始化失败不影响主流程
       debugPrint('❌ [push] 初始化失败（不影响主功能）: $e');
+    }
+  }
+
+  /// 登录成功后补传 FCM token（在 app 启动时 initialize() 可能因用户未登录而跳过了上报）
+  static Future<void> reUploadToken() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await _uploadToken(messaging);
+    } catch (e) {
+      debugPrint('❌ [push] reUploadToken 失败: $e');
     }
   }
 

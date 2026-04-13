@@ -637,9 +637,16 @@ exports.syncIosStatus = async (req, res) => {
 
       for (const contract of contracts) {
         // 更新 contract_end_time 为 Apple 实际到期时间
+        // ⚠️ 沙盒保护：Apple 沙盒订阅周期仅 5 分钟，expires_date_ms = now+5min
+        // 若直接更新会把原本 1 个月的合约覆盖成 5 分钟，导致矿工停止。
+        // 与 paidContractService / appleNotificationController DID_RENEW 保持一致：
+        // 到期时间 ≤ now+1小时 时视为沙盒陈旧值，跳过本次更新。
+        const ONE_HOUR_MS = 3600 * 1000;
         if (latestEntry?.expires_date_ms) {
           const appleExpiry = new Date(parseInt(latestEntry.expires_date_ms));
-          if (contract.contract_end_time?.getTime() !== appleExpiry.getTime()) {
+          if (appleExpiry.getTime() <= Date.now() + ONE_HOUR_MS) {
+            console.log(`ℹ️ [syncIos] 沙盒超短周期到期时间 (${appleExpiry.toISOString()})，跳过 contract_end_time 更新: user=${userId} origTx=${origTxId}`);
+          } else if (contract.contract_end_time?.getTime() !== appleExpiry.getTime()) {
             await contract.update({ contract_end_time: appleExpiry });
             updatedExpiry++;
             console.log(`🔄 [syncIos] 更新合约到期时间: user=${userId} origTx=${origTxId} newExpiry=${appleExpiry.toISOString()}`);

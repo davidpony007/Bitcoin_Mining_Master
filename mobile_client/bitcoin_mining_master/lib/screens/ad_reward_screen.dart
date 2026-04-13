@@ -8,7 +8,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'dart:io' show Platform;
 import 'dart:ui' as ui;
-import 'checkin_screen.dart';
 
 /// 广告奖励页面 - Ad Reward Screen 
 class AdRewardScreen extends StatefulWidget {
@@ -621,12 +620,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     if (!mounted) return;
 
     if (success) {
-      // 奖励发放成功
-      setState(() {
-        _isProcessing = false;
-        _isWatchingAd = false;
-      });
-      
+      // 奖励发放成功：保持 _isProcessing=true 直到页面关闭，防止 delay 期间 Continue 按钮被二次点击
       // 延迟后返回并刷新
       await Future.delayed(const Duration(milliseconds: 1500));
       if (mounted) {
@@ -966,14 +960,10 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                         await Future.delayed(const Duration(milliseconds: 1500));
                         
                         if (mounted) {
-                          print('📍 [AdReward] 关闭当前页面并跳转到CheckInScreen');
-                          // 先关闭当前页面（返回到 Dashboard）
+                          print('📍 [AdReward] 签到完成，返回 Dashboard 由 Dashboard 处理后续跳转');
+                          // 仅关闭当前页面（返回到 Dashboard），由 Dashboard 负责跳转 CheckInScreen
+                          // 避免用 stale context 再次 push 页面导致与升级对话框产生竞态
                           Navigator.of(context).pop(true);
-                          // 然后立即跳转到 CheckInScreen，传递 shouldRefresh: true 让它延迟刷新
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const CheckInScreen(shouldRefresh: true)),
-                          );
                         }
                       } else {
                         // 广告奖励成功，返回上一页

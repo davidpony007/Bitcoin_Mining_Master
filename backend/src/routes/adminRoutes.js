@@ -4,8 +4,6 @@ const express = require('express'); // 引入 express 框架
 const router = express.Router(); // 创建路由实例
 const authenticateToken = require('../middleware/auth'); // JWT 认证中间件
 const { requireAdmin } = require('../middleware/role'); // 管理员权限校验中间件
-// 使用 express-rate-limit 提供的 adminLoginLimiter（支持跨进程共享 + 重启恢复）
-const { adminLoginLimiter } = require('../middleware/rateLimiter');
 const CountryMiningService = require('../services/countryMiningService'); // 国家挖矿配置服务
 const pool = require('../config/database_native');
 const sequelize = require('../config/database');
@@ -13,40 +11,6 @@ const { QueryTypes } = require('sequelize');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const axios = require('axios');
-
-// ─── 实时 BTC 价格缓存（60s TTL，避免每次报表请求都打外部接口）────────────────
-let _btcPriceCache = { price: 0, fetchedAt: 0 };
-async function getLiveBtcPrice() {
-  const TTL_MS = 60 * 1000;
-  if (_btcPriceCache.price > 0 && Date.now() - _btcPriceCache.fetchedAt < TTL_MS) {
-    return _btcPriceCache.price;
-  }
-  try {
-    const r = await axios.get(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd',
-      { timeout: 5000 }
-    );
-    const price = r.data?.bitcoin?.usd || 0;
-    if (price > 0) _btcPriceCache = { price, fetchedAt: Date.now() };
-    return price || _btcPriceCache.price || 74000;
-  } catch {
-    return _btcPriceCache.price || 74000; // 降级返回缓存 / 硬编码兜底
-  }
-}
-
-// ─── 管理员 API 密钥中间件（第一道防线，防止未授权扫描）─────────────────────────
-const ADMIN_API_KEY = process.env.ADMIN_API_KEY || 'BtcAdmin!Ng1nx@2026';
-const requireAdminKey = (req, res, next) => {
-  // 登录接口本身不做密钥校验（密钥由登录后的 JWT 保护）
-  if (req.path === '/login') return next();
-  if (req.headers['x-admin-key'] !== ADMIN_API_KEY) {
-    return res.status(403).json({ success: false, error: 'Forbidden' });
-  }
-  next();
-};
-router.use(requireAdminKey);
 
 // ─── Admin Login ─────────────────────────────────────────────────────────────
 
@@ -54,43 +18,17 @@ router.use(requireAdminKey);
  * POST /api/admin/login
  * 管理员登录，返回含 role:admin 的 JWT
  */
-router.post('/login', adminLoginLimiter, (req, res) => {
+router.post('/login', (req, res) => {
   const { username, password } = req.body || {};
   const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-  const secret = process.env.JWT_SECRET;
-
-  if (!ADMIN_PASSWORD || !secret) {
-    console.error('❌ [adminRoutes] ADMIN_PASSWORD 或 JWT_SECRET 未配置，请在 .env 中设置');
-    return res.status(500).json({ error: '服务器配置错误' });
-  }
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Admin@2026';
   if (!username || !password) {
     return res.status(400).json({ error: '用户名和密码不能为空' });
   }
-  // 使用时序安全比较防止时序攻击（timing attack）
-  // Buffer 长度必须相同，否则 timingSafeEqual 抛出异常
-  let usernameMatch = false;
-  let passwordMatch = false;
-  try {
-    const inputUserBuf = Buffer.from(String(username));
-    const storedUserBuf = Buffer.from(String(ADMIN_USERNAME));
-    const inputPassBuf  = Buffer.from(String(password));
-    const storedPassBuf = Buffer.from(String(ADMIN_PASSWORD));
-    // 填充至相同长度后比较，防止长度差异泄露信息
-    const compareBuffers = (a, b) => {
-      const maxLen = Math.max(a.length, b.length);
-      const paddedA = Buffer.concat([a, Buffer.alloc(maxLen - a.length)]);
-      const paddedB = Buffer.concat([b, Buffer.alloc(maxLen - b.length)]);
-      return crypto.timingSafeEqual(paddedA, paddedB) && a.length === b.length;
-    };
-    usernameMatch = compareBuffers(inputUserBuf, storedUserBuf);
-    passwordMatch = compareBuffers(inputPassBuf, storedPassBuf);
-  } catch {
+  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }
-  if (!usernameMatch || !passwordMatch) {
-    return res.status(401).json({ error: '用户名或密码错误' });
-  }
+  const secret = process.env.JWT_SECRET || 'default_secret';
   const token = jwt.sign({ user_id: 'admin', role: 'admin' }, secret, { expiresIn: '7d' });
   return res.json({ success: true, token, user: { id: 'admin', username: ADMIN_USERNAME, role: 'admin' } });
 });
@@ -217,179 +155,42 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
     const search = req.query.search ? `%${req.query.search}%` : null;
-    const searchField = req.query.searchField || null;
     const status = req.query.status || null;
     const system = req.query.system || null;
-    const country = req.query.country || null;
-    const level = req.query.level ? parseInt(req.query.level) : null;
-    const sortBy = req.query.sortBy || null;
-    const sortDir = (req.query.sortOrder || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-
-    const ALLOWED_SORT = {
-      'current_bitcoin_balance': 'CAST(us.current_bitcoin_balance AS DECIMAL(30,18))',
-      'total_invitation_rebate': 'CAST(us.total_invitation_rebate AS DECIMAL(30,18))',
-      'user_level': 'ui.user_level',
-      'user_points': 'ui.user_points',
-      'total_ad_views': 'ui.total_ad_views',
-      'last_login_time': 'us.last_login_time',
-      'user_creation_time': 'ui.user_creation_time',
-      'mining_rate_per_second': 'mining_rate_sub',
-    };
-    const orderExpr = (sortBy && ALLOWED_SORT[sortBy]) ? ALLOWED_SORT[sortBy] : 'ui.user_creation_time';
 
     let where = 'WHERE 1=1';
     const params = [];
-    if (search) {
-      const fieldMap = {
-        email: 'ui.email',
-        user_id: 'ui.user_id',
-        google_account: 'ui.google_account',
-        apple_account: 'ui.apple_account',
-        apple_id: 'ui.apple_id',
-        device_id: 'ui.device_id',
-        idfa: 'ui.idfa',
-        gaid: 'ui.gaid',
-        register_ip: 'ui.register_ip',
-      };
-      if (searchField && fieldMap[searchField]) {
-        where += ` AND ${fieldMap[searchField]} LIKE ?`;
-        params.push(search);
-      } else {
-        where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ? OR ui.apple_account LIKE ? OR ui.apple_id LIKE ? OR ui.device_id LIKE ? OR ui.idfa LIKE ? OR ui.gaid LIKE ? OR ui.register_ip LIKE ?)';
-        params.push(search, search, search, search, search, search, search, search, search);
-      }
-    }
-    if (status === 'disabled') {
-      where += ' AND ui.is_banned = 1';
-    } else if (status) {
-      where += ' AND us.user_status = ? AND ui.is_banned = 0';
-      params.push(status);
-    }
+    if (search) { where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ?)'; params.push(search, search, search); }
+    if (status) { where += ' AND us.user_status = ?'; params.push(status); }
     if (system) { where += ' AND ui.`system` = ?'; params.push(system); }
     const acquisition = req.query.acquisition || null;
     if (acquisition) {
       if (acquisition === 'paid') { where += ' AND ui.acquisition_channel LIKE ?'; params.push('paid_%'); }
       else { where += ' AND ui.acquisition_channel = ?'; params.push(acquisition); }
     }
-    if (country) { where += ' AND ui.country_code = ?'; params.push(country); }
-    if (level !== null && !isNaN(level)) { where += ' AND ui.user_level = ?'; params.push(level); }
 
     const [[{ total }]] = await conn.query(
       `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
     );
     const [rows] = await conn.query(
-      `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.nickname,
-              ui.country_code, ui.country_name_cn,
-              ui.country_multiplier, ui.miner_level_multiplier,
+      `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
               ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
               ui.is_banned, ui.banned_at, ui.ban_reason,
-              ui.device_id,
               us.user_status, us.last_login_time,
-              us.current_bitcoin_balance, us.bitcoin_accumulated_amount,
-              us.total_withdrawal_amount, us.total_invitation_rebate,
-              (
-                (SELECT COALESCE(SUM(COALESCE(fcr.base_hashrate, fcr.hashrate) * COALESCE(ui.country_multiplier, 1) * COALESCE(ui.miner_level_multiplier, 1) * CASE WHEN fcr.has_daily_bonus = 1 THEN 1.36 ELSE 1.0 END), 0)
-                 FROM free_contract_records fcr WHERE fcr.user_id = ui.user_id AND fcr.free_contract_end_time > NOW())
-                + (SELECT COALESCE(SUM(COALESCE(mc.base_hashrate, mc.hashrate)), 0)
-                   FROM mining_contracts mc WHERE mc.user_id = ui.user_id AND mc.contract_end_time > NOW() AND mc.is_cancelled = 0 AND mc.contract_type != 'Bind Referrer Reward')
-                + (SELECT COALESCE(SUM(COALESCE(mc2.base_hashrate, mc2.hashrate) * COALESCE(ui.country_multiplier, 1) * COALESCE(ui.miner_level_multiplier, 1)), 0)
-                   FROM mining_contracts mc2 WHERE mc2.user_id = ui.user_id AND mc2.contract_end_time > NOW() AND mc2.is_cancelled = 0 AND mc2.contract_type = 'Bind Referrer Reward')
-              ) AS mining_rate_sub
+              us.current_bitcoin_balance, us.bitcoin_accumulated_amount
        FROM user_information ui
        LEFT JOIN user_status us ON ui.user_id = us.user_id
        ${where}
-       ORDER BY ${orderExpr} ${sortDir}
+       ORDER BY ui.user_creation_time DESC
        LIMIT ? OFFSET ?`, [...params, limit, offset]
     );
-    const list = rows.map(({ mining_rate_sub, ...r }) => ({ ...r, mining_rate_per_second: String(mining_rate_sub ?? 0) }));
-    res.json({ success: true, data: { total, page, limit, list } });
+    res.json({ success: true, data: { total, page, limit, list: rows } });
   } catch (err) {
     console.error('Users list error:', err);
     res.status(500).json({ success: false, message: err.message });
   } finally {
     conn.release();
   }
-});
-
-/**
- * GET /api/admin/users/countries
- * 获取用户国家列表（用于筛选下拉）
- */
-router.get('/users/countries', authenticateToken, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const [rows] = await conn.query(
-      `SELECT country_code, country_name_cn FROM user_information
-       WHERE country_code IS NOT NULL AND country_code != ''
-       GROUP BY country_code, country_name_cn
-       ORDER BY country_name_cn`
-    );
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    conn.release();
-  }
-});
-
-/**
- * DELETE /api/admin/users/:userId  删除单个用户（级联删除所有关联数据）
- */
-router.delete('/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const { userId } = req.params;
-    if (!userId) return res.status(400).json({ success: false, message: '无效用户ID' });
-    await conn.beginTransaction();
-    const tables = [
-      'ad_view_record', 'bitcoin_transaction_records', 'free_contract_records',
-      'invitation_rebate', 'invitation_relationship', 'mining_contracts',
-      'notification_log', 'points_transaction', 'push_tokens',
-      'referral_milestone', 'subscription_point_awards', 'user_check_in',
-      'user_log', 'user_orders', 'user_points', 'user_status',
-      'withdrawal_records', 'user_information',
-    ];
-    for (const table of tables) {
-      await conn.query(`DELETE FROM \`${table}\` WHERE user_id = ?`, [userId]);
-    }
-    await conn.commit();
-    res.json({ success: true, message: '用户已删除' });
-  } catch (err) {
-    await conn.rollback();
-    console.error('Delete user error:', err);
-    res.status(500).json({ success: false, message: err.message });
-  } finally { conn.release(); }
-});
-
-/**
- * POST /api/admin/users/bulk-delete  批量删除用户
- */
-router.post('/users/bulk-delete', authenticateToken, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
-  try {
-    const { userIds } = req.body;
-    if (!Array.isArray(userIds) || userIds.length === 0)
-      return res.status(400).json({ success: false, message: 'userIds不能为空' });
-    await conn.beginTransaction();
-    const placeholders = userIds.map(() => '?').join(',');
-    const tables = [
-      'ad_view_record', 'bitcoin_transaction_records', 'free_contract_records',
-      'invitation_rebate', 'invitation_relationship', 'mining_contracts',
-      'notification_log', 'points_transaction', 'push_tokens',
-      'referral_milestone', 'subscription_point_awards', 'user_check_in',
-      'user_log', 'user_orders', 'user_points', 'user_status',
-      'withdrawal_records', 'user_information',
-    ];
-    for (const table of tables) {
-      await conn.query(`DELETE FROM \`${table}\` WHERE user_id IN (${placeholders})`, userIds);
-    }
-    await conn.commit();
-    res.json({ success: true, message: `已删除 ${userIds.length} 个用户` });
-  } catch (err) {
-    await conn.rollback();
-    console.error('Bulk delete users error:', err);
-    res.status(500).json({ success: false, message: err.message });
-  } finally { conn.release(); }
 });
 
 /**
@@ -447,7 +248,7 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
 
     const [[{ total }]] = await conn.query(`SELECT COUNT(*) AS total FROM user_orders ${where}`, params);
     const [rows] = await conn.query(
-      `SELECT id, user_id, email, google_account, apple_account, product_id, product_name, product_price,
+      `SELECT id, user_id, email, google_account, product_id, product_name, product_price,
               order_status, order_creation_time, payment_time, currency_type, country_code,
               payment_gateway_id, payment_network_id
        FROM user_orders ${where}
@@ -527,7 +328,7 @@ router.post('/orders/add', authenticateToken, requireAdmin, async (req, res) => 
   const conn = await pool.getConnection();
   try {
     const {
-      user_id, email = '', google_account = null, apple_account = null,
+      user_id, email = '', google_account = null,
       product_id, product_name, product_price,
       payment_gateway_id, payment_network_id,
       currency_type = 'USD', country_code = null,
@@ -537,11 +338,11 @@ router.post('/orders/add', authenticateToken, requireAdmin, async (req, res) => 
       return res.status(400).json({ success: false, message: '必填字段缺失' });
     await conn.query(
       `INSERT INTO user_orders
-         (user_id, email, google_account, apple_account, product_id, product_name, product_price,
+         (user_id, email, google_account, product_id, product_name, product_price,
           payment_gateway_id, payment_network_id, currency_type, country_code,
           order_status, payment_time, hashrate, order_creation_time)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [user_id, email, google_account, apple_account, product_id, product_name, product_price,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [user_id, email, google_account, product_id, product_name, product_price,
        payment_gateway_id, payment_network_id, currency_type, country_code,
        order_status, payment_time || null]
     );
@@ -974,110 +775,75 @@ router.get('/ads/top-users', authenticateToken, requireAdmin, async (req, res) =
 
 /**
  * GET /api/admin/datacenter/daily?days=30
- *   OR ?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&platform=Android|iOS|all
  * 每日综合数据（用于 DataCenter 报表）
  */
 router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    let startDate, endDate;
-    if (req.query.startDate && req.query.endDate) {
-      startDate = req.query.startDate;
-      endDate   = req.query.endDate;
-    } else {
-      const days = Math.min(parseInt(req.query.days) || 30, 365);
-      endDate   = new Date().toISOString().slice(0, 10);
-      const s = new Date(); s.setDate(s.getDate() - days + 1);
-      startDate = s.toISOString().slice(0, 10);
-    }
-    const platform = (req.query.platform === 'all' || !req.query.platform) ? null : req.query.platform;
+    const days = Math.min(parseInt(req.query.days) || 30, 365);
 
-    const nuPlatformFilter = platform ? ' AND `system` = ?' : '';
     const [newUsers] = await conn.query(
       `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt FROM user_information
-       WHERE DATE(user_creation_time) BETWEEN ? AND ?${nuPlatformFilter}
-       GROUP BY DATE(user_creation_time)`,
-      platform ? [startDate, endDate, platform] : [startDate, endDate]
+       WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(user_creation_time)`, [days]
     );
-    const dauFilter = platform ? ' AND ui.`system` = ?' : '';
     const [dau] = await conn.query(
-      `SELECT DATE(us.last_login_time) AS d, COUNT(*) AS cnt
-       FROM user_status us JOIN user_information ui ON ui.user_id = us.user_id
-       WHERE DATE(us.last_login_time) BETWEEN ? AND ?${dauFilter}
-       GROUP BY DATE(us.last_login_time)`,
-      platform ? [startDate, endDate, platform] : [startDate, endDate]
+      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt FROM user_status
+       WHERE last_login_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(last_login_time)`, [days]
     );
     const [orders] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d,
-              SUM(order_status = 'active')   AS new_cnt,
-              SUM(order_status = 'renewing') AS rn_cnt,
-              COALESCE(SUM(CASE WHEN order_status='active'   THEN CAST(product_price AS DECIMAL(10,2)) ELSE 0 END),0) AS new_rev,
-              COALESCE(SUM(CASE WHEN order_status='renewing' THEN CAST(product_price AS DECIMAL(10,2)) ELSE 0 END),0) AS rn_rev
+      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
        FROM user_orders
-       WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status NOT IN ('refund successful','error')
-       GROUP BY DATE(order_creation_time)`, [startDate, endDate]
+       WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(order_creation_time)`, [days]
     );
     const [adViews] = await conn.query(
       `SELECT view_date AS d, SUM(view_count) AS views, COALESCE(SUM(points_earned),0) AS rewards
        FROM ad_view_record
-       WHERE view_date BETWEEN ? AND ?
-       GROUP BY view_date`, [startDate, endDate]
+       WHERE view_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY view_date`, [days]
     );
     const [withdrawals] = await conn.query(
       `SELECT DATE(created_at) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(withdrawal_request_amount),0) AS amount,
-              COALESCE(SUM(received_amount),0) AS btc_amount
+              COALESCE(SUM(withdrawal_request_amount),0) AS amount
        FROM withdrawal_records WHERE withdrawal_status = 'success'
-         AND DATE(created_at) BETWEEN ? AND ?
-       GROUP BY DATE(created_at)`, [startDate, endDate]
+         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY DATE(created_at)`, [days]
     );
-    const checkinFilter = platform ? ' AND ui.`system` = ?' : '';
     const [checkins] = await conn.query(
-      `SELECT uci.check_in_date AS d, COUNT(*) AS cnt
-       FROM user_check_in uci JOIN user_information ui ON ui.user_id = uci.user_id
-       WHERE uci.check_in_date BETWEEN ? AND ?${checkinFilter}
-       GROUP BY uci.check_in_date`,
-      platform ? [startDate, endDate, platform] : [startDate, endDate]
+      `SELECT check_in_date AS d, COUNT(*) AS cnt
+       FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY check_in_date`, [days]
     );
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
     const map = {};
-    newUsers.forEach(r  => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers = parseInt(r.cnt); });
-    dau.forEach(r       => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau = parseInt(r.cnt); });
-    orders.forEach(r    => { const k = toKey(r.d); map[k] = map[k] || {};
-      map[k].orders    = parseInt(r.new_cnt || 0);
-      map[k].revenue   = parseFloat(r.new_rev || 0);
-      map[k].rnCnt     = parseInt(r.rn_cnt  || 0);
-      map[k].rnAmount  = parseFloat(r.rn_rev || 0);
-    });
-    adViews.forEach(r   => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adViews = parseInt(r.views); map[k].adRewards = parseFloat(r.rewards); });
-    withdrawals.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].withdrawals = parseInt(r.cnt); map[k].withdrawalBtcAmount = parseFloat(r.btc_amount); });
-    checkins.forEach(r  => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].checkins = parseInt(r.cnt); });
+    newUsers.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers = r.cnt; });
+    dau.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau = r.cnt; });
+    orders.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders = r.cnt; map[k].revenue = parseFloat(r.revenue); });
+    adViews.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adViews = parseInt(r.views); map[k].adRewards = parseFloat(r.rewards); });
+    withdrawals.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].withdrawals = r.cnt; map[k].withdrawalAmount = parseFloat(r.amount); });
+    checkins.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].checkins = r.cnt; });
 
-    // 生成日期序列
-    const dates = [];
-    let cur = new Date(startDate);
-    const endD = new Date(endDate);
-    while (cur <= endD) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
-
-    const result = dates.map(d => {
+    const result = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
       const m = map[d] || {};
-      return {
+      result.push({
         date: d,
         newUsers: m.newUsers || 0,
         dau: m.dau || 0,
         firstSubOrders: m.orders || 0,
         firstSubRevenue: m.revenue || 0,
-        renewalCount: m.rnCnt || 0,
-        renewalAmount: m.rnAmount || 0,
         adViews: m.adViews || 0,
         adRewards: m.adRewards || 0,
         withdrawals: m.withdrawals || 0,
-        withdrawalBtcAmount: m.withdrawalBtcAmount || 0,
-        checkins: m.checkins || 0,
-      };
-    });
+        withdrawalAmount: m.withdrawalAmount || 0,
+        checkins: m.checkins || 0
+      });
+    }
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('DataCenter daily error:', err);
@@ -1095,40 +861,31 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
 router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const platformRaw = req.query.platform || '';
-    const platform = (platformRaw === 'all' || !platformRaw) ? '' : platformRaw;
+    const platform = req.query.platform || 'Android';
     const endDate   = (req.query.endDate   || new Date().toISOString().slice(0, 10));
     const startDate = (req.query.startDate || new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 
-    // 1. 每日新增用户 (按平台过滤)
-    const nuPlatFilter = platform ? ' AND `system` = ?' : '';
+    // 1. 每日新增用户
     const [nuRows] = await conn.query(
       `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt
        FROM user_information
-       WHERE DATE(user_creation_time) BETWEEN ? AND ?${nuPlatFilter}
-       GROUP BY DATE(user_creation_time)`,
-      platform ? [startDate, endDate, platform] : [startDate, endDate]);
+       WHERE DATE(user_creation_time) BETWEEN ? AND ?
+       GROUP BY DATE(user_creation_time)`, [startDate, endDate]);
 
-    // 2. DAU (按平台过滤)
-    const drDauFilter = platform ? ' AND ui.`system` = ?' : '';
+    // 2. DAU
     const [dauRows] = await conn.query(
-      `SELECT DATE(us.last_login_time) AS d, COUNT(*) AS cnt
-       FROM user_status us JOIN user_information ui ON ui.user_id = us.user_id
-       WHERE DATE(us.last_login_time) BETWEEN ? AND ?${drDauFilter}
-       GROUP BY DATE(us.last_login_time)`,
-      platform ? [startDate, endDate, platform] : [startDate, endDate]);
+      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt
+       FROM user_status
+       WHERE DATE(last_login_time) BETWEEN ? AND ?
+       GROUP BY DATE(last_login_time)`, [startDate, endDate]);
 
-    // 3. 订单 —— 按 order_status 区分首次订阅(active) 与续订(renewing)
+    // 3. 订单（订阅单数 + 销售额）
     const [ordRows] = await conn.query(
       `SELECT DATE(order_creation_time) AS d,
-              SUM(order_status = 'active')   AS new_cnt,
-              SUM(order_status = 'renewing') AS rn_cnt,
-              COALESCE(SUM(CASE WHEN order_status = 'active'
-                THEN CAST(product_price AS DECIMAL(10,2)) ELSE 0 END), 0) AS new_rev,
-              COALESCE(SUM(CASE WHEN order_status = 'renewing'
-                THEN CAST(product_price AS DECIMAL(10,2)) ELSE 0 END), 0) AS rn_rev
+              COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
        FROM user_orders
        WHERE DATE(order_creation_time) BETWEEN ? AND ?
          AND order_status NOT IN ('refund successful','error')
@@ -1143,28 +900,13 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
        GROUP BY DATE(payment_time)`, [startDate, endDate]);
 
     // 5. 广告投放数据
-    let adRows;
-    if (!platform) {
-      // 全部平台：跨平台聚合
-      [adRows] = await conn.query(
-        `SELECT stat_date,
-                SUM(google_spend) AS google_spend, SUM(applovin_spend) AS applovin_spend, SUM(mintegral_spend) AS mintegral_spend,
-                SUM(ad_new_users) AS ad_new_users, SUM(new_users_m1) AS new_users_m1, SUM(new_users_m2) AS new_users_m2,
-                SUM(cancel_count) AS cancel_count, SUM(renewal_count) AS renewal_count, SUM(renewal_amount) AS renewal_amount,
-                SUM(renewal_revenue) AS renewal_revenue, SUM(ad_count) AS ad_count, SUM(ad_revenue) AS ad_revenue,
-                AVG(btc_avg_price) AS btc_avg_price
-         FROM daily_ad_stats
-         WHERE stat_date BETWEEN ? AND ?
-         GROUP BY stat_date`, [startDate, endDate]);
-    } else {
-      [adRows] = await conn.query(
-        `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
-                ad_new_users, new_users_m1, new_users_m2,
-                cancel_count, renewal_count, renewal_amount,
-                renewal_revenue, ad_count, ad_revenue, btc_avg_price
-         FROM daily_ad_stats
-         WHERE stat_date BETWEEN ? AND ? AND platform = ?`, [startDate, endDate, platform]);
-    }
+    const [adRows] = await conn.query(
+      `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
+              ad_new_users, new_users_m1, new_users_m2,
+              cancel_count, renewal_count, renewal_amount,
+              renewal_revenue, ad_count, ad_revenue, btc_avg_price
+       FROM daily_ad_stats
+       WHERE stat_date BETWEEN ? AND ? AND platform = ?`, [startDate, endDate, platform]);
 
     // 5b. 每日送出BTC数量（所有类型）
     const [btcSentRows] = await conn.query(
@@ -1190,7 +932,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       `SELECT COALESCE(SUM(received_amount),0) AS totalWithdrawn
        FROM withdrawal_records WHERE withdrawal_status = 'success'`);
 
-    const BTC_PRICE = await getLiveBtcPrice();
+    const BTC_PRICE = 74000; // 可在 app_config 中配置
     const totalBtc       = parseFloat(btcRow.totalBtc || 0);
     const totalWithdrawn = parseFloat(wdRow.totalWithdrawn || 0);
     const summary = {
@@ -1198,7 +940,6 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       totalBtcBalanceUsd: (totalBtc * BTC_PRICE).toFixed(4),
       totalWithdrawn,
       totalWithdrawnUsd: (totalWithdrawn * BTC_PRICE).toFixed(4),
-      btcPrice: BTC_PRICE, // 实时 BTC 美元价格
     };
 
     // 构建 map
@@ -1206,12 +947,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     nuMap; dauMap; ordMap; cancelMap; adMap; btcSentMap; wdDailyMap; // prevent unused warning
     nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
     dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
-    ordRows.forEach(r    => { ordMap[toKey(r.d)]    = {
-      new_cnt: parseInt(r.new_cnt || 0),
-      rn_cnt:  parseInt(r.rn_cnt  || 0),
-      new_rev: parseFloat(r.new_rev || 0),
-      rn_rev:  parseFloat(r.rn_rev  || 0),
-    }; });
+    ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
     cancelRows.forEach(r => { cancelMap[toKey(r.d)] = parseInt(r.cnt); });
     adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
@@ -1235,17 +971,13 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const totalNewUsers   = nuMap[d]  || 0;
       const dauVal          = dauMap[d] || 0;
       const ord             = ordMap[d] || {};
-      // 首次订阅：order_status='active'；续订：order_status='renewing'
-      const subOrders       = ord.new_cnt || 0;
-      const salesAmount     = parseFloat((ord.new_rev || 0).toFixed(2));
-      // 首次订阅实际收入 = 首次订阅金额 × 0.85（扣除平台抽成）
-      const subRevenue      = parseFloat((salesAmount * 0.85).toFixed(2));
+      const subOrders       = ord.cnt     || 0;
+      const salesAmount     = parseFloat((ord.revenue || 0).toFixed(2));
+      const subRevenue      = salesAmount;
       const cancelCount     = (cancelMap[d] || 0) + parseInt(ad.cancel_count || 0);
-      // 续订数/金额：优先用数据库真实数据，daily_ad_stats 仅作历史手动记录补充
-      const renewalCount    = (ord.rn_cnt || 0) + parseInt(ad.renewal_count || 0);
-      const renewalAmount   = parseFloat(((ord.rn_rev || 0) + parseFloat(ad.renewal_amount || 0)).toFixed(2));
-      // 续期收入 = 续期金额 × 0.85（扣除平台抽成）
-      const renewalRevenue  = parseFloat((renewalAmount * 0.85).toFixed(2));
+      const renewalCount    = parseInt(ad.renewal_count  || 0);
+      const renewalAmount   = parseFloat(ad.renewal_amount   || 0);
+      const renewalRevenue  = parseFloat(ad.renewal_revenue  || 0);
       const adCount         = parseInt(ad.ad_count           || 0);
       const adRevenue       = parseFloat(ad.ad_revenue       || 0);
       const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0);
@@ -1286,12 +1018,11 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     const ttlAdNew = sum('adNewUsers');
     const ttlSub   = sum('subOrders');
     const ttlRev   = parseFloat(sum('salesAmount').toFixed(2));
-    const ttlSubRevenue      = parseFloat(sum('subRevenue').toFixed(2));
     const ttlCancel= sum('cancelCount');
     const ttlAdRevenue       = parseFloat(sum('adRevenue').toFixed(2));
     const ttlAdCount         = sum('adCount');
     const ttlRenewalRevenue  = parseFloat(sum('renewalRevenue').toFixed(2));
-    const ttlTotalRevenue    = parseFloat((ttlSubRevenue + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
+    const ttlTotalRevenue    = parseFloat((ttlRev + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
     const ttlBtcSent         = sum('btcSentAmount');
     const ttlBtcSentValue    = parseFloat(sum('btcSentValue').toFixed(2));
     const ttlWdBtc           = sum('withdrawalBtcAmount');
@@ -1309,7 +1040,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       subOrders: ttlSub,
       subCost:  ttlSub > 0 ? parseFloat((ttlSpend / ttlSub).toFixed(2))  : 0,
       subRate:  ttlNew > 0 ? ((ttlSub / ttlNew) * 100).toFixed(2) + '%'  : '0%',
-      salesAmount: ttlRev, subRevenue: ttlSubRevenue,
+      salesAmount: ttlRev, subRevenue: ttlRev,
       arppu:      ttlSub > 0 ? parseFloat((ttlRev / ttlSub).toFixed(2)) : 0,
       cancelCount: ttlCancel,
       cancelRate:  ttlSub > 0 ? ((ttlCancel / ttlSub) * 100).toFixed(2) + '%' : '0%',
@@ -1393,21 +1124,6 @@ router.post('/datacenter/ad-data', authenticateToken, requireAdmin, async (req, 
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally { conn.release(); }
-});
-
-// ─── BTC Price ────────────────────────────────────────────────────────────────
-
-/**
- * GET /api/admin/btc-price
- * 获取比特币实时美元价格
- */
-router.get('/btc-price', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const price = await getLiveBtcPrice();
-    res.json({ success: true, data: { price } });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to fetch BTC price' });
-  }
 });
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
@@ -1838,20 +1554,6 @@ const PaidProduct = require('../models/paidProductList');
 const PaidProductService = require('../services/paidProductService');
 
 /**
- * GET /api/admin/products
- * 管理端获取所有产品列表（含 hashrate_raw、is_active 等完整字段）
- */
-router.get('/products', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const rows = await PaidProduct.findAll({ order: [['sort_order', 'ASC']] });
-    res.json({ success: true, products: rows.map(r => r.toJSON()) });
-  } catch (err) {
-    console.error('❌ 获取产品列表失败:', err);
-    res.status(500).json({ success: false, message: '服务器错误', error: err.message });
-  }
-});
-
-/**
  * PUT /api/admin/paid-products/:id
  * 更新付费产品字段（display_name, description, ios_product_id, android_product_id,
  *                    hashrate_raw, duration_days, sort_order, is_active）
@@ -1900,7 +1602,6 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
               ui.miner_level_multiplier, ui.user_level, ui.user_points, ui.total_ad_views,
               ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
               ui.is_banned, ui.banned_at, ui.ban_reason,
-              ui.app_version,
               us.user_status, us.last_login_time,
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount,
               us.total_invitation_rebate, us.total_withdrawal_amount
@@ -1919,7 +1620,7 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        WHERE ir.user_id = ?`, [userId]
     );
 
-    // 3. 邀请关系：我邀请的人数 & 列表(全部，最多100条)
+    // 3. 邀请关系：我邀请的人数 & 列表(最新10)
     const [[{ invited_count }]] = await conn.query(
       `SELECT COUNT(*) AS invited_count FROM invitation_relationship WHERE referrer_user_id = ?`, [userId]
     );
@@ -1928,7 +1629,7 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        FROM invitation_relationship ir
        LEFT JOIN user_information ui ON ui.user_id = ir.user_id
        WHERE ir.referrer_user_id = ?
-       ORDER BY ir.invitation_creation_time DESC LIMIT 100`, [userId]
+       ORDER BY ir.invitation_creation_time DESC LIMIT 10`, [userId]
     );
 
     // 4. 近期BTC交易(最新20)
@@ -1940,31 +1641,18 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        ORDER BY transaction_creation_time DESC LIMIT 20`, [userId]
     );
 
-    // 5. 合约摘要（付费合约 + 免费合约合计）
-    const [[mcStats]] = await conn.query(
-      `SELECT COUNT(*) AS mc_total,
-              SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS mc_active,
-              SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts,
-              SUM(CASE WHEN (contract_end_time <= NOW() OR is_cancelled = 1) THEN 1 ELSE 0 END) AS expired_contracts
+    // 5. 合约摘要
+    const [[contractStats]] = await conn.query(
+      `SELECT COUNT(*) AS total_contracts,
+              SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
+              SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts
        FROM mining_contracts WHERE user_id = ?`, [userId]
     );
-    const [[fcrStats]] = await conn.query(
-      `SELECT COUNT(*) AS fcr_total,
-              SUM(CASE WHEN free_contract_end_time > NOW() THEN 1 ELSE 0 END) AS fcr_active
-       FROM free_contract_records WHERE user_id = ?`, [userId]
-    );
-    const contractStats = {
-      total_contracts: (parseInt(mcStats.mc_total) || 0) + (parseInt(fcrStats.fcr_total) || 0),
-      active_contracts: (parseInt(mcStats.mc_active) || 0) + (parseInt(fcrStats.fcr_active) || 0),
-      paid_contracts: parseInt(mcStats.paid_contracts) || 0,
-      expired_contracts: parseInt(mcStats.expired_contracts) || 0,
-    };
 
-    // 6. 订单摘要（退款订单不计入消费）
+    // 6. 订单摘要
     const [[orderStats]] = await conn.query(
       `SELECT COUNT(*) AS total_orders,
-              COALESCE(SUM(CASE WHEN order_status NOT IN ('refund request in progress','refund successful') THEN CAST(product_price AS DECIMAL(20,8)) ELSE 0 END), 0) AS total_spent,
-              SUM(CASE WHEN order_status IN ('refund request in progress','refund successful') THEN 1 ELSE 0 END) AS refund_count
+              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))), 0) AS total_spent
        FROM user_orders WHERE user_id = ?`, [userId]
     );
 
@@ -1975,39 +1663,6 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        FROM withdrawal_records WHERE user_id = ?
        ORDER BY created_at DESC LIMIT 5`, [userId]
     );
-
-    // 8. 累计签到天数
-    const [[{ total_checkin_days }]] = await conn.query(
-      `SELECT COUNT(*) AS total_checkin_days FROM user_check_in WHERE user_id = ?`, [userId]
-    );
-
-    // 9. 实时总挖矿速率（BTC/s）
-    //    免费合约 & 绑定推荐人合约：base_hashrate × country_multiplier × level_multiplier
-    //    付费合约：base_hashrate（不受倍率影响）
-    const countryMul = parseFloat(user.country_multiplier || '1.0');
-    const levelMul   = parseFloat(user.miner_level_multiplier || '1.0');
-
-    const [[{ free_rate }]] = await conn.query(
-      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate) * ? * ? * CASE WHEN has_daily_bonus = 1 THEN 1.36 ELSE 1.0 END), 0) AS free_rate
-       FROM free_contract_records
-       WHERE user_id = ? AND free_contract_end_time > NOW()`,
-      [countryMul, levelMul, userId]
-    );
-    const [[{ paid_rate }]] = await conn.query(
-      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate)), 0) AS paid_rate
-       FROM mining_contracts
-       WHERE user_id = ? AND contract_end_time > NOW() AND is_cancelled = 0
-         AND contract_type != 'Bind Referrer Reward'`,
-      [userId]
-    );
-    const [[{ referrer_rate }]] = await conn.query(
-      `SELECT COALESCE(SUM(COALESCE(base_hashrate, hashrate) * ? * ?), 0) AS referrer_rate
-       FROM mining_contracts
-       WHERE user_id = ? AND contract_end_time > NOW() AND is_cancelled = 0
-         AND contract_type = 'Bind Referrer Reward'`,
-      [countryMul, levelMul, userId]
-    );
-    const totalMiningRatePerSecond = (parseFloat(free_rate) + parseFloat(paid_rate) + parseFloat(referrer_rate)).toFixed(18);
 
     res.json({
       success: true,
@@ -2020,8 +1675,6 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
         contractStats,
         orderStats,
         recentWithdrawals,
-        totalCheckinDays: total_checkin_days,
-        totalMiningRatePerSecond,
       }
     });
   } catch (err) {
@@ -2043,21 +1696,15 @@ router.post('/users/:userId/adjust-btc', authenticateToken, requireAdmin, async 
   const { userId } = req.params;
   const { amount, reason } = req.body || {};
   if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
-  // 用字符串精确表示，避免 parseFloat 浮点误差
-  const amountStr = String(amount).trim();
-  const numAmount = Number(amountStr);
+  const numAmount = parseFloat(amount);
   if (isNaN(numAmount) || numAmount === 0) return res.status(400).json({ success: false, message: 'amount 必须为非零数字' });
   if (!reason || String(reason).trim().length === 0) return res.status(400).json({ success: false, message: '必须填写操作原因' });
-  // 校验格式：只允许合法十进制数字（最多18位小数），防止注入
-  if (!/^-?\d+(\.\d{1,18})?$/.test(amountStr)) {
-    return res.status(400).json({ success: false, message: 'amount 格式不合法' });
-  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 查询当前余额（用字符串读取，保留 DECIMAL 精度）
+    // 查询当前余额
     const [[statusRow]] = await conn.query(
       'SELECT current_bitcoin_balance, bitcoin_accumulated_amount FROM user_status WHERE user_id = ?', [userId]
     );
@@ -2066,243 +1713,46 @@ router.post('/users/:userId/adjust-btc', authenticateToken, requireAdmin, async 
       return res.status(404).json({ success: false, message: '用户不存在' });
     }
 
-    // 余额不足检查：让 MySQL 计算，比较结果是否 < 0
-    if (numAmount < 0) {
-      const [[chk]] = await conn.query(
-        'SELECT (current_bitcoin_balance + ?) < 0 AS insufficient FROM user_status WHERE user_id = ?',
-        [amountStr, userId]
-      );
-      if (chk && chk.insufficient) {
-        await conn.rollback();
-        return res.status(400).json({
-          success: false,
-          message: `余额不足：当前余额 ${statusRow.current_bitcoin_balance} BTC，无法扣减 ${amountStr.replace('-', '')} BTC`
-        });
-      }
+    const currentBalance = parseFloat(statusRow.current_bitcoin_balance || 0);
+    const newBalance = currentBalance + numAmount;
+
+    if (newBalance < 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `余额不足：当前余额 ${currentBalance.toFixed(18)} BTC，无法扣减 ${Math.abs(numAmount).toFixed(18)} BTC`
+      });
     }
 
-    // 全部用 MySQL DECIMAL 运算，不经过 JS 浮点
-    if (numAmount > 0) {
-      await conn.query(
-        `UPDATE user_status
-         SET current_bitcoin_balance      = current_bitcoin_balance + ?,
-             bitcoin_accumulated_amount   = bitcoin_accumulated_amount + ?
-         WHERE user_id = ?`,
-        [amountStr, amountStr, userId]
-      );
-    } else {
-      await conn.query(
-        `UPDATE user_status
-         SET current_bitcoin_balance = current_bitcoin_balance + ?
-         WHERE user_id = ?`,
-        [amountStr, userId]
-      );
-    }
-
-    // 读取更新后的精确余额
-    const [[updated]] = await conn.query(
-      'SELECT current_bitcoin_balance FROM user_status WHERE user_id = ?', [userId]
+    // 更新余额
+    const accumulatedUpdate = numAmount > 0
+      ? ', bitcoin_accumulated_amount = bitcoin_accumulated_amount + ?'
+      : '';
+    const accParams = numAmount > 0 ? [newBalance, numAmount, userId] : [newBalance, userId];
+    await conn.query(
+      `UPDATE user_status SET current_bitcoin_balance = ? ${accumulatedUpdate} WHERE user_id = ?`,
+      accParams
     );
-    const newBalanceStr = updated.current_bitcoin_balance;
 
-    // 记录交易（transaction_amount 存绝对值字符串）
+    // 记录交易
     const txType = numAmount > 0 ? 'admin_add' : 'admin_deduct';
     const txDesc = `管理员手动${numAmount > 0 ? '增加' : '减少'} BTC：${reason}`;
-    const absAmountStr = amountStr.replace('-', '');
     await conn.query(
       `INSERT INTO bitcoin_transaction_records
        (user_id, transaction_type, transaction_amount, balance_after, description, transaction_status)
        VALUES (?, ?, ?, ?, ?, 'success')`,
-      [userId, txType, absAmountStr, newBalanceStr, txDesc]
+      [userId, txType, Math.abs(numAmount), newBalance, txDesc]
     );
 
     await conn.commit();
     res.json({
       success: true,
-      message: `BTC余额已${numAmount > 0 ? '增加' : '减少'} ${absAmountStr} BTC`,
-      data: { previousBalance: statusRow.current_bitcoin_balance, adjustment: amountStr, newBalance: newBalanceStr }
+      message: `BTC余额已${numAmount > 0 ? '增加' : '减少'} ${Math.abs(numAmount)} BTC`,
+      data: { previousBalance: currentBalance, adjustment: numAmount, newBalance }
     });
   } catch (err) {
     await conn.rollback();
     console.error('Adjust BTC error:', err);
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    conn.release();
-  }
-});
-
-// ─── Rate Config ──────────────────────────────────────────────────────────────
-const CountryMiningConfig = require('../models/countryMiningConfig');
-const redisClient = require('../config/redis');
-
-/**
- * GET /api/admin/rate-config
- * 获取基础挖矿速率 + 所有国家倍率
- */
-router.get('/rate-config', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    // 基础速率从 system_config 读取
-    const [[cfgRow]] = await pool.query(
-      "SELECT config_value FROM system_config WHERE config_key = 'base_mining_hashrate' LIMIT 1"
-    );
-    const baseHashrate = cfgRow ? parseFloat(cfgRow.config_value) : 0.000000000000139;
-
-    // 国家倍率从 country_mining_config 读取
-    const countries = await CountryMiningConfig.findAll({
-      order: [['country_name_cn', 'ASC']],
-    });
-
-    res.json({
-      success: true,
-      data: {
-        baseHashrate,
-        countries: countries.map(c => c.toJSON()),
-      },
-    });
-  } catch (err) {
-    console.error('❌ 获取速率配置失败:', err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/**
- * PUT /api/admin/rate-config/base-rate
- * 更新基础挖矿速率并立即同步到所有活跃免费合约
- * body: { value: number }
- */
-router.put('/rate-config/base-rate', authenticateToken, requireAdmin, async (req, res) => {
-  const { value } = req.body;
-  const rate = parseFloat(value);
-  if (!rate || rate <= 0 || !isFinite(rate)) {
-    return res.status(400).json({ success: false, message: '无效的速率值' });
-  }
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-
-    // 1. 更新 system_config
-    await conn.query(
-      "INSERT INTO system_config (config_key, config_value, config_type, description) " +
-      "VALUES ('base_mining_hashrate', ?, 'number', 'free contract base BTC/s') " +
-      "ON DUPLICATE KEY UPDATE config_value = ?",
-      [rate.toString(), rate.toString()]
-    );
-
-    // 2. 更新所有活跃免费合约的 base_hashrate 和 hashrate 字段，立即生效
-    const [updateResult] = await conn.query(
-      "UPDATE free_contract_records SET base_hashrate = ?, hashrate = ? " +
-      "WHERE free_contract_end_time > NOW()",
-      [rate, rate]
-    );
-
-    await conn.commit();
-
-    // 3. 写 Redis 以便其他服务快速读取
-    try {
-      await redisClient.set('global:base_hashrate', rate.toString(), 86400);
-    } catch (_) { /* Redis 不可用时忽略 */ }
-
-    console.log(`✅ 基础挖矿速率已更新为 ${rate.toExponential(4)} BTC/s，影响 ${updateResult.affectedRows} 个活跃合约`);
-    res.json({
-      success: true,
-      message: `基础速率已更新，${updateResult.affectedRows} 个活跃合约已同步生效`,
-      data: { baseHashrate: rate, affectedContracts: updateResult.affectedRows },
-    });
-  } catch (err) {
-    await conn.rollback();
-    console.error('❌ 更新基础速率失败:', err);
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    conn.release();
-  }
-});
-
-/**
- * PUT /api/admin/rate-config/country/:code
- * 更新单个国家倍率，同步到 country_mining_config + user_information + Redis
- * body: { multiplier: number }
- */
-router.put('/rate-config/country/:code', authenticateToken, requireAdmin, async (req, res) => {
-  const code = req.params.code.toUpperCase();
-  const multiplier = parseFloat(req.body.multiplier);
-  if (isNaN(multiplier) || multiplier < 0.01 || multiplier > 999.99) {
-    return res.status(400).json({ success: false, message: '倍率范围 0.01 ~ 999.99' });
-  }
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-
-    // 1. 更新 country_mining_config
-    const [cmcResult] = await conn.query(
-      'UPDATE country_mining_config SET mining_multiplier = ?, updated_at = NOW() WHERE country_code = ?',
-      [multiplier, code]
-    );
-
-    // 2. 批量更新该国家所有用户的 country_multiplier
-    const [uiResult] = await conn.query(
-      'UPDATE user_information SET country_multiplier = ? WHERE country_code = ?',
-      [multiplier, code]
-    );
-
-    await conn.commit();
-
-    // 3. 清 Redis 缓存
-    try {
-      await redisClient.del(`country:mining:${code}`);
-    } catch (_) { /* ignore */ }
-
-    res.json({
-      success: true,
-      message: `${code} 倍率已更新为 ${multiplier}x，影响 ${uiResult.affectedRows} 个用户`,
-      data: { code, multiplier, affectedUsers: uiResult.affectedRows, configUpdated: cmcResult.affectedRows > 0 },
-    });
-  } catch (err) {
-    await conn.rollback();
-    console.error('❌ 更新国家倍率失败:', err);
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    conn.release();
-  }
-});
-
-/**
- * POST /api/admin/rate-config/country/batch
- * 批量更新多个国家倍率
- * body: { updates: [{ code, multiplier }, ...] }
- */
-router.post('/rate-config/country/batch', authenticateToken, requireAdmin, async (req, res) => {
-  const { updates } = req.body;
-  if (!Array.isArray(updates) || updates.length === 0) {
-    return res.status(400).json({ success: false, message: '缺少更新数据' });
-  }
-
-  const conn = await pool.getConnection();
-  const results = [];
-  try {
-    await conn.beginTransaction();
-    for (const item of updates) {
-      const code = (item.code || '').toUpperCase();
-      const mul = parseFloat(item.multiplier);
-      if (!code || isNaN(mul) || mul < 0.01 || mul > 999.99) continue;
-
-      await conn.query(
-        'UPDATE country_mining_config SET mining_multiplier = ?, updated_at = NOW() WHERE country_code = ?',
-        [mul, code]
-      );
-      const [r] = await conn.query(
-        'UPDATE user_information SET country_multiplier = ? WHERE country_code = ?',
-        [mul, code]
-      );
-      try { await redisClient.del(`country:mining:${code}`); } catch (_) {}
-      results.push({ code, multiplier: mul, affectedUsers: r.affectedRows });
-    }
-    await conn.commit();
-    res.json({ success: true, message: `已更新 ${results.length} 个国家倍率`, data: results });
-  } catch (err) {
-    await conn.rollback();
-    console.error('❌ 批量更新国家倍率失败:', err);
     res.status(500).json({ success: false, message: err.message });
   } finally {
     conn.release();

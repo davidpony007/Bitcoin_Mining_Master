@@ -97,10 +97,6 @@ class RealtimeBalanceService {
         }
       } catch (_) {}
 
-      let dailyBonusActive = false;
-      try { dailyBonusActive = await redisClient.isDailyBonusActive(userId); } catch (_) {}
-      const dailyBonusMultiplier = dailyBonusActive ? 1.36 : 1.0;
-
       // === 2. 免费合约，按 free_contract_type 分组 ===
       const freeContracts = await sequelize.query(`
         SELECT base_hashrate, hashrate, has_daily_bonus, free_contract_type
@@ -112,7 +108,8 @@ class RealtimeBalanceService {
         const baseSpeed = contract.base_hashrate
           ? parseFloat(contract.base_hashrate)
           : parseFloat(contract.hashrate);
-        const bonus = (contract.has_daily_bonus === 1 && dailyBonusActive) ? dailyBonusMultiplier : 1.0;
+        // 签到加成以合约字段 has_daily_bonus 为唯一来源（避免 Redis 重启后丢失加成）
+        const bonus = (contract.has_daily_bonus === 1) ? 1.36 : 1.0;
         const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier * bonus;
         const type = contract.free_contract_type; // e.g. 'Free Ad Reward'
         byType[type] = (byType[type] || 0) + finalSpeed;
@@ -195,14 +192,8 @@ class RealtimeBalanceService {
         console.error(`获取用户 ${userId} 国家倍数失败，使用默认值1.0`, error);
       }
 
-      // 1.3 检查签到加成状态（2小时有效期）
-      let dailyBonusActive = false;
-      try {
-        dailyBonusActive = await redisClient.isDailyBonusActive(userId);
-      } catch (error) {
-        // Redis查询失败，签到加成默认无效
-      }
-      const dailyBonusMultiplier = dailyBonusActive ? 1.36 : 1.0;
+      // 1.3 检查签到加成状态已废弃，改用合约字段 has_daily_bonus 作为唯一来源
+      // （避免 Redis 重启后签到加成丢失，与 calculateUserPerSecondRevenueByType 保持一致）
 
       // === 2. 计算免费合约收益（广告、签到、邀请、绑定推荐人） ===
       const freeContracts = await sequelize.query(`
@@ -225,10 +216,8 @@ class RealtimeBalanceService {
           ? parseFloat(contract.base_hashrate) 
           : parseFloat(contract.hashrate);
         
-        // 检查该合约是否应用签到加成（仅签到合约has_daily_bonus=1）
-        const bonus = (contract.has_daily_bonus === 1 && dailyBonusActive) 
-          ? dailyBonusMultiplier 
-          : 1.0;
+        // 签到加成以合约字段 has_daily_bonus 为唯一来源（避免 Redis 重启后丢失加成）
+        const bonus = (contract.has_daily_bonus === 1) ? 1.36 : 1.0;
         
         // 动态计算最终速率
         const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier * bonus;

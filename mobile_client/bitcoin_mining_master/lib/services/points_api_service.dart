@@ -278,7 +278,13 @@ class PointsApiService {
         'user_id': userId,
       });
       if (response.data['success'] == true) {
-        return response.data['data'];
+        // 服务端返回扁平结构（无 data 嵌套），直接使用顶层字段
+        final data = response.data['data'];
+        if (data != null) return Map<String, dynamic>.from(data);
+        // 兼容扁平结构：去除 success 字段后作为 data 返回
+        final flat = Map<String, dynamic>.from(response.data as Map);
+        flat.remove('success');
+        return flat;
       }
       throw Exception(response.data['message'] ?? 'Failed to get ad info');
     } on DioException catch (e) {

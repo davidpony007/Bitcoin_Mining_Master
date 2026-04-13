@@ -719,37 +719,41 @@ $downloadUrl
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 16),
-            
-            // Total Rebate Earnings Card
-            _buildRebateCard(),
-            
-            const SizedBox(height: 16),
-            
-            // Invitation Code Card
-            _buildInvitationCodeCard(context),
-            
-            const SizedBox(height: 20),
-            
-            // Invited Friends
-            _buildInvitedFriends(),
-            
-            const SizedBox(height: 20),
-            
-            // Rebate Records
-            _buildRebateRecords(),
-            
-            const SizedBox(height: 20),
-            
-            // Add Referrer Button (if no referrer yet) - Moved to bottom
-            _buildAddReferrerButton(),
-            
-            const SizedBox(height: 20),
-          ],
+      body: RefreshIndicator(
+        onRefresh: () => _loadInvitationData(),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 16),
+              
+              // Total Rebate Earnings Card
+              _buildRebateCard(),
+              
+              const SizedBox(height: 16),
+              
+              // Invitation Code Card
+              _buildInvitationCodeCard(context),
+              
+              const SizedBox(height: 20),
+              
+              // Invited Friends
+              _buildInvitedFriends(),
+              
+              const SizedBox(height: 20),
+              
+              // Rebate Records
+              _buildRebateRecords(),
+              
+              const SizedBox(height: 20),
+              
+              // Add Referrer Button (if no referrer yet) - Moved to bottom
+              _buildAddReferrerButton(),
+              
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

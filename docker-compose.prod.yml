@@ -64,6 +64,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       APPLE_IAP_SHARED_SECRET: ${APPLE_IAP_SHARED_SECRET}
+      # Firebase FCM 推送通知（从 Firebase Console → 项目设置 → 服务账号 → 生成新私钥 获取 JSON，压缩为单行填入 .env）
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-bitcoin-mining-master-24993}
       LOG_LEVEL: info
     depends_on:
       mysql:

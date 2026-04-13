@@ -269,13 +269,13 @@ class _LevelUpDialogState extends State<LevelUpDialog>
                 ),
                 child: Center(
                   child: Text(
-                    'LV\n${widget.newLevel}',
+                    'LV.${widget.newLevel}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 22,
+                      fontSize: 28,
                       fontWeight: FontWeight.w900,
-                      height: 1.1,
+                      height: 1.0,
                     ),
                   ),
                 ),

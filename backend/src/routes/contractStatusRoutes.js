@@ -189,6 +189,17 @@ router.get('/my-contracts/:userId', async (req, res) => {
       }
     );
 
+    // 查询Invite Friend Reward合约总数（供客户端检测新邀请绑定，用于后台恢复时弹庆祝弹窗）
+    const inviteFriendCountResult = await sequelize.query(
+      `SELECT COUNT(*) as count FROM free_contract_records
+       WHERE user_id = ? AND free_contract_type = 'Invite Friend Reward'`,
+      {
+        replacements: [userId],
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+    const inviteFriendTotalCount = parseInt(inviteFriendCountResult[0]?.count || 0, 10);
+
     // 查询Bind Referrer Reward合约（被推荐人获得的绑定奖励，存储在 mining_contracts）
     // 为兴容旧数据，同时查询 free_contract_records 历史记录
     let bindReferrerContract = await sequelize.query(
@@ -343,7 +354,8 @@ router.get('/my-contracts/:userId', async (req, res) => {
           hashrate: inviteFriendContract.length > 0 ? btcToGhs(inviteFriendContract[0]?.hashrate) : '0Gh/s',
           remainingSeconds: inviteFriendContract[0]?.is_active === 1 ? (inviteFriendContract[0]?.remaining_seconds || 0) : 0,
           endTime: inviteFriendContract[0]?.free_contract_end_time || null,
-          contractId: inviteFriendContract[0]?.id || null
+          contractId: inviteFriendContract[0]?.id || null,
+          count: inviteFriendTotalCount
         },
         bindReferrerReward: {
           exists: bindReferrerContract.length > 0,

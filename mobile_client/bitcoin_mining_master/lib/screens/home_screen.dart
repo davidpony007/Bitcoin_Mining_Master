@@ -19,7 +19,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _currentIndex = 0;
   final _storageService = StorageService();
   final _apiService = ApiService();
@@ -60,9 +60,17 @@ class _HomeScreenState extends State<HomeScreen> {
     // 预加载广告
     AdMobService().loadRewardedAd();
 
+    // 登录后补传 FCM token（initialize() 在用户未登录时可能跳过了上报）
+    PushNotificationService.reUploadToken();
+
     // 注册推送回调：收到「好友接受邀请」前台推送时弹出邀请方庆祝弹窗
     PushNotificationService.onInvitationAccepted = () {
-      if (mounted) _showReferrerCelebration();
+      if (mounted) {
+        // 同步累加本地已见数量，防止后台恢复时重复弹窗
+        final current = _storageService.getSeenInviteRewardCount();
+        _storageService.setSeenInviteRewardCount(current + 1);
+        _showReferrerCelebration();
+      }
     };
 
     // 登录时绑定邀请码成功：延迟弹出被邀请方庆祝弹窗
@@ -72,6 +80,47 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
+    // 注册生命周期观察，用于后台恢复时检测新邀请绑定
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// 生命周期回调：App 从后台恢复到前台时检测是否有新邀请绑定
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingInviteCelebration();
+    }
+  }
+
+  /// 查询服务端 Invite Friend Reward 合约总数，若多于本地已记录数则弹庆祝弹窗
+  Future<void> _checkPendingInviteCelebration() async {
+    try {
+      final userId = _storageService.getUserId();
+      if (userId == null || userId.isEmpty) return;
+
+      final response = await _apiService.getMyContracts(userId);
+      if (response['success'] != true) return;
+
+      final inviteFriendReward = response['data']?['inviteFriendReward'];
+      if (inviteFriendReward == null) return;
+
+      final serverCount = (inviteFriendReward['count'] as num?)?.toInt() ?? 0;
+      final seenCount = _storageService.getSeenInviteRewardCount();
+
+      if (serverCount > seenCount) {
+        // 先更新本地记录，防止重复弹窗
+        await _storageService.setSeenInviteRewardCount(serverCount);
+        if (mounted) _showReferrerCelebration();
+      }
+    } catch (_) {
+      // 静默失败，不影响主流程
+    }
   }
 
   /// 被邀请方庆祝弹窗（登录时绑定邀请码接入）

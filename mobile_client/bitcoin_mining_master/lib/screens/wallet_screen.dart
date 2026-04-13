@@ -185,6 +185,7 @@ class WalletScreenState extends State<WalletScreen>
               await _checkActiveContracts();
             },
             child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
