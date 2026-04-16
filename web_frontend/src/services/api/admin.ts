@@ -44,6 +44,8 @@ export const usersApi = {
   deleteUser: (userId: string) => request.delete(`/admin/users/${userId}`),
   /** 批量删除用户 */
   bulkDeleteUsers: (userIds: string[]) => request.post('/admin/users/bulk-delete', { userIds }),
+  /** 获取用户全部合约（按状态分组：运行中/未激活/已过期） */
+  contracts: (userId: string) => request.get(`/admin/users/${userId}/contracts`),
 };
 
 // ─── Orders ───────────────────────────────────────────────────────────────────

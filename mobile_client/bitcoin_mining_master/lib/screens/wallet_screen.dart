@@ -559,7 +559,7 @@ class WalletScreenState extends State<WalletScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)} BTC',
+                        '${isPositive ? '+' : '-'}${double.parse(tx.amount.toStringAsFixed(15)).toStringAsFixed(18)} BTC',
                         style: TextStyle(
                           color: isPositive ? AppColors.primary : Colors.red,
                           fontSize: 12,
@@ -590,7 +590,7 @@ class WalletScreenState extends State<WalletScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${isPositive ? '+' : '-'}${tx.amount.toStringAsFixed(18)} BTC',
+                        '${isPositive ? '+' : '-'}${double.parse(tx.amount.toStringAsFixed(15)).toStringAsFixed(18)} BTC',
                         style: TextStyle(
                           color: isPositive ? AppColors.primary : Colors.red,
                           fontSize: 12,

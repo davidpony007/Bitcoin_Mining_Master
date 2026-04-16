@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card, Table, Button, Input, Space, Tag, Row, Col, Statistic, Select,
   message, Modal, Popconfirm, Drawer, Tabs, Descriptions, InputNumber,
-  Form, Typography, Badge, Divider, Tooltip, Empty,
+  Form, Typography, Badge, Divider, Tooltip, Empty, Spin,
 } from 'antd';
 import {
   SearchOutlined, UserOutlined, TeamOutlined, RiseOutlined,
   PlusCircleOutlined, MinusCircleOutlined, InfoCircleOutlined,
   DollarOutlined, CrownOutlined, ReloadOutlined, DeleteOutlined,
+  FileProtectOutlined, CheckCircleOutlined, ClockCircleOutlined, StopOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { usersApi } from '@/services/api/admin';
@@ -92,6 +93,37 @@ interface UserDetail {
   totalMiningRatePerSecond: string;
 }
 
+interface ContractItem {
+  id: number;
+  source: 'mining_contracts' | 'free_contract_records';
+  contract_type: string;
+  product_id?: string | null;
+  product_name?: string | null;
+  product_price?: string | null;
+  platform?: string | null;
+  hashrate: string;
+  created_at: string;
+  end_time: string | null;
+  remaining_seconds: number | null;
+  status: 'active' | 'inactive' | 'expired' | 'cancelled';
+  is_cancelled?: number;
+  is_renewal?: number;
+  order_id?: string | null;
+  mining_status?: string | null;
+  revenue?: string | null;
+  effective_hashrate?: string | null;
+  base_hashrate?: string | null;
+  has_daily_bonus?: number | null;
+  level_multiplier?: string | null;
+  country_multiplier?: string | null;
+}
+
+interface ContractsData {
+  active: ContractItem[];
+  inactive: ContractItem[];
+  expired: ContractItem[];
+}
+
 // ─── 工具函数 ────────────────────────────────────────────────────────────────
 
 const fmtBtc = (v: string | number | null | undefined): string => {
@@ -111,6 +143,63 @@ const inferPlatform = (system: string | null, deviceId: string | null): string |
 // 统一使用 UTC+00 显示时间，格式 YYYY-MM-DD HH:mm:ss
 const fmtTime = (v: string | null | undefined): string =>
   v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-';
+
+// 格式化剩余秒数为 "X天 HH:mm:ss"
+const fmtCountdown = (secs: number): string => {
+  if (secs <= 0) return '已到期';
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const hh = String(h).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return d > 0 ? `${d}天 ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+};
+
+// 合约类型中文映射
+const contractTypeLabel: Record<string, string> = {
+  'paid contract': '💰 付费合约',
+  'ad free contract': '📺 广告免费合约',
+  'daily sign-in free contract': '📅 签到免费合约',
+  'invitation free contract': '👥 邀请免费合约',
+  'Bind Referrer Reward': '🔗 绑定推荐人',
+  'Free Ad Reward': '📺 广告奖励',
+  'Daily Check-in Reward': '📅 签到奖励',
+  'Invite Friend Reward': '👥 邀请奖励',
+};
+
+// 付费合约档位显示名称：product_price → "$4.99 合约"
+const fmtContractName = (r: ContractItem): string => {
+  if (r.contract_type !== 'paid contract') return contractTypeLabel[r.contract_type] || r.contract_type;
+  if (r.product_price) return `💰 $${r.product_price} 合约`;
+  if (r.product_name) {
+    const m = r.product_name.match(/_([\d.]+)$/);
+    if (m) return `💰 $${m[1]} 合约`;
+  }
+  return '💰 付费合约';
+};
+
+// 算力单元格渲染：免费合约显示经倍率计算后的有效算力，并在 Tooltip 中展示基础值
+const renderHashrateCell = (textColor: string, v: string, r: ContractItem): React.ReactNode => {
+  if (r.source === 'free_contract_records' && r.effective_hashrate != null) {
+    const factors: string[] = [];
+    if (r.level_multiplier && parseFloat(r.level_multiplier) !== 1)
+      factors.push(`等级×${parseFloat(r.level_multiplier).toFixed(2)}`);
+    if (r.country_multiplier && parseFloat(r.country_multiplier) !== 1)
+      factors.push(`国家×${parseFloat(r.country_multiplier).toFixed(2)}`);
+    if (r.has_daily_bonus) factors.push('签到×1.36');
+    return (
+      <Tooltip title={`基础算力: ${parseFloat(v).toFixed(18)}`}>
+        <div>
+          <Text style={{ color: textColor, fontSize: 12 }}>{parseFloat(r.effective_hashrate).toFixed(18)}</Text>
+          {factors.length > 0 && <div style={{ fontSize: 9, color: '#999', lineHeight: '1.3' }}>{factors.join('  ')}</div>}
+        </div>
+      </Tooltip>
+    );
+  }
+  return <Text style={{ color: textColor, fontSize: 12 }}>{parseFloat(v).toFixed(18)}</Text>;
+};
 
 const statusMap: Record<string, { color: string; label: string }> = {
   'active within 3 days': { color: 'green', label: '近3天活跃' },
@@ -185,6 +274,37 @@ const Users: React.FC = () => {
     });
   };
 
+  const [cActiveColWidths, setCActiveColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_contracts_active') || '{}'); } catch { return {}; }
+  });
+  const handleCActiveResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setCActiveColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_contracts_active', JSON.stringify(next));
+      return next;
+    });
+  };
+  const [cInactiveColWidths, setCInactiveColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_contracts_inactive') || '{}'); } catch { return {}; }
+  });
+  const handleCInactiveResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setCInactiveColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_contracts_inactive', JSON.stringify(next));
+      return next;
+    });
+  };
+  const [cExpiredColWidths, setCExpiredColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('col_widths_contracts_expired') || '{}'); } catch { return {}; }
+  });
+  const handleCExpiredResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: any) => {
+    setCExpiredColWidths(prev => {
+      const next = { ...prev, [key]: size.width };
+      localStorage.setItem('col_widths_contracts_expired', JSON.stringify(next));
+      return next;
+    });
+  };
+
   const [btcPrice, setBtcPrice] = useState<number>(0);
 
   const [sortField, setSortField] = useState<string>('user_creation_time');
@@ -215,6 +335,14 @@ const Users: React.FC = () => {
   const [countryTargetUser, setCountryTargetUser] = useState<UserRow | null>(null);
   const [countryForm] = Form.useForm();
   const [countryLoading, setCountryLoading] = useState(false);
+
+  // ─── 合约状态 ─────────────────────────────────────────────────────────
+  const [contractsData, setContractsData] = useState<ContractsData | null>(null);
+  const [contractsLoading, setContractsLoading] = useState(false);
+  const [contractsUserId, setContractsUserId] = useState<string | null>(null);
+  // 实时倒计时（每秒 -1）
+  const [tickCount, setTickCount] = useState(0);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -317,12 +445,40 @@ const Users: React.FC = () => {
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailData(null);
+    setContractsData(null);
+    setContractsUserId(null);
+    // 停止旧的倒计时
+    if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
     try {
       const res = await usersApi.detail(record.user_id);
       if (res?.success) setDetailData(res.data);
       else message.error('加载详情失败');
     } catch { message.error('加载详情失败'); }
     finally { setDetailLoading(false); }
+  };
+
+  const fetchContracts = async (userId: string) => {
+    if (contractsUserId === userId && contractsData) return; // 已加载，不重复请求
+    setContractsLoading(true);
+    try {
+      const res = await usersApi.contracts(userId);
+      if (res?.success) {
+        setContractsData(res.data);
+        setContractsUserId(userId);
+        // 启动每秒倒计时 tick
+        if (tickRef.current) clearInterval(tickRef.current);
+        tickRef.current = setInterval(() => setTickCount(n => n + 1), 1000);
+      } else {
+        message.error('加载合约失败');
+      }
+    } catch { message.error('加载合约失败'); }
+    finally { setContractsLoading(false); }
+  };
+
+  // Drawer 关闭时停止倒计时
+  const handleDetailClose = () => {
+    setDetailOpen(false);
+    if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
   };
 
   const handleBan = (record: UserRow) => {
@@ -573,7 +729,9 @@ const Users: React.FC = () => {
     const { basic, referrer, invitedCount, invitedList, recentTxs, contractStats, orderStats, recentWithdrawals, totalCheckinDays, totalMiningRatePerSecond } = detailData;
 
     return (
-      <Tabs defaultActiveKey="basic" size="small">
+      <Tabs defaultActiveKey="basic" size="small"
+        onChange={(key) => { if (key === 'contracts') fetchContracts(basic.user_id); }}
+      >
         <TabPane tab="基本信息" key="basic">
           <Descriptions column={2} size="small" bordered labelStyle={{ width: 120, background: '#fafafa' }}>
             <Descriptions.Item label="User ID" span={2}><Text copyable>{basic.user_id}</Text></Descriptions.Item>
@@ -745,6 +903,199 @@ const Users: React.FC = () => {
                 },
               ]}
             />
+          )}
+        </TabPane>
+
+        <TabPane tab={<span><FileProtectOutlined /> 合约状态</span>} key="contracts">
+          {contractsLoading ? (
+            <div style={{ textAlign: 'center', padding: 40 }}><Spin tip="加载合约数据..." /></div>
+          ) : !contractsData ? (
+            <Empty description="暂无合约数据" />
+          ) : (
+            <div>
+              {/* ─── 运行中 ─── */}
+              <Divider orientation="left" plain style={{ color: '#52c41a', fontWeight: 600 }}>
+                <CheckCircleOutlined style={{ marginRight: 4 }} />
+                运行中 ({contractsData.active.length})
+              </Divider>
+              {contractsData.active.length === 0 ? (
+                <Empty description="无运行中合约" imageStyle={{ height: 40 }} />
+              ) : (
+<Table
+                  size="small" pagination={false} scroll={{ x: 'max-content' }}
+                  dataSource={contractsData.active}
+                  rowKey={(r: ContractItem) => `${r.source}_${r.id}`}
+                  rowClassName={() => 'contract-row-active'}
+                  components={{ header: { cell: ResizableTitle } }}
+                  columns={[
+                    {
+                      title: '类型', dataIndex: 'contract_type', key: 'c_type',
+                      width: cActiveColWidths['c_type'] || 160,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_type'] || 160, onResize: handleCActiveResize('c_type') }),
+                      render: (v: string, r: ContractItem) => (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600 }}>{fmtContractName(r)}</div>
+                          {r.is_renewal ? <Tag color="blue" style={{ fontSize: 10 }}>续订</Tag> : null}
+                          {r.order_id && <div style={{ fontSize: 10, color: '#aaa' }}>订单: {r.order_id.slice(0, 12)}...</div>}
+                        </div>
+                      ),
+                    },
+                    {
+                      title: '算力 (BTC/s)', dataIndex: 'hashrate', key: 'c_hash',
+                      width: cActiveColWidths['c_hash'] || 220,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_hash'] || 220, onResize: handleCActiveResize('c_hash') }),
+                      render: (v: string, r: ContractItem) => renderHashrateCell('#f7931a', v, r),
+                    },
+                    {
+                      title: '开始时间', dataIndex: 'created_at', key: 'c_start',
+                      width: cActiveColWidths['c_start'] || 148,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_start'] || 148, onResize: handleCActiveResize('c_start') }),
+                      render: (v: string) => fmtTime(v),
+                    },
+                    {
+                      title: '到期时间', dataIndex: 'end_time', key: 'c_end',
+                      width: cActiveColWidths['c_end'] || 148,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_end'] || 148, onResize: handleCActiveResize('c_end') }),
+                      render: (v: string | null) => v ? fmtTime(v) : '-',
+                    },
+                    {
+                      title: '剩余时间', key: 'c_remain',
+                      width: cActiveColWidths['c_remain'] || 130,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_remain'] || 130, onResize: handleCActiveResize('c_remain') }),
+                      render: (_: any, r: ContractItem) => {
+                        if (!r.remaining_seconds) return '-';
+                        const secs = Math.max(0, r.remaining_seconds - tickCount);
+                        return <Text style={{ color: '#52c41a', fontWeight: 600, fontFamily: 'monospace' }}>{fmtCountdown(secs)}</Text>;
+                      },
+                    },
+                    {
+                      title: '平台/来源', key: 'c_plat',
+                      width: cActiveColWidths['c_plat'] || 80,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_plat'] || 80, onResize: handleCActiveResize('c_plat') }),
+                      render: (_: any, r: ContractItem) => (
+                        r.source === 'mining_contracts'
+                          ? <Tag color={r.platform === 'ios' ? 'blue' : 'green'} style={{ fontSize: 10 }}>{r.platform || '-'}</Tag>
+                          : <Tag color="purple" style={{ fontSize: 10 }}>免费</Tag>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+
+              {/* ─── 未激活 ─── */}
+              <Divider orientation="left" plain style={{ color: '#faad14', fontWeight: 600, marginTop: 20 }}>
+                <ClockCircleOutlined style={{ marginRight: 4 }} />
+                未激活 ({contractsData.inactive.length})
+              </Divider>
+              {contractsData.inactive.length === 0 ? (
+                <Empty description="无未激活合约" imageStyle={{ height: 40 }} />
+              ) : (
+<Table
+                  size="small" pagination={false} scroll={{ x: 'max-content' }}
+                  dataSource={contractsData.inactive}
+                  rowKey={(r: ContractItem) => `${r.source}_${r.id}`}
+                  components={{ header: { cell: ResizableTitle } }}
+                  columns={[
+                    {
+                      title: '类型', dataIndex: 'contract_type', key: 'ci_type',
+                      width: cInactiveColWidths['ci_type'] || 160,
+                      onHeaderCell: () => ({ width: cInactiveColWidths['ci_type'] || 160, onResize: handleCInactiveResize('ci_type') }),
+                      render: (_v: string, r: ContractItem) => (
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 600 }}>{fmtContractName(r)}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: '算力 (BTC/s)', dataIndex: 'hashrate', key: 'ci_hash',
+                      width: cInactiveColWidths['ci_hash'] || 220,
+                      onHeaderCell: () => ({ width: cInactiveColWidths['ci_hash'] || 220, onResize: handleCInactiveResize('ci_hash') }),
+                      render: (v: string, r: ContractItem) => renderHashrateCell('#faad14', v, r),
+                    },
+                    {
+                      title: '创建时间', dataIndex: 'created_at', key: 'ci_start',
+                      width: cInactiveColWidths['ci_start'] || 148,
+                      onHeaderCell: () => ({ width: cInactiveColWidths['ci_start'] || 148, onResize: handleCInactiveResize('ci_start') }),
+                      render: (v: string) => fmtTime(v),
+                    },
+                    {
+                      title: '状态', key: 'ci_status',
+                      width: cInactiveColWidths['ci_status'] || 90,
+                      onHeaderCell: () => ({ width: cInactiveColWidths['ci_status'] || 90, onResize: handleCInactiveResize('ci_status') }),
+                      render: (_: any, r: ContractItem) => (
+                        r.mining_status === 'error'
+                          ? <Tag color="red">错误</Tag>
+                          : <Tag color="orange">待激活</Tag>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+
+              {/* ─── 已过期 ─── */}
+              <Divider orientation="left" plain style={{ color: '#bfbfbf', fontWeight: 600, marginTop: 20 }}>
+                <StopOutlined style={{ marginRight: 4 }} />
+                已过期 ({contractsData.expired.length})
+              </Divider>
+              {contractsData.expired.length === 0 ? (
+                <Empty description="无已过期合约" imageStyle={{ height: 40 }} />
+              ) : (
+<Table
+                  size="small" pagination={false} scroll={{ x: 'max-content' }}
+                  dataSource={contractsData.expired}
+                  rowKey={(r: ContractItem) => `${r.source}_${r.id}`}
+                  components={{ header: { cell: ResizableTitle } }}
+                  columns={[
+                    {
+                      title: '类型', dataIndex: 'contract_type', key: 'ce_type',
+                      width: cExpiredColWidths['ce_type'] || 160,
+                      onHeaderCell: () => ({ width: cExpiredColWidths['ce_type'] || 160, onResize: handleCExpiredResize('ce_type') }),
+                      render: (_v: string, r: ContractItem) => (
+                        <div>
+                          <div style={{ fontSize: 12 }}>{fmtContractName(r)}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: '算力 (BTC/s)', dataIndex: 'hashrate', key: 'ce_hash',
+                      width: cExpiredColWidths['ce_hash'] || 220,
+                      onHeaderCell: () => ({ width: cExpiredColWidths['ce_hash'] || 220, onResize: handleCExpiredResize('ce_hash') }),
+                      render: (v: string, r: ContractItem) => renderHashrateCell('#aaa', v, r),
+                    },
+                    {
+                      title: '开始时间', dataIndex: 'created_at', key: 'ce_start',
+                      width: cExpiredColWidths['ce_start'] || 148,
+                      onHeaderCell: () => ({ width: cExpiredColWidths['ce_start'] || 148, onResize: handleCExpiredResize('ce_start') }),
+                      render: (v: string) => fmtTime(v),
+                    },
+                    {
+                      title: '到期时间', dataIndex: 'end_time', key: 'ce_end',
+                      width: cExpiredColWidths['ce_end'] || 148,
+                      onHeaderCell: () => ({ width: cExpiredColWidths['ce_end'] || 148, onResize: handleCExpiredResize('ce_end') }),
+                      render: (v: string | null) => v ? fmtTime(v) : '-',
+                    },
+                    {
+                      title: '状态', key: 'ce_status',
+                      width: cExpiredColWidths['ce_status'] || 80,
+                      onHeaderCell: () => ({ width: cExpiredColWidths['ce_status'] || 80, onResize: handleCExpiredResize('ce_status') }),
+                      render: (_: any, r: ContractItem) => (
+                        r.status === 'cancelled'
+                          ? <Tag color="red">已取消</Tag>
+                          : r.mining_status === 'completed'
+                            ? <Tag color="default">已完成</Tag>
+                            : <Tag color="default">已过期</Tag>
+                      ),
+                    },
+                    {
+                      title: '收益(BTC)', dataIndex: 'revenue', key: 'ce_rev',
+                      width: cExpiredColWidths['ce_rev'] || 130,
+                      onHeaderCell: () => ({ width: cExpiredColWidths['ce_rev'] || 130, onResize: handleCExpiredResize('ce_rev') }),
+                      render: (v: string | null | undefined) => v ? <Text style={{ fontSize: 12 }}>{parseFloat(v).toFixed(18)}</Text> : '-',
+                    },
+                  ]}
+                />
+              )}
+            </div>
           )}
         </TabPane>
 
@@ -927,10 +1278,11 @@ const Users: React.FC = () => {
             </Space>
           ) : '用户详情'
         }
-        width={820}
+        width={960}
         open={detailOpen}
-        onClose={() => setDetailOpen(false)}
+        onClose={handleDetailClose}
         loading={detailLoading}
+        styles={{ body: { overflow: 'auto' } }}
         extra={
           detailData ? (
             <Space>

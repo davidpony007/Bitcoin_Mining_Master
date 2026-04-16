@@ -24,10 +24,49 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   // 提现方式：'Binance UID' 或 'BEP20'
   String _selectedWithdrawMethod = 'Binance UID';
   bool _useAllBalance = false;
+  // iOS 绑定状态：null=未检测，true/false=已知
+  bool? _isAccountBound;
 
   double get _minimumAmount => 0.00002200;
   double get _networkFee =>
       _selectedWithdrawMethod == 'Binance UID' ? 0.0 : 0.00000028;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isIOS) {
+      _preloadBindingStatus();
+    }
+  }
+
+  /// 页面打开时预先加载绑定状态（iOS），避免在点击 WITHDRAW 时才异步查询
+  Future<void> _preloadBindingStatus() async {
+    final storage = StorageService();
+    // 1. 优先读本地缓存
+    final cachedId = storage.getAppleId();
+    if (cachedId != null && cachedId.isNotEmpty) {
+      if (mounted) setState(() => _isAccountBound = true);
+      return;
+    }
+    // 2. 本地无缓存 → 查服务端
+    try {
+      final userId = storage.getUserId();
+      if (userId == null || userId.isEmpty) return;
+      final apiService = ApiService();
+      final resp = await apiService.getAppleBindingStatus(userId);
+      final bound = resp['success'] == true && resp['data']?['isBound'] == true;
+      if (bound) {
+        final dynamic data = resp['data'];
+        final restoredId = (data is Map) ? data['apple_id']?.toString() : null;
+        if (restoredId != null && restoredId.isNotEmpty) {
+          await storage.saveAppleId(restoredId);
+        }
+      }
+      if (mounted) setState(() => _isAccountBound = bound);
+    } catch (e) {
+      print('[WITHDRAW] preload binding failed: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -1019,8 +1058,8 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Future<void> _handleWithdraw(UserProvider provider) async {
-    // 检查账户封禁状态（封禁用户禁止提现）
     final storage = StorageService();
+    // 检查账户封禁状态（封禁用户禁止提现）
     if (storage.isBanned()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1036,29 +1075,37 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       return;
     }
 
-    // 检查账号绑定状态
-    bool isBound = Platform.isAndroid
-        ? (storage.getGoogleEmail()?.isNotEmpty ?? false)
-        : (storage.getAppleId()?.isNotEmpty ?? false);
-
-    // iOS 本地缓存缺失时，fallback 查询服务器（App 重装后 SharedPreferences 被清空）
-    if (!isBound && Platform.isIOS) {
-      final userId = storage.getUserId();
-      if (userId != null && userId.isNotEmpty) {
-        try {
-          final apiService = ApiService();
-          final resp = await apiService.getAppleBindingStatus(userId);
-          if (resp['success'] == true && resp['data']?['isBound'] == true) {
-            isBound = true;
-            // 恢复 apple_id 到本地缓存，避免下次再走服务器
-            final restoredAppleId = resp['data']['apple_id']?.toString();
-            if (restoredAppleId != null && restoredAppleId.isNotEmpty) {
-              await storage.saveAppleId(restoredAppleId);
+    // 检查账号绑定状态（iOS 用 initState 预加载的结果，Android 读 Google 缓存）
+    bool isBound;
+    if (Platform.isAndroid) {
+      isBound = storage.getGoogleEmail()?.isNotEmpty ?? false;
+    } else {
+      // iOS：先检查预加载结果或本地缓存
+      isBound = (_isAccountBound == true) || (storage.getAppleId()?.isNotEmpty ?? false);
+      // 若两者都没有绑定记录，始终向服务器再确认一次（覆盖预加载缓存过期的场景）
+      if (!isBound) {
+        final userId = storage.getUserId();
+        if (userId != null && userId.isNotEmpty) {
+          try {
+            final apiService = ApiService();
+            final resp = await apiService.getAppleBindingStatus(userId);
+            final serverBound = resp['success'] == true && resp['data']?['isBound'] == true;
+            if (serverBound) {
+              isBound = true;
+              final dynamic data = resp['data'];
+              final restoredId = (data is Map) ? data['apple_id']?.toString() : null;
+              if (restoredId != null && restoredId.isNotEmpty) {
+                await storage.saveAppleId(restoredId);
+              }
+              if (mounted) setState(() => _isAccountBound = true);
             }
+          } catch (e) {
+            print('[WITHDRAW] on-demand server check failed: $e');
           }
-        } catch (_) {}
+        }
       }
     }
+    print('[WITHDRAW] isBound=$isBound isAccountBound=$_isAccountBound');
 
     if (!isBound) {
       if (!mounted) return;

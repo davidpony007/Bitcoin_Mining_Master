@@ -1,5 +1,6 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
+import 'storage_service.dart';
 
 /// Firebase Analytics 埋点服务
 ///
@@ -205,6 +206,44 @@ class AnalyticsService {
     await _logCustomEvent('ad_reward_earned', {
       'ad_unit': adUnit,
       'points_earned': points,
+    });
+  }
+
+  /// 广告展示收益上报（Firebase 官方 ad_impression 事件格式）
+  /// Firebase GA4 会将此事件纳入 Revenue 报表，可在 BigQuery 按 user_id 查询
+  ///
+  /// [valueMicros]  onPaidEvent 原始值，单位：百万分之一美元
+  /// [precision]    UNKNOWN / ESTIMATED / PUBLISHER_PROVIDED / PRECISE
+  /// [currencyCode] 货币代码，如 'USD'
+  /// [adUnitId]     AdMob 广告位 ID
+  Future<void> logAdRevenue({
+    required double valueMicros,
+    required String precision,
+    required String currencyCode,
+    required String adUnitId,
+  }) async {
+    final userId = StorageService().getUserId() ?? 'unknown';
+    final valueUsd = valueMicros / 1_000_000.0;
+
+    // 1. 使用 Firebase 官方 ad_impression 事件（GA4 Revenue 报表可识别）
+    await _logCustomEvent('ad_impression', {
+      'ad_platform': 'Google AdMob',
+      'ad_format': 'Rewarded',
+      'ad_unit_name': adUnitId,
+      'currency': currencyCode,
+      'value': valueUsd,
+      'precision_type': precision,
+      'user_id': userId,
+    });
+
+    // 2. 同时上报自定义事件，方便在 BigQuery 按用户维度聚合
+    await _logCustomEvent('user_ad_revenue', {
+      'user_id': userId,
+      'ad_unit_id': adUnitId,
+      'currency': currencyCode,
+      'value_usd': valueUsd,
+      'value_micros': valueMicros,
+      'precision_type': precision,
     });
   }
 

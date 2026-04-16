@@ -334,12 +334,15 @@ class ApiService {
       );
       return response.data;
     } on DioException catch (e) {
-      if (e.response?.statusCode == 400 && e.response?.data != null) {
-        print('❌ bindApple API返回400: ${e.response?.data}');
+      if (e.response?.statusCode == 400 || e.response?.statusCode == 401) {
+        final dynamic rawData = e.response?.data;
+        final Map<String, dynamic> dataMap =
+            (rawData is Map) ? Map<String, dynamic>.from(rawData) : {};
+        print('❌ bindApple API返回${e.response?.statusCode}: $dataMap');
         return {
           'success': false,
-          'error': e.response?.data['error'] ?? 'Failed to bind Apple account',
-          'message': e.response?.data['message'] ?? e.response?.data['error'] ?? 'Unknown error',
+          'error': dataMap['error']?.toString() ?? 'Failed to bind Apple account',
+          'message': dataMap['message']?.toString() ?? dataMap['error']?.toString() ?? 'Unknown error',
         };
       }
       throw _handleError(e);
@@ -782,10 +785,16 @@ class ApiService {
           return Exception(data['message'] as String);
         }
         return Exception('Server error: ${error.response?.statusCode}');
+      case DioExceptionType.connectionError:
+        return Exception('Network connection error, please try again!');
+      case DioExceptionType.badCertificate:
+        return Exception('SSL certificate error. Please check your network settings.');
       case DioExceptionType.cancel:
         return Exception('Request cancelled');
       default:
-        return Exception('Network connection error, please try again!');
+        final innerErr = error.error;
+        print('❌ [ApiService] unknown error: type=${error.type}, inner=$innerErr (${innerErr?.runtimeType})');
+        return Exception('Network connection error. If you have a VPN enabled, please disable it and try again.');
     }
   }
 

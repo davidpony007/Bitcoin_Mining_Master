@@ -11,6 +11,7 @@ const { QueryTypes } = require('sequelize');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
 const jwt = require('jsonwebtoken');
+const bitcoinPriceService = require('../services/bitcoinPriceService');
 
 // ─── Admin Login ─────────────────────────────────────────────────────────────
 
@@ -155,12 +156,40 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
     const search = req.query.search ? `%${req.query.search}%` : null;
+    const searchField = req.query.searchField || null;
     const status = req.query.status || null;
     const system = req.query.system || null;
+    const country = req.query.country || null;
+    const level = req.query.level ? parseInt(req.query.level) : null;
+
+    const searchFieldMap = {
+      email: 'ui.email', user_id: 'ui.user_id', google_account: 'ui.google_account',
+      apple_account: 'ui.apple_account', apple_id: 'ui.apple_id', device_id: 'ui.device_id',
+      idfa: 'ui.idfa', gaid: 'ui.gaid', register_ip: 'ui.register_ip',
+    };
+    const sortWhitelist = {
+      user_creation_time: 'ui.user_creation_time', user_level: 'ui.user_level',
+      user_points: 'ui.user_points', total_ad_views: 'ui.total_ad_views',
+      country_multiplier: 'ui.country_multiplier', miner_level_multiplier: 'ui.miner_level_multiplier',
+      mining_rate_per_second: 'mining_rate_per_second',
+      current_bitcoin_balance: 'us.current_bitcoin_balance',
+      bitcoin_accumulated_amount: 'us.bitcoin_accumulated_amount',
+      last_login_time: 'us.last_login_time',
+    };
+    const sortByCol = sortWhitelist[req.query.sortBy] || 'ui.user_creation_time';
+    const sortOrderStr = req.query.sortOrder === 'ASC' ? 'ASC' : 'DESC';
 
     let where = 'WHERE 1=1';
     const params = [];
-    if (search) { where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ?)'; params.push(search, search, search); }
+    if (search) {
+      if (searchField && searchFieldMap[searchField]) {
+        where += ` AND ${searchFieldMap[searchField]} LIKE ?`;
+        params.push(search);
+      } else {
+        where += ' AND (ui.email LIKE ? OR ui.user_id LIKE ? OR ui.google_account LIKE ? OR ui.apple_account LIKE ? OR ui.device_id LIKE ?)';
+        params.push(search, search, search, search, search);
+      }
+    }
     if (status) { where += ' AND us.user_status = ?'; params.push(status); }
     if (system) { where += ' AND ui.`system` = ?'; params.push(system); }
     const acquisition = req.query.acquisition || null;
@@ -168,20 +197,40 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
       if (acquisition === 'paid') { where += ' AND ui.acquisition_channel LIKE ?'; params.push('paid_%'); }
       else { where += ' AND ui.acquisition_channel = ?'; params.push(acquisition); }
     }
+    if (country) { where += ' AND ui.country_code = ?'; params.push(country); }
+    if (level !== null && !isNaN(level)) { where += ' AND ui.user_level = ?'; params.push(level); }
 
     const [[{ total }]] = await conn.query(
       `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
     );
     const [rows] = await conn.query(
       `SELECT ui.user_id, ui.email, ui.google_account, ui.apple_account, ui.country_code,
-              ui.user_level, ui.user_points, ui.total_ad_views, ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
-              ui.is_banned, ui.banned_at, ui.ban_reason,
-              us.user_status, us.last_login_time,
-              us.current_bitcoin_balance, us.bitcoin_accumulated_amount
+              ui.country_name_cn, ui.country_multiplier, ui.user_level, ui.miner_level_multiplier,
+              ui.user_points, ui.total_ad_views, ui.\`system\`, ui.device_id,
+              ui.acquisition_channel, ui.user_creation_time, ui.is_banned, ui.banned_at, ui.ban_reason,
+              us.user_status, us.last_login_time, us.current_bitcoin_balance,
+              us.bitcoin_accumulated_amount, us.total_withdrawal_amount, us.total_invitation_rebate,
+              (
+                SELECT COALESCE(SUM(
+                  COALESCE(fc.base_hashrate, fc.hashrate)
+                  * COALESCE(ui.miner_level_multiplier, 1.0)
+                  * COALESCE(ui.country_multiplier, 1.0)
+                  * IF(fc.has_daily_bonus = 1, 1.36, 1.0)
+                ), 0)
+                FROM free_contract_records fc
+                WHERE fc.user_id = ui.user_id
+                  AND fc.free_contract_end_time > NOW()
+              ) + COALESCE((
+                SELECT SUM(mc.hashrate)
+                FROM mining_contracts mc
+                WHERE mc.user_id = ui.user_id
+                  AND mc.contract_end_time > NOW()
+                  AND mc.is_cancelled = 0
+              ), 0) AS mining_rate_per_second
        FROM user_information ui
        LEFT JOIN user_status us ON ui.user_id = us.user_id
        ${where}
-       ORDER BY ui.user_creation_time DESC
+       ORDER BY ${sortByCol} ${sortOrderStr}
        LIMIT ? OFFSET ?`, [...params, limit, offset]
     );
     res.json({ success: true, data: { total, page, limit, list: rows } });
@@ -1645,14 +1694,19 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
     const [[contractStats]] = await conn.query(
       `SELECT COUNT(*) AS total_contracts,
               SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
-              SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts
+              SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts,
+              SUM(CASE WHEN (contract_end_time <= NOW() OR is_cancelled = 1) AND contract_type = 'paid contract' THEN 1 ELSE 0 END) AS expired_contracts
        FROM mining_contracts WHERE user_id = ?`, [userId]
     );
 
     // 6. 订单摘要
+    // 注意：product_price 是 ENUM 类型，直接 CAST AS DECIMAL 会返回枚举序号而非金额。
+    // 需用 CONCAT(product_price,'') 强制转为字符串后再转数字。
     const [[orderStats]] = await conn.query(
       `SELECT COUNT(*) AS total_orders,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))), 0) AS total_spent
+              COALESCE(SUM(CASE WHEN order_status != 'refund successful'
+                           THEN CAST(CONCAT(product_price, '') AS DECIMAL(10,2)) ELSE 0 END), 0) AS total_spent,
+              SUM(CASE WHEN order_status IN ('refund request in progress','refund successful') THEN 1 ELSE 0 END) AS refund_count
        FROM user_orders WHERE user_id = ?`, [userId]
     );
 
@@ -1679,6 +1733,124 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
     });
   } catch (err) {
     console.error('User detail error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── User Contracts Detail ────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/users/:userId/contracts
+ * 获取用户全部合约详情，按状态分组：运行中 / 未激活 / 已过期
+ */
+router.get('/users/:userId/contracts', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+  const conn = await pool.getConnection();
+  try {
+    // 1. mining_contracts（付费 + 系统颁发的免费合约）
+    // product_id 有值时按 product_id JOIN；为 NULL 时按 hashrate_raw 精确匹配
+    const [paidRows] = await conn.query(
+      `SELECT mc.id, mc.contract_type, mc.product_id, mc.platform,
+              mc.contract_creation_time, mc.contract_end_time, mc.contract_duration,
+              mc.hashrate, mc.is_cancelled, mc.is_renewal, mc.order_id,
+              p.product_name, p.product_price,
+              TIMESTAMPDIFF(SECOND, NOW(), mc.contract_end_time) AS remaining_seconds
+       FROM mining_contracts mc
+       LEFT JOIN paid_products_list_config p ON
+         p.product_id = COALESCE(
+           mc.product_id,
+           (SELECT product_id FROM paid_products_list_config pfb
+            WHERE pfb.hashrate_raw = mc.hashrate LIMIT 1)
+         )
+       WHERE mc.user_id = ?
+       ORDER BY mc.contract_creation_time DESC`, [userId]
+    );
+
+    // 2. free_contract_records（广告/签到/邀请/绑定推荐人免费合约）
+    const [freeRows] = await conn.query(
+      `SELECT fcr.id, fcr.free_contract_type AS contract_type,
+              fcr.free_contract_creation_time AS contract_creation_time,
+              fcr.free_contract_end_time AS contract_end_time,
+              fcr.hashrate, fcr.base_hashrate, fcr.has_daily_bonus,
+              fcr.mining_status, fcr.free_contract_revenue AS revenue,
+              TIMESTAMPDIFF(SECOND, NOW(), fcr.free_contract_end_time) AS remaining_seconds,
+              ui.miner_level_multiplier AS level_multiplier,
+              ui.country_multiplier,
+              COALESCE(fcr.base_hashrate, fcr.hashrate)
+                * COALESCE(ui.miner_level_multiplier, 1.0)
+                * COALESCE(ui.country_multiplier, 1.0)
+                * IF(fcr.has_daily_bonus = 1, 1.36, 1.0) AS effective_hashrate
+       FROM free_contract_records fcr
+       JOIN user_information ui ON ui.user_id = fcr.user_id
+       WHERE fcr.user_id = ?
+       ORDER BY fcr.free_contract_creation_time DESC`, [userId]
+    );
+
+    const active = [], inactive = [], expired = [];
+
+    for (const row of paidRows) {
+      const item = {
+        id: row.id,
+        source: 'mining_contracts',
+        contract_type: row.contract_type,
+        product_id: row.product_id || null,
+        product_name: row.product_name || null,
+        product_price: row.product_price || null,
+        platform: row.platform || null,
+        hashrate: row.hashrate,
+        created_at: row.contract_creation_time,
+        end_time: row.contract_end_time,
+        remaining_seconds: row.remaining_seconds,
+        is_cancelled: row.is_cancelled,
+        is_renewal: row.is_renewal,
+        order_id: row.order_id || null,
+      };
+      if (row.is_cancelled) {
+        expired.push({ ...item, status: 'cancelled' });
+      } else if (!row.contract_end_time) {
+        inactive.push({ ...item, status: 'inactive' });
+      } else if (row.remaining_seconds > 0) {
+        active.push({ ...item, status: 'active' });
+      } else {
+        expired.push({ ...item, status: 'expired' });
+      }
+    }
+
+    for (const row of freeRows) {
+      const item = {
+        id: row.id,
+        source: 'free_contract_records',
+        contract_type: row.contract_type,
+        hashrate: row.hashrate,
+        base_hashrate: row.base_hashrate,
+        effective_hashrate: row.effective_hashrate,
+        has_daily_bonus: row.has_daily_bonus,
+        level_multiplier: row.level_multiplier,
+        country_multiplier: row.country_multiplier,
+        created_at: row.contract_creation_time,
+        end_time: row.contract_end_time,
+        remaining_seconds: row.remaining_seconds,
+        mining_status: row.mining_status,
+        revenue: row.revenue,
+      };
+      const rem = typeof row.remaining_seconds === 'string'
+        ? parseInt(row.remaining_seconds) : row.remaining_seconds;
+      // 优先判断剩余时间：end_time 在未来 → 运行中；再判断 mining_status
+      if (row.mining_status === 'mining' || (row.contract_end_time && rem !== null && rem > 0)) {
+        active.push({ ...item, status: 'active' });
+      } else if (!row.contract_end_time || row.mining_status === 'error') {
+        inactive.push({ ...item, status: 'inactive' });
+      } else {
+        expired.push({ ...item, status: 'expired' });
+      }
+    }
+
+    res.json({ success: true, data: { active, inactive, expired } });
+  } catch (err) {
+    console.error('User contracts error:', err);
     res.status(500).json({ success: false, message: err.message });
   } finally {
     conn.release();
@@ -1754,6 +1926,252 @@ router.post('/users/:userId/adjust-btc', authenticateToken, requireAdmin, async 
     await conn.rollback();
     console.error('Adjust BTC error:', err);
     res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
+ * POST /api/admin/users/:userId/adjust-points
+ * 手动增加/减少积分 (amount 正=增加, 负=减少)
+ */
+router.post('/users/:userId/adjust-points', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { amount, reason } = req.body || {};
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+  const numAmount = parseInt(amount);
+  if (isNaN(numAmount) || numAmount === 0) return res.status(400).json({ success: false, message: 'amount 必须为非零整数' });
+  if (!reason || String(reason).trim().length === 0) return res.status(400).json({ success: false, message: '必须填写操作原因' });
+
+  try {
+    const desc = `管理员手动${numAmount > 0 ? '增加' : '减少'}积分：${reason}`;
+    let result;
+    if (numAmount > 0) {
+      result = await PointsService.addPoints(userId, numAmount, PointsService.POINTS_TYPES.MANUAL_ADD, desc);
+    } else {
+      result = await PointsService.deductPoints(userId, Math.abs(numAmount), PointsService.POINTS_TYPES.MANUAL_DEDUCT, desc);
+    }
+    res.json({
+      success: true,
+      message: `积分已${numAmount > 0 ? '增加' : '减少'} ${Math.abs(numAmount)} 分`,
+      data: result
+    });
+  } catch (err) {
+    console.error('Adjust points error:', err);
+    const status = err.message === '用户不存在' ? 404 : err.message === '可用积分不足' ? 400 : 500;
+    res.status(status).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * PUT /api/admin/users/:userId/update-country
+ * 修改用户国家（同步更新 country_code, country_name_cn, country_multiplier）
+ */
+router.put('/users/:userId/update-country', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  const { country_code, country_name_cn } = req.body || {};
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+  if (!country_code) return res.status(400).json({ success: false, message: 'country_code 不能为空' });
+
+  const conn = await pool.getConnection();
+  try {
+    // 从 country_mining_config 查对应倍率
+    const [[configRow]] = await conn.query(
+      'SELECT mining_multiplier, country_name_cn AS cfg_name FROM country_mining_config WHERE country_code = ? LIMIT 1',
+      [country_code]
+    );
+    const multiplier = configRow ? parseFloat(configRow.mining_multiplier) : 1.0;
+    const finalName = country_name_cn || (configRow ? configRow.cfg_name : country_code);
+
+    const [result] = await conn.query(
+      'UPDATE user_information SET country_code = ?, country_name_cn = ?, country_multiplier = ? WHERE user_id = ?',
+      [country_code, finalName, multiplier, userId]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: '用户不存在' });
+
+    res.json({
+      success: true,
+      message: `国家已更新为 ${finalName}（${country_code}），倍率 ${multiplier}`,
+      data: { country_code, country_name_cn: finalName, country_multiplier: multiplier }
+    });
+  } catch (err) {
+    console.error('Update country error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── BTC 价格（前端用） ────────────────────────────────────────────────────
+router.get('/btc-price', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const priceInfo = bitcoinPriceService.getCurrentPrice();
+    res.json({ success: true, data: { price: priceInfo.price, lastUpdate: priceInfo.lastUpdate } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// ─── 用户国家列表（前端下拉筛选用） ──────────────────────────────────────
+router.get('/users/countries', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [rows] = await conn.query(
+      `SELECT DISTINCT ui.country_code, cmc.country_name_cn
+       FROM user_information ui
+       LEFT JOIN country_mining_config cmc ON cmc.country_code = ui.country_code COLLATE utf8mb4_unicode_ci
+       WHERE ui.country_code IS NOT NULL AND ui.country_code != ''
+       ORDER BY ui.country_code`
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── 速率配置（RateConfig 页面） ──────────────────────────────────────────
+router.get('/rate-config', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const [[baseRow]] = await conn.query(
+      `SELECT config_value FROM system_config WHERE config_key = 'base_mining_hashrate' LIMIT 1`
+    );
+    const [countries] = await conn.query(
+      `SELECT country_code, country_name_cn, mining_multiplier FROM country_mining_config ORDER BY country_code`
+    );
+    res.json({
+      success: true,
+      data: {
+        baseHashrate: baseRow ? baseRow.config_value : '0.000000000000139',
+        countries
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  } finally {
+    conn.release();
+  }
+});
+
+router.put('/rate-config/base-rate', authenticateToken, requireAdmin, async (req, res) => {
+  const { value } = req.body;
+  const num = parseFloat(value);
+  if (isNaN(num) || num <= 0) return res.status(400).json({ success: false, message: '无效的基础算力值' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.query(
+      `UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = 'base_mining_hashrate'`,
+      [num.toFixed(18)]
+    );
+    res.json({ success: true, message: '基础算力已更新', data: { baseHashrate: num.toFixed(18) } });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  } finally {
+    conn.release();
+  }
+});
+
+router.put('/rate-config/country/:code', authenticateToken, requireAdmin, async (req, res) => {
+  const { code } = req.params;
+  const { multiplier } = req.body;
+  const num = parseFloat(multiplier);
+  if (isNaN(num) || num <= 0) return res.status(400).json({ success: false, message: '倍率必须大于0' });
+  try {
+    const result = await CountryMiningService.updateMultiplier(code, num);
+    if (result.success) res.json(result);
+    else res.status(404).json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+router.post('/rate-config/country/batch', authenticateToken, requireAdmin, async (req, res) => {
+  const { updates } = req.body;
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return res.status(400).json({ success: false, message: '无效的批量更新数据' });
+  }
+  try {
+    const mapped = updates.map(u => ({ countryCode: u.code, multiplier: u.multiplier }));
+    const result = await CountryMiningService.batchUpdateMultipliers(mapped);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// ─── 删除用户（单个） ──────────────────────────────────────────────────────
+async function deleteUserById(conn, userId) {
+  const tables = [
+    'ad_view_record',
+    'bitcoin_transaction_records',
+    'free_contract_records',
+    'invitation_rebate',
+    'invitation_relationship',
+    'mining_contracts',
+    'notification_log',
+    'points_transaction',
+    'push_tokens',
+    'referral_milestone',
+    'subscription_point_awards',
+    'user_check_in',
+    'user_log',
+    'user_orders',
+    'user_points',
+    'user_status',
+    'withdrawal_records',
+  ];
+  for (const table of tables) {
+    await conn.query(`DELETE FROM ${table} WHERE user_id = ?`, [userId]);
+  }
+  // invitation_relationship 中 referrer_user_id 也指向该用户
+  await conn.query('DELETE FROM invitation_relationship WHERE referrer_user_id = ?', [userId]);
+  // 最后删除主表
+  await conn.query('DELETE FROM user_information WHERE user_id = ?', [userId]);
+}
+
+router.delete('/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
+  const { userId } = req.params;
+  if (!userId) return res.status(400).json({ success: false, message: 'userId 不能为空' });
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [[user]] = await conn.query('SELECT user_id FROM user_information WHERE user_id = ?', [userId]);
+    if (!user) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, message: '用户不存在' });
+    }
+    await deleteUserById(conn, userId);
+    await conn.commit();
+    res.json({ success: true, message: `用户 ${userId} 已删除` });
+  } catch (e) {
+    await conn.rollback();
+    console.error('Delete user error:', e);
+    res.status(500).json({ success: false, message: e.message });
+  } finally {
+    conn.release();
+  }
+});
+
+// ─── 批量删除用户 ──────────────────────────────────────────────────────────
+router.post('/users/bulk-delete', authenticateToken, requireAdmin, async (req, res) => {
+  const { userIds } = req.body;
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    return res.status(400).json({ success: false, message: '请提供要删除的用户ID列表' });
+  }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    for (const userId of userIds) {
+      await deleteUserById(conn, userId);
+    }
+    await conn.commit();
+    res.json({ success: true, message: `已删除 ${userIds.length} 个用户`, deleted: userIds.length });
+  } catch (e) {
+    await conn.rollback();
+    console.error('Bulk delete users error:', e);
+    res.status(500).json({ success: false, message: e.message });
   } finally {
     conn.release();
   }

@@ -28,7 +28,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   GoogleSignInAccount? _googleAccount; // 保存Google账号信息
   String? _boundGoogleEmail; // 保存已绑定的Google邮箱（即使未登录也要显示）
   bool _isAppleSignedIn = false; // Apple 登录状态
+  bool _isAppleStatusLoading = true; // Apple 绑定状态是否正在加载（加载中禁止点击）
   String? _boundAppleEmail; // 已绑定的 Apple 邮箱
+  String? _boundAppleId; // 已绑定的 Apple user identifier（备用显示）
   String _userId = 'Loading...'; // 用户ID
   String _userName = 'Guest User'; // 用户昵称，可编辑
   final _storageService = StorageService();
@@ -436,18 +438,25 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   /// 加载 Apple 登录状态（仅 iOS）
   Future<void> _loadAppleSignInStatus() async {
+    if (mounted) setState(() => _isAppleStatusLoading = true);
     try {
       final userId = _storageService.getUserId();
-      if (userId == null || userId.isEmpty) return;
+      if (userId == null || userId.isEmpty) {
+        if (mounted) setState(() => _isAppleStatusLoading = false);
+        return;
+      }
       final response = await _apiService.getAppleBindingStatus(userId);
       if (response['success'] == true && response['data'] != null) {
         final data = response['data'];
         final isBound = data['isBound'] == true;
         final email = data['apple_account'] as String?;
+        final appleId = data['apple_id'] as String?;
         if (mounted) {
           setState(() {
             _isAppleSignedIn = isBound;
             _boundAppleEmail = isBound ? email : null;
+            _boundAppleId = isBound ? appleId : null;
+            _isAppleStatusLoading = false;
           });
         }
         // 恢复 apple_id 到本地缓存（App 重装后 SharedPreferences 被清空）
@@ -464,6 +473,17 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       }
     } catch (e) {
       print('⚠️ 加载 Apple 登录状态失败: $e');
+      // 网络失败时回退到本地缓存
+      final cachedAppleId = _storageService.getAppleId();
+      if (mounted) {
+        setState(() {
+          if (cachedAppleId != null && cachedAppleId.isNotEmpty) {
+            _isAppleSignedIn = true;
+            _boundAppleId = cachedAppleId;
+          }
+          _isAppleStatusLoading = false;
+        });
+      }
     }
   }
 
@@ -833,12 +853,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   iconColor: _isAppleSignedIn ? const Color(0xFF4CAF50) : AppColors.primary,
                   title: _isAppleSignedIn ? 'Apple Account' : 'Sign In with Apple',
                   subtitle: _isAppleSignedIn
-                      ? (_boundAppleEmail ?? 'Bound')
+                      ? (_boundAppleEmail ?? (_boundAppleId != null ? 'Linked ···${_boundAppleId!.substring(_boundAppleId!.length > 4 ? _boundAppleId!.length - 4 : 0)}' : 'Bound'))
                       : 'Not Connected',
-                  trailing: _isAppleSignedIn
-                      ? Icon(Icons.lock, color: AppColors.textSecondary, size: 20)
-                      : null,
+                  trailing: _isAppleStatusLoading
+                      ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textSecondary))
+                      : (_isAppleSignedIn
+                          ? Icon(Icons.lock, color: AppColors.textSecondary, size: 20)
+                          : null),
                   onTap: () {
+                    if (_isAppleStatusLoading) return; // 加载中禁止点击，防止竞态条件触发绑定流程
                     if (_isAppleSignedIn) {
                       _showAppleAlreadyBoundDialog();
                     } else {
@@ -1532,11 +1555,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           await _googleSignIn.signOut();
           
           if (mounted) {
+            // 提取真实错误信息（去掉 "Exception: " 前缀）
+            String errorMsg = apiError.toString();
+            if (errorMsg.startsWith('Exception: ')) {
+              errorMsg = errorMsg.substring('Exception: '.length);
+            }
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Failed to switch account. Please try again.'),
+                content: Text(errorMsg),
                 backgroundColor: Colors.red.shade700,
-                duration: const Duration(seconds: 3),
+                duration: const Duration(seconds: 4),
               ),
             );
           }
@@ -1618,10 +1646,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         if (mounted) Navigator.of(context).pop(); // 关闭加载
 
         if (response['success'] == true) {
+          // 绑定成功后立即将 apple_id 存入本地缓存，确保提现时不需要再走服务器验证
+          await _storageService.saveAppleId(appleId);
           if (mounted) {
             setState(() {
               _isAppleSignedIn = true;
               _boundAppleEmail = appleEmail;
+              _boundAppleId = appleId;
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -1632,15 +1663,68 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             );
           }
         } else {
-          final msg = response['message'] ?? response['error'] ?? 'Failed to link Apple account';
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(msg),
-                backgroundColor: Colors.red.shade700,
-                duration: const Duration(seconds: 4),
-              ),
+          final errStr = (response['error'] ?? '').toString();
+          // Apple ID 已绑定到另一个账号（用户重装 App 的迁移场景）
+          // 调用 appleLoginOrCreate 切换到已有 Apple 账号
+          if (errStr.contains('already linked to another user')) {
+            print('🔄 Apple ID 已绑定其他账号，尝试切换到已有 Apple 账号...');
+            final switchResp = await apiService.appleLoginOrCreate(
+              appleId: appleId,
+              appleAccount: appleEmail,
+              identityToken: credential.identityToken,
             );
+            if (switchResp['success'] == true) {
+              final data = switchResp['data'] ?? switchResp;
+              final newUserId = data['user_id']?.toString() ?? data['userId']?.toString();
+              final newToken  = data['token']?.toString();
+              if (newUserId != null && newUserId.isNotEmpty) {
+                await _storageService.saveUserId(newUserId);
+              }
+              if (newToken != null && newToken.isNotEmpty) {
+                await _storageService.saveAuthToken(newToken);
+              }
+              await _storageService.saveAppleId(appleId);
+              if (appleEmail != null && appleEmail.isNotEmpty) {
+                await _storageService.saveAppleAccount(appleEmail);
+              }
+              if (mounted) {
+                setState(() {
+                  _isAppleSignedIn = true;
+                  _boundAppleEmail = appleEmail;
+                  _boundAppleId = appleId;
+                  if (newUserId != null) _userId = newUserId;
+                });
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Apple account linked successfully!'),
+                    backgroundColor: const Color(0xFF4CAF50),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            } else {
+              final msg = switchResp['message'] ?? switchResp['error'] ?? 'Failed to link Apple account';
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(msg.toString()),
+                    backgroundColor: Colors.red.shade700,
+                    duration: const Duration(seconds: 4),
+                  ),
+                );
+              }
+            }
+          } else {
+            final msg = response['message'] ?? response['error'] ?? 'Failed to link Apple account';
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(msg.toString()),
+                  backgroundColor: Colors.red.shade700,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
           }
         }
       } catch (apiError) {

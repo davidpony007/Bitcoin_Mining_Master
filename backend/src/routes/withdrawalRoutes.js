@@ -125,8 +125,11 @@ router.post('/request', authenticateToken, async (req, res) => {
     }
 
     const withdrawAmount = parseFloat(parseFloat(amount).toFixed(8));
+    const withdrawAmountStr = parseFloat(amount).toFixed(18);           // exact string for DB (avoids IEEE 754 float noise)
     const fee = parseFloat(parseFloat(networkFee || 0).toFixed(8));
+    const feeStr = parseFloat(networkFee || 0).toFixed(18);              // exact string for DB
     const receivedAmount = parseFloat((withdrawAmount - fee).toFixed(8));
+    const receivedAmountStr = (withdrawAmount - fee).toFixed(18);        // exact string for DB
 
     // 2. 验证金额
     const MINIMUM_WITHDRAWAL = 0.00002200; // 与客户端 _minimumAmount 保持一致
@@ -165,10 +168,14 @@ router.post('/request', authenticateToken, async (req, res) => {
 
     // 4. 验证用户账号绑定状态（必须绑定 Google 或 Apple 账号才能提现）
     const [userInfoRows] = await sequelize.query(
-      'SELECT google_account, apple_account FROM user_information WHERE user_id = ? LIMIT 1',
+      'SELECT google_account, apple_account, apple_id FROM user_information WHERE user_id = ? LIMIT 1',
       { replacements: [userId], transaction }
     );
-    if (!userInfoRows.length || (!userInfoRows[0].google_account && !userInfoRows[0].apple_account)) {
+    if (!userInfoRows.length || (
+      !userInfoRows[0].google_account &&
+      !userInfoRows[0].apple_account &&
+      !userInfoRows[0].apple_id
+    )) {
       await transaction.rollback();
       return res.status(403).json({
         success: false,
@@ -221,7 +228,7 @@ router.post('/request', authenticateToken, async (req, res) => {
     // 7. 扣除用户余额
     await sequelize.query(
       'UPDATE user_status SET current_bitcoin_balance = current_bitcoin_balance - ? WHERE user_id = ?',
-      { replacements: [withdrawAmount, userId], transaction }
+      { replacements: [withdrawAmountStr, userId], transaction }
     );
 
     // 8. 创建提现记录（使用原生SQL避免Sequelize验证问题）
@@ -230,13 +237,14 @@ router.post('/request', authenticateToken, async (req, res) => {
       `INSERT INTO withdrawal_records 
        (user_id, email, wallet_address, binance_uid, withdrawal_request_amount, network_fee, received_amount, withdrawal_status, google_account, apple_account, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW())`,
-      { replacements: [userId, email, walletAddress, isBinanceUID ? walletAddress : null, withdrawAmount, fee, receivedAmount, googleAccount || null, appleAccount || null], transaction }
+      { replacements: [userId, email, walletAddress, isBinanceUID ? walletAddress : null, withdrawAmountStr, feeStr, receivedAmountStr, googleAccount || null, appleAccount || null], transaction }
     );
     
     const withdrawalId = insertResult;
 
     // 9. 记录比特币交易（提现）
     const newBalanceAfterWithdraw = parseFloat((currentBalance - withdrawAmount).toFixed(8));
+    const newBalanceAfterWithdrawStr = (currentBalance - parseFloat(withdrawAmountStr)).toFixed(18); // exact string for DB
     const txDescription = isBinanceUID
       ? `Withdrawal to Binance UID: ${walletAddress}`
       : `Withdrawal to ${walletAddress.substring(0, 10)}...${walletAddress.substring(walletAddress.length - 6)} (${network || 'BEP20'})`;
@@ -248,8 +256,8 @@ router.post('/request', authenticateToken, async (req, res) => {
       {
         replacements: [
           userId,
-          withdrawAmount,
-          newBalanceAfterWithdraw,
+          withdrawAmountStr,
+          newBalanceAfterWithdrawStr,
           txDescription
         ],
         transaction

@@ -65,16 +65,15 @@ class AdMobService {
             _isAdLoading = false;
             onAdLoaded?.call();
 
-            // ad_impression：广告产生收益时上报金额（使 Firebase Revenue 报表有数据）
-            // onPaidEvent 在 google_mobile_ads v5.x 的签名：(Ad, double, PrecisionType, String)
+            // onPaidEvent：广告产生收益时上报，含 user_id，便于 BigQuery 按用户分析
+            // valueMicros 单位为百万分之一美元，precision 表示金额精度
             _rewardedAd?.onPaidEvent = (Ad ad, double valueMicros, PrecisionType precision, String currencyCode) {
-              AnalyticsService.instance.logCustomEvent('ad_impression', {
-                'ad_unit_id': ad.adUnitId,
-                'ad_format': 'rewarded',
-                'currency': currencyCode,
-                'value': valueMicros / 1000000.0,
-                'precision': precision.index,
-              });
+              AnalyticsService.instance.logAdRevenue(
+                valueMicros: valueMicros,
+                precision: precision.name,
+                currencyCode: currencyCode,
+                adUnitId: ad.adUnitId,
+              );
             };
             // fullScreenContentCallback 在 showRewardedAd() 中按需绑定（含 Completer 引用）
           },

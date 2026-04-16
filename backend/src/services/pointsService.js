@@ -263,7 +263,7 @@ class PointsService {
    * 扣除用户积分
    */
   static async deductPoints(userId, points, pointsType, description = '', relatedUserId = null) {
-    const connection = await db.getConnection();
+    const connection = await pool.getConnection();
 
     try {
       await connection.beginTransaction();

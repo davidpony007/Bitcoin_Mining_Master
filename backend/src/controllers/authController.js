@@ -2144,8 +2144,13 @@ exports.bindAppleAccount = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    // 该用户已绑定 Apple 账号，不可换绑
+    // 该用户已绑定 Apple 账号
     if (user.apple_id && user.apple_id.trim() !== '') {
+      // 若绑定的是同一个 apple_id，幂等返回成功（重装 App 重新绑定的场景）
+      if (user.apple_id.trim() === apple_id.trim()) {
+        console.log(`✅ Apple 账号已绑定（幂等）: ${user_id} -> ${apple_id}`);
+        return res.json({ success: true, message: 'Apple account already linked', data: user });
+      }
       return res.status(400).json({
         success: false,
         error: 'Apple account already bound, cannot be changed',
