@@ -53,9 +53,10 @@ interface DailyRow {
 const DataCenter: React.FC = () => {
   const [data, setData] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const utcToday = new Date().toISOString().slice(0, 10);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs().subtract(7, 'day'),
-    dayjs(),
+    dayjs(utcToday).subtract(7, 'day'),
+    dayjs(utcToday),
   ]);
   const [platform, setPlatform] = useState('all');
 
@@ -84,7 +85,8 @@ const DataCenter: React.FC = () => {
     { title: '续期金额', dataIndex: 'renewalAmount', key: 'renewalAmount', width: 110,
       render: (v: number) => `$${(Number(v) || 0).toFixed(2)}` },
     { title: '广告观看量', dataIndex: 'adViews', key: 'adViews', width: 110 },
-    { title: '广告奖励积分', dataIndex: 'adRewards', key: 'adRewards', width: 120 },
+    { title: '广告奖励积分', dataIndex: 'adRewards', key: 'adRewards', width: 120,
+      render: (v: number) => Number(v) || 0 },
     { title: '提现单数', dataIndex: 'withdrawals', key: 'withdrawals', width: 100 },
     { title: 'BTC提现成功总数量', dataIndex: 'withdrawalBtcAmount', key: 'withdrawalBtcAmount', width: 160,
       render: (v: number) => (Number(v) || 0).toFixed(8) },

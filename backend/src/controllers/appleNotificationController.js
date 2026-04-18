@@ -134,6 +134,28 @@ exports.handleNotification = async (req, res) => {
               { contract_end_time: newExpiry, is_cancelled: 0 },
               { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
             );
+            // 补录续订订单（避免重复：同一 transaction_id 只记录一次）
+            const newTxId = txInfo?.transactionId || txInfo?.transaction_id;
+            if (newTxId) {
+              const already = await UserOrder.findOne({ where: { payment_gateway_id: newTxId } });
+              if (!already) {
+                await UserOrder.create({
+                  user_id: order.user_id,
+                  email: order.email,
+                  apple_account: order.apple_account || null,
+                  product_id: PRODUCT_MAP[product_id] || order.product_id,
+                  product_name: order.product_name,
+                  product_price: order.product_price,
+                  hashrate: order.hashrate,
+                  order_creation_time: new Date(),
+                  payment_time: new Date(),
+                  currency_type: 'USD',
+                  payment_gateway_id: newTxId,
+                  payment_network_id: original_transaction_id,
+                  order_status: 'renewing',
+                });
+              }
+            }
             console.log(`✅ [AppleNotif V2] 续订延期: origTx=${original_transaction_id} newExpiry=${newExpiry.toISOString()}`);
           }
         }

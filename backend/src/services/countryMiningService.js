@@ -16,6 +16,7 @@
 
 const CountryMiningConfig = require('../models/countryMiningConfig');
 const redisClient = require('../config/redis');
+const pool = require('../config/database_native');
 
 class CountryMiningService {
   /**
@@ -157,20 +158,24 @@ class CountryMiningService {
 
       // 同步 user_information 中该国家所有用户的 country_multiplier
       // realtimeBalanceService 直接读 user_information.country_multiplier，必须保持一致
-      const [, syncedUsers] = await CountryMiningConfig.sequelize.query(
-        `UPDATE user_information SET country_multiplier = ? WHERE country_code = ?`,
-        {
-          replacements: [multiplier, code],
-          type: CountryMiningConfig.sequelize.QueryTypes.UPDATE
-        }
-      );
-      console.log(`🔄 [国家倍率同步] ${code}: 倍率更新为 ${multiplier}x，已同步 ${syncedUsers ?? 0} 个用户`);
+      const conn = await pool.getConnection();
+      let syncedCount = 0;
+      try {
+        const [syncResult] = await conn.query(
+          `UPDATE user_information SET country_multiplier = ? WHERE country_code = ?`,
+          [multiplier, code]
+        );
+        syncedCount = syncResult.affectedRows ?? 0;
+      } finally {
+        conn.release();
+      }
+      console.log(`🔄 [国家倍率同步] ${code}: 倍率更新为 ${multiplier}x，已同步 ${syncedCount} 个用户`);
 
       return {
         success: true,
         countryCode: code,
         newMultiplier: multiplier,
-        syncedUsers: syncedUsers ?? 0,
+        syncedUsers: syncedCount,
         message: '更新成功'
       };
 

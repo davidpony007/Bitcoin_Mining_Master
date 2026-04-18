@@ -53,7 +53,7 @@ const withdrawalLimiter = rateLimit({
     code: 'WITHDRAWAL_RATE_LIMIT_EXCEEDED'
   },
   // 管理员操作路由不受限流约束
-  skip: (req) => req.path.startsWith('/admin/')
+  skip: (req) => req.path.startsWith('/admin/') || req.path.startsWith('/approve/') || req.path.startsWith('/reject/')
 });
 
 /**

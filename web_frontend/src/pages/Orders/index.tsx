@@ -44,10 +44,11 @@ interface OrderRow {
   payment_time: string | null;
   currency_type: string;
   country_code: string | null;
+  country_name_cn: string | null;  // 来自 user_information 的中文国家名
   payment_gateway_id: string;
   payment_network_id: string;
-  sub_seq: number;   // 该用户该产品第几次订阅（1=首购）
-  user_seq: number;  // 该用户第几笔订单总
+  sub_seq: number | string;   // 该用户该产品第几次订阅（1=首购）
+  user_seq: number | string;  // 该用户第几笔订单总
 }
 
 const PRODUCTS = [
@@ -78,11 +79,13 @@ const Orders: React.FC = () => {
   const [total, setTotal]           = useState(0);
   const [page, setPage]             = useState(1);
   const [pageSize, setPageSize]     = useState(10);
-  const [uid, setUid]               = useState('');
+  const [searchKw, setSearchKw]     = useState('');        // 统一搜索：user_id / 订单号 / 流水号
   const [platform, setPlatform]     = useState('');
   const [orderType, setOrderType]   = useState('');
-  const [startDate, setStartDate]   = useState<dayjs.Dayjs>(dayjs().subtract(6, 'day'));
-  const [endDate, setEndDate]       = useState<dayjs.Dayjs>(dayjs());
+  const [productNameFilter, setProductNameFilter] = useState('');  // 标题筛选
+  const [countryFilter, setCountryFilter]         = useState('');  // 国家筛选
+  const [startDate, setStartDate]   = useState<dayjs.Dayjs>(() => dayjs(new Date().toISOString().slice(0, 10)).subtract(6, 'day'));
+  const [endDate, setEndDate]       = useState<dayjs.Dayjs>(() => dayjs(new Date().toISOString().slice(0, 10)));
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detailVisible, setDetailVisible] = useState(false);
   const [addVisible, setAddVisible]       = useState(false);
@@ -100,17 +103,20 @@ const Orders: React.FC = () => {
   };
 
   const fetchList = useCallback(async (
-    p: number, ps: number, u: string, pl: string, sd: string, ed: string, ot: string
+    p: number, ps: number, kw: string, pl: string, sd: string, ed: string, ot: string,
+    pn: string, ct: string
   ) => {
     setLoading(true);
     try {
       const res: any = await ordersApi.list({
         page: p, limit: ps,
-        uid: u || undefined,
+        search: kw || undefined,
         platform: pl || undefined,
         startDate: sd || undefined,
         endDate: ed || undefined,
         orderType: ot || undefined,
+        productName: pn || undefined,
+        country: ct || undefined,
       });
       if (res?.success) { setList(res.data.list); setTotal(res.data.total); }
     } catch { message.error('加载订单失败'); }
@@ -118,12 +124,12 @@ const Orders: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchList(1, 10, '', '', dayjs().subtract(6, 'day').format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD'), '');
+    fetchList(1, 10, '', '', new Date(Date.now() - 6*86400000).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), '', '', '');
   }, []);
 
   const doSearch = () => {
     setPage(1); setSelectedIds([]);
-    fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
+    fetchList(1, pageSize, searchKw, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType, productNameFilter, countryFilter);
   };
 
   const handleBulkDelete = () => {
@@ -136,7 +142,7 @@ const Orders: React.FC = () => {
           await ordersApi.bulkDelete(selectedIds);
           message.success('删除成功');
           setSelectedIds([]);
-          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
+          fetchList(page, pageSize, searchKw, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType, productNameFilter, countryFilter);
         } catch { message.error('删除失败'); }
       },
     });
@@ -149,7 +155,7 @@ const Orders: React.FC = () => {
         try {
           await ordersApi.deleteOne(id);
           message.success('删除成功');
-          fetchList(page, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
+          fetchList(page, pageSize, searchKw, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType, productNameFilter, countryFilter);
         } catch { message.error('删除失败'); }
       },
     });
@@ -167,7 +173,7 @@ const Orders: React.FC = () => {
       message.success('添加成功');
       setAddVisible(false);
       addForm.resetFields();
-      fetchList(1, pageSize, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
+      fetchList(1, pageSize, searchKw, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType, productNameFilter, countryFilter);
     } catch { message.error('添加失败'); }
   };
 
@@ -185,17 +191,27 @@ const Orders: React.FC = () => {
   };
 
   const renderSubType = (record: OrderRow) => {
-    const { sub_seq, user_seq } = record;
-    if (sub_seq === 1 && user_seq === 1)
+    const sub = Number(record.sub_seq);
+    const usr = Number(record.user_seq);
+    if (sub === 1 && usr === 1)
       return <Tag color="green">&#x1F195;新用户首购</Tag>;
-    if (sub_seq === 1)
+    if (sub === 1)
       return <Tag color="blue">&#x1F504;跨产品首购</Tag>;
-    return <Tag color="orange">&#x267B;续订 #{sub_seq}</Tag>;
+    return <Tag color="orange">&#x267B;续订 #{sub}</Tag>;
   };
 
   const baseColumns: ColumnsType<OrderRow> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 90, fixed: 'left' },
     { title: '用户id', dataIndex: 'user_id', key: 'user_id', width: 110 },
+    {
+      title: '平台', key: 'platform', width: 80,
+      render: (_: any, r: OrderRow) => {
+        const isAndroid = r.payment_gateway_id && r.payment_gateway_id.startsWith('GPA.');
+        return isAndroid
+          ? <Tag color="green">Android</Tag>
+          : <Tag color="blue">iOS</Tag>;
+      },
+    },
     { title: '标题', dataIndex: 'product_name', key: 'product_name', width: 180 },
     {
       title: '订阅类型', key: 'sub_type', width: 130,
@@ -206,7 +222,10 @@ const Orders: React.FC = () => {
       title: '实付金额', dataIndex: 'product_price', key: 'product_price', width: 90,
       render: (v: string) => <span style={{ color: '#faad14', fontWeight: 600 }}>{v}</span>,
     },
-    { title: '国家', dataIndex: 'country_code', key: 'country_code', width: 70, render: (v: string | null) => v || '-' },
+    {
+      title: '国家', key: 'country_code', width: 90,
+      render: (_: any, r: OrderRow) => r.country_name_cn || r.country_code || '-',
+    },
     { title: '流水号', dataIndex: 'payment_gateway_id', key: 'payment_gateway_id', width: 200, ellipsis: true },
     { title: '支付时间', dataIndex: 'payment_time', key: 'payment_time', width: 160, render: fmtTime },
     { title: '创建时间', dataIndex: 'order_creation_time', key: 'order_creation_time', width: 160, render: fmtTime },
@@ -240,8 +259,17 @@ const Orders: React.FC = () => {
           format="YYYY-MM-DD" style={{ width: 130 }} allowClear={false} />
         <DatePicker value={endDate} onChange={d => d && setEndDate(d)}
           format="YYYY-MM-DD" style={{ width: 130 }} allowClear={false} />
-        <Input placeholder="请输入uid/show_id" value={uid} onChange={e => setUid(e.target.value)}
-          onPressEnter={doSearch} style={{ width: 200 }} allowClear />
+        <Input placeholder="用户ID / 订单号 / 流水号" value={searchKw} onChange={e => setSearchKw(e.target.value)}
+          onPressEnter={doSearch} style={{ width: 220 }} allowClear />
+        <span>标题：</span>
+        <Select value={productNameFilter || '全部'}
+          onChange={v => setProductNameFilter(v === '全部' ? '' : v)} style={{ width: 140 }}>
+          <Option value="全部">全部</Option>
+          {PRODUCTS.map(p => <Option key={p.name} value={p.name}>{p.name}</Option>)}
+        </Select>
+        <span>国家：</span>
+        <Input placeholder="如 CN / 澳大利亚" value={countryFilter} onChange={e => setCountryFilter(e.target.value)}
+          onPressEnter={doSearch} style={{ width: 130 }} allowClear />
         <span>平台：</span>
         <Select value={platform || '全部'} onChange={v => setPlatform(v === '全部' ? '' : v)} style={{ width: 100 }}>
           <Option value="全部">全部</Option>
@@ -249,10 +277,11 @@ const Orders: React.FC = () => {
           <Option value="Android">Android</Option>
         </Select>
         <span>订阅：</span>
-        <Select value={orderType || '全部'} onChange={v => setOrderType(v === '全部' ? '' : v)} style={{ width: 110 }}>
+        <Select value={orderType || '全部'} onChange={v => setOrderType(v === '全部' ? '' : v)} style={{ width: 130 }}>
           <Option value="全部">全部</Option>
-          <Option value="first">首购</Option>
-          <Option value="renewal">续订</Option>
+          <Option value="new_user_first">🆕 新用户首购</Option>
+          <Option value="cross_product">🔄 跨产品首购</Option>
+          <Option value="renewal">♻ 续订</Option>
         </Select>
         <Button type="primary" icon={<SearchOutlined />} onClick={doSearch}
           style={{ background: '#0dab9a', borderColor: '#0dab9a' }} />
@@ -291,7 +320,7 @@ const Orders: React.FC = () => {
           showTotal: t => `共 ${t} 条`,
           onChange: (p, ps) => {
             setPage(p); setPageSize(ps); setSelectedIds([]);
-            fetchList(p, ps, uid, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType);
+            fetchList(p, ps, searchKw, platform, startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), orderType, productNameFilter, countryFilter);
           },
         }}
       />

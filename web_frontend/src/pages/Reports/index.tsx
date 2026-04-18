@@ -249,7 +249,7 @@ const Reports: React.FC = () => {
           <Col xs={24} md={10}>
             <RangePicker 
               style={{ width: '100%' }}
-              defaultValue={[dayjs().subtract(30, 'day'), dayjs()]}
+              defaultValue={[dayjs(new Date().toISOString().slice(0, 10)).subtract(30, 'day'), dayjs(new Date().toISOString().slice(0, 10))]}
               format="YYYY-MM-DD"
             />
           </Col>

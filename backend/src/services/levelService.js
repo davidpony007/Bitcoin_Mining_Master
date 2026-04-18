@@ -254,8 +254,12 @@ class LevelService {
    * 公式：每秒奖励 BTC = 基础奖励 × 国家系数 × 矿工等级速率系数 × 特殊加成系数
    * 注意：特殊加成系数（1.36倍）只在签到合约中使用，其他合约不使用
    */
-  static async calculateMiningSpeed(userId, baseSpeed = 0.000000000000139) {
+  static async calculateMiningSpeed(userId, baseSpeed = null) {
     try {
+      // 动态读取基础速率（优先 Redis，回退 MySQL）
+      const MiningConfigService = require('./miningConfigService');
+      const effectiveBase = (baseSpeed !== null && baseSpeed > 0) ? baseSpeed : await MiningConfigService.getBaseHashrate();
+
       // 1. 获取用户等级倍数（矿工等级速率系数）
       const levelInfo = await this.getUserLevel(userId);
       const levelMultiplier = levelInfo.speedMultiplier;
@@ -293,13 +297,13 @@ class LevelService {
 
       // 4. 计算速度（不包含签到加成，签到加成只在签到合约中单独应用）
       // 基础速度 × 等级系数 × 国家系数
-      const finalSpeedWithoutBonus = baseSpeed * levelMultiplier * countryMultiplier;
+      const finalSpeedWithoutBonus = effectiveBase * levelMultiplier * countryMultiplier;
       
       // 5. 计算包含签到加成的速度（仅用于签到合约）
       const finalSpeedWithBonus = finalSpeedWithoutBonus * dailyBonusMultiplier;
 
       return {
-        baseSpeed,
+        baseSpeed: effectiveBase,
         baseHashrateGhs: 5.5,  // 基础算力 5.5 Gh/s
         levelMultiplier,       // 矿工等级速率系数
         countryMultiplier,     // 国家系数

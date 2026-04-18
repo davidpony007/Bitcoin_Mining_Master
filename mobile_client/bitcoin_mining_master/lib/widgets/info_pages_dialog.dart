@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 
-/// 三合一说明弹窗：Miner Level System / Points Guide / Rebate System Info
+/// 四合一说明弹窗：Miner Level System / Points Guide / Rebate System Info / Withdrawal Network
 /// 支持左右滑动切换，默认打开第一页
 ///
 /// 用法：
 ///   InfoPagesDialog.show(context);                    // 从 Miner Level 开始
 ///   InfoPagesDialog.show(context, initialPage: 1);    // 从 Points Guide 开始
 ///   InfoPagesDialog.show(context, initialPage: 2);    // 从 Rebate System 开始
+///   InfoPagesDialog.show(context, initialPage: 3);    // 从 Withdrawal Network 开始
 class InfoPagesDialog extends StatefulWidget {
   final int initialPage;
   const InfoPagesDialog({super.key, this.initialPage = 0});
@@ -31,12 +32,14 @@ class _InfoPagesDialogState extends State<InfoPagesDialog> {
     'Miner Level System',
     'Points Guide',
     'Rebate System Info',
+    'Withdrawal Network',
   ];
 
   static const _icons = [
     Icons.stars,
     Icons.lightbulb_outline,
     Icons.help_outline,
+    Icons.account_balance_wallet_outlined,
   ];
 
   @override
@@ -107,14 +110,14 @@ class _InfoPagesDialogState extends State<InfoPagesDialog> {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
               child: Row(
-                children: List.generate(3, (i) {
+                children: List.generate(4, (i) {
                   final active = i == _currentPage;
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => _goTo(i),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
-                        margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
+                        margin: EdgeInsets.only(right: i < 3 ? 6 : 0),
                         height: 4,
                         decoration: BoxDecoration(
                           color: active
@@ -138,6 +141,7 @@ class _InfoPagesDialogState extends State<InfoPagesDialog> {
                   _MinerLevelPage(),
                   _PointsGuidePage(),
                   _RebateSystemPage(),
+                  _WithdrawalNetworkPage(),
                 ],
               ),
             ),
@@ -157,7 +161,7 @@ class _InfoPagesDialogState extends State<InfoPagesDialog> {
                   Expanded(
                     child: Center(
                       child: Text(
-                        '${_currentPage + 1} / 3',
+                        '${_currentPage + 1} / 4',
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 13,
@@ -166,7 +170,7 @@ class _InfoPagesDialogState extends State<InfoPagesDialog> {
                     ),
                   ),
                   // Next arrow (hidden on last page)
-                  if (_currentPage < 2)
+                  if (_currentPage < 3)
                     _NavButton(
                       icon: Icons.chevron_right,
                       enabled: true,
@@ -532,6 +536,173 @@ class _RebateSystemPage extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page 3 – Withdrawal Network
+// ─────────────────────────────────────────────────────────────────────────────
+class _WithdrawalNetworkPage extends StatelessWidget {
+  const _WithdrawalNetworkPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Choose the right network to receive your BTC. Wrong network selection may result in permanent loss of funds.',
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _networkItem(
+            icon: Icons.account_circle_outlined,
+            badge: 'DEFAULT',
+            badgeColor: AppColors.primary,
+            title: 'Binance UID',
+            description:
+                'Transfer BTC directly to your Binance account using your Binance UID. No wallet address needed. Zero network fee. Recommended for Binance users.',
+          ),
+          const SizedBox(height: 12),
+          _networkItem(
+            icon: Icons.account_balance_wallet_outlined,
+            badge: 'BEP20',
+            badgeColor: const Color(0xFFF0A500),
+            title: 'BNB Smart Chain (BEP20)',
+            description:
+                'Withdraw BTC to any BEP20-compatible wallet (e.g. Trust Wallet, MetaMask). The wallet address must start with "0x" and be exactly 42 characters. A small network fee of 0.00000028 BTC applies.',
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: AppColors.primary.withOpacity(0.3), width: 1),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.help_outline_rounded,
+                        color: AppColors.primary, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'How to get my Binance UID?',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '① Open Binance account and go to your Profile\n'
+                  '② Your UID is displayed on the dashboard page\n'
+                  '③ Tap the UID to copy it',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _networkItem({
+    required IconData icon,
+    required String badge,
+    required Color badgeColor,
+    required String title,
+    required String description,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white10, width: 1),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: AppColors.primary, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: badgeColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(4),
+                        border:
+                            Border.all(color: badgeColor.withOpacity(0.5)),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          color: badgeColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

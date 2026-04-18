@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Table, Button, Space, Tag, Input, Select, Row, Col,
   Statistic, Modal, Descriptions, message, Badge, Tooltip, Form, Typography,
-  Alert, Spin,
+  Alert, Spin, DatePicker,
 } from 'antd';
+import dayjs from 'dayjs';
 import {
   WalletOutlined, CheckCircleOutlined, CloseCircleOutlined,
   ClockCircleOutlined, EyeOutlined, ReloadOutlined, SearchOutlined,
@@ -81,6 +82,13 @@ const Withdrawal: React.FC = () => {
   const [bulkApproving, setBulkApproving] = useState(false);
   const [bulkRejectVisible, setBulkRejectVisible] = useState(false);
   const [bulkRejectForm] = Form.useForm();
+
+  // 全局统计（已成功总BTC，不受筛选影响）
+  const [globalStats, setGlobalStats] = useState<{ paidAmount: number } | null>(null);
+
+  // 时间范围筛选
+  const [startDate, setStartDate] = useState<dayjs.Dayjs | null>(null);
+  const [endDate,   setEndDate]   = useState<dayjs.Dayjs | null>(null);
 
   // 币安批量打款
   const [payoutPreviewVisible, setPayoutPreviewVisible] = useState(false);
@@ -170,22 +178,30 @@ const Withdrawal: React.FC = () => {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await withdrawalAPI.adminList({
-        status: statusFilter !== 'all' ? statusFilter : undefined,
-        search: searchText || undefined,
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-      });
-      setRecords(res.data?.withdrawals ?? []);
-      setTotal(res.data?.total ?? 0);
+      const [listRes, statsRes]: any[] = await Promise.all([
+        withdrawalAPI.adminList({
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          search: searchText || undefined,
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
+          startDate: startDate ? startDate.format('YYYY-MM-DD') : undefined,
+          endDate:   endDate   ? endDate.format('YYYY-MM-DD')   : undefined,
+        }),
+        withdrawalAPI.stats(),
+      ]);
+      setRecords(listRes.data?.withdrawals ?? []);
+      setTotal(listRes.data?.total ?? 0);
+      if (statsRes?.success) setGlobalStats({ paidAmount: statsRes.data.paidAmount ?? 0 });
     } catch {
       // request.ts 拦截器已弹错误提示
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, searchText, page, pageSize]);
+  }, [statusFilter, searchText, page, pageSize, startDate, endDate]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
+
+  // 移除旧的单独 stats useEffect（已合并进 fetchList）
 
   // ── 同意提现 ──
   const handleApprove = async (record: WithdrawalRecord) => {
@@ -442,7 +458,7 @@ const Withdrawal: React.FC = () => {
 
       {/* 总 BTC 条幅 */}
       <Card style={{ marginBottom: 16, background: '#fffbe6', border: '1px solid #ffe58f' }}>
-        <Row align="middle" gutter={16}>
+        <Row align="middle" gutter={32}>
           <Col>
             <DollarOutlined style={{ fontSize: 28, color: '#fa8c16' }} />
           </Col>
@@ -452,12 +468,18 @@ const Withdrawal: React.FC = () => {
               {totalBTC.toFixed(8)} BTC
             </div>
           </Col>
+          <Col style={{ borderLeft: '1px solid #ffe58f', paddingLeft: 32 }}>
+            <div style={{ fontSize: 13, color: '#8c8c8c' }}>已成功提现总 BTC</div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: '#52c41a', fontFamily: 'monospace' }}>
+              {globalStats ? globalStats.paidAmount.toFixed(8) : '—'} BTC
+            </div>
+          </Col>
         </Row>
       </Card>
 
       {/* 筛选工具栏 */}
       <Card style={{ marginBottom: 16 }}>
-        <Row gutter={12} align="middle">
+        <Row gutter={[12, 8]} align="middle">
           <Col flex="300px">
             <Input
               allowClear
@@ -478,6 +500,25 @@ const Withdrawal: React.FC = () => {
               <Option value="success">已完成</Option>
               <Option value="rejected">已拒绝</Option>
             </Select>
+          </Col>
+          <Col>
+            <DatePicker
+              placeholder="申请开始日期"
+              value={startDate}
+              onChange={d => { setStartDate(d); setPage(1); }}
+              format="YYYY-MM-DD"
+              allowClear
+            />
+          </Col>
+          <Col style={{ padding: '0 2px', color: '#888' }}>~</Col>
+          <Col>
+            <DatePicker
+              placeholder="申请结束日期"
+              value={endDate}
+              onChange={d => { setEndDate(d); setPage(1); }}
+              format="YYYY-MM-DD"
+              allowClear
+            />
           </Col>
           <Col>
             <Button icon={<ReloadOutlined />} onClick={() => fetchList()}>

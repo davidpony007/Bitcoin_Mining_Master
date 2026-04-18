@@ -8,6 +8,7 @@ const { Op } = require('sequelize');
 const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
+const MiningConfigService = require('./miningConfigService');
 const pool = require('../config/database_native');
 
 class InvitationMiningContractService {
@@ -53,8 +54,8 @@ class InvitationMiningContractService {
         order: [['free_contract_creation_time', 'DESC']]
       });
 
-      // 3. 获取纯基础挖矿速率（不含任何倍数）
-      const BASE_HASHRATE = 0.000000000000139;
+      // 3. 获取纯基础挖矿速率（不含任何倍数，从 DB/Redis 动态读取）
+      const BASE_HASHRATE = await MiningConfigService.getBaseHashrate();
 
       let contract;
       let isNewContract = false;

@@ -1574,21 +1574,32 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       print('❌ Google登录失败: $error');
 
       if (mounted) {
-        String errorMessage = 'Failed to sign in';
-        if (error.toString().contains('DEVELOPER_ERROR') ||
-            error.toString().contains('10')) {
-          errorMessage = 'OAuth configuration error, please check Google Cloud Console settings';
-        } else if (error.toString().contains('network')) {
-          errorMessage = 'Network error, please check your connection';
-        } else if (error.toString().contains('sign_in_canceled')) {
+        final errStr = error.toString();
+        String errorMessage;
+        // 精确匹配 DEVELOPER_ERROR（ApiException code 10），避免误匹配含 "10" 的其他码
+        if (errStr.contains('DEVELOPER_ERROR') ||
+            RegExp(r'ApiException:\s*10[^0-9]|:\s*10[^0-9]').hasMatch(errStr)) {
+          errorMessage = 'OAuth configuration error (code 10). Please check Google Cloud Console settings.';
+        } else if (errStr.contains('sign_in_canceled') ||
+            errStr.contains('12501')) {
           errorMessage = 'Sign-in cancelled';
+        } else if (errStr.contains('network') ||
+            errStr.contains('7:') ||
+            errStr.contains('CONNECTION') ||
+            errStr.contains('NETWORK')) {
+          errorMessage = 'Network error. If you have a VPN enabled, please disable it and try again.';
+        } else {
+          // 显示真实错误供诊断
+          errorMessage = errStr.startsWith('Exception: ')
+              ? errStr.substring('Exception: '.length)
+              : errStr;
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMessage),
             backgroundColor: Colors.red.shade700,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 5),
           ),
         );
       }

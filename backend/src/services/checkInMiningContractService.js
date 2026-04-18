@@ -8,6 +8,7 @@ const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
 const CheckInService = require('./checkInService');
+const MiningConfigService = require('./miningConfigService');
 const redisClient = require('../config/redis');
 const { Op } = require('sequelize');
 
@@ -80,9 +81,8 @@ class CheckInMiningContractService {
         console.log(`🌍 [签到] 用户 ${userId}: 已有国家记录(${user.country_code})，跳过覆盖`);
       }
 
-      // 2. 获取纯基础挖矿速率（不含任何倍数）
-      // 基础速率：0.000000000000139 BTC/秒（500 TH/s）
-      const BASE_HASHRATE = 0.000000000000139;
+      // 2. 获取纯基础挖矿速率（不含任何倍数，从 DB/Redis 动态读取）
+      const BASE_HASHRATE = await MiningConfigService.getBaseHashrate();
 
       // 3. 创建签到挖矿合约（只存储基础速率，倍数动态应用）
       const now = new Date();

@@ -7,6 +7,7 @@ const router = express.Router();
 const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const { Op } = require('sequelize');
 const PointsService = require('../services/pointsService'); // 📌 导入积分服务
+const MiningConfigService = require('../services/miningConfigService'); // 基础挖矿速率配置
 const authenticateToken = require('../middleware/auth'); // JWT 鉴权中间件
 
 /**
@@ -285,13 +286,13 @@ router.post('/extend-contract', authenticateToken, async (req, res) => {
       if (contracts.length === 0) {
         // 没有活跃合约，创建新的合约（用户请求的小时数）
         const totalHours = Math.min(hours, MAX_HOURS);
-        
+        const BASE_HASHRATE = await MiningConfigService.getBaseHashrate();
         const [result] = await connection.query(
           `INSERT INTO free_contract_records 
-           (user_id, free_contract_type, hashrate, mining_status, free_contract_creation_time, 
+           (user_id, free_contract_type, base_hashrate, hashrate, mining_status, free_contract_creation_time, 
             free_contract_end_time)
-           VALUES (?, 'Free Ad Reward', 0.000000000000139, 'mining', NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR))`,
-          [user_id, totalHours]
+           VALUES (?, 'Free Ad Reward', ?, ?, 'mining', NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR))`,
+          [user_id, BASE_HASHRATE, BASE_HASHRATE, totalHours]
         );
         
         contractId = result.insertId;

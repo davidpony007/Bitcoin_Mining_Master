@@ -563,6 +563,7 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
             if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
           },
           body: json.encode({
+            'user_id': userId,
             'ad_type': 'REWARD_AD',
           }),
         ).timeout(

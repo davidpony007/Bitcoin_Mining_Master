@@ -48,10 +48,10 @@ const Transactions: React.FC = () => {
   const [txLoading, setTxLoading] = useState(false);
   const [txUserId, setTxUserId] = useState('');
   const [txType, setTxType] = useState('');
-  const [txDates, setTxDates] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>([
-    dayjs().subtract(2, 'day'),
-    dayjs(),
-  ]);
+  const [txDates, setTxDates] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(() => {
+    const utcToday = new Date().toISOString().slice(0, 10);
+    return [dayjs(utcToday).subtract(2, 'day'), dayjs(utcToday)];
+  });
 
   const loadTx = useCallback(async (p: number, uid: string, t: string, dates: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
     setTxLoading(true);
@@ -103,7 +103,7 @@ const Transactions: React.FC = () => {
     },
     {
       title: '时间', dataIndex: 'createdAt', width: 170,
-      render: (v: string) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-',
+      render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
   ];
 
@@ -113,10 +113,10 @@ const Transactions: React.FC = () => {
   const [rbtPage, setRbtPage] = useState(1);
   const [rbtLoading, setRbtLoading] = useState(false);
   const [rbtUserId, setRbtUserId] = useState('');
-  const [rbtDates, setRbtDates] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>([
-    dayjs().subtract(2, 'day'),
-    dayjs(),
-  ]);
+  const [rbtDates, setRbtDates] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(() => {
+    const utcToday = new Date().toISOString().slice(0, 10);
+    return [dayjs(utcToday).subtract(2, 'day'), dayjs(utcToday)];
+  });
 
   const loadRebate = useCallback(async (p: number, uid: string, dates: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
     setRbtLoading(true);
@@ -150,7 +150,7 @@ const Transactions: React.FC = () => {
     },
     {
       title: '时间', dataIndex: 'createdAt', width: 170,
-      render: (v: string) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-',
+      render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
   ];
 

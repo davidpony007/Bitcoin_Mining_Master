@@ -13,6 +13,7 @@ const FreeContractRecord = require('../models/freeContractRecord');
 const UserInformation = require('../models/userInformation');
 const InvitationRelationship = require('../models/invitationRelationship');
 const LevelService = require('./levelService');
+const MiningConfigService = require('./miningConfigService');
 
 class RefereeMiningContractService {
   /**
@@ -79,8 +80,8 @@ class RefereeMiningContractService {
         };
       }
 
-      // 4. 获取纯基础挖矿速率（不含任何倍数）
-      const BASE_HASHRATE = 0.000000000000139;
+      // 4. 获取纯基础挖矿速率（不含任何倍数，从 DB/Redis 动态读取）
+      const BASE_HASHRATE = await MiningConfigService.getBaseHashrate();
       
       // 5. 计算当前的速度信息（仅用于返回给前端显示）
       const speedInfo = await LevelService.calculateMiningSpeed(refereeId);

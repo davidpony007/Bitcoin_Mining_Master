@@ -222,8 +222,9 @@ const DailySummaryTab: React.FC = () => {
   const [data, setData] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<BtcSummary | null>(null);
-  const [startDate, setStartDate] = useState<dayjs.Dayjs>(dayjs().subtract(7, 'day'));
-  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(dayjs());
+  const utcToday = new Date().toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState<dayjs.Dayjs>(dayjs(utcToday).subtract(7, 'day'));
+  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(dayjs(utcToday));
   const [platform, setPlatform]   = useState('all');
   const [selectedRows, setSelectedRows] = useState<DailyRow[]>([]);
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
@@ -340,11 +341,11 @@ const DailySummaryTab: React.FC = () => {
           {summary && (
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
               <span>
-                <Text type="secondary">用户总剩余BTC数量：</Text><Text strong>{summary.totalBtcBalance.toFixed(18)}</Text>
+                <Text type="secondary">用户总剩余BTC数量：</Text><Text strong>{summary.totalBtcBalance.toFixed(10)}</Text>
                 &nbsp;&nbsp;<Text type="secondary">用户总剩余BTC价値：</Text><Text strong>${summary.totalBtcBalanceUsd}</Text>
               </span>
               <span>
-                <Text type="secondary">用户总提现BTC数量：</Text><Text strong>{summary.totalWithdrawn.toFixed(18)}</Text>
+                <Text type="secondary">用户总提现BTC数量：</Text><Text strong>{summary.totalWithdrawn.toFixed(10)}</Text>
                 &nbsp;&nbsp;<Text type="secondary">用户总提现BTC价値：</Text><Text strong>${summary.totalWithdrawnUsd}</Text>
               </span>
             </div>

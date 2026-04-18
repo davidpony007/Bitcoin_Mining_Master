@@ -23,58 +23,83 @@ const { requireAdmin } = require('../middleware/role');
  */
 router.get('/admin/list', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { status, search, limit = 20, offset = 0 } = req.query;
+    const { status, search, limit = 20, offset = 0, startDate, endDate } = req.query;
 
-    const where = {};
+    // 改用原生 SQL 以支持 JOIN user_information 补充 Google/Apple 账号
+      const pool = require('../config/database_native');
+    const conn = await pool.getConnection();
+    try {
+      let where = 'WHERE 1=1';
+      const params = [];
 
-    if (status && status !== 'all') {
-      where.withdrawal_status = status;
-    }
+      if (status && status !== 'all') {
+        where += ' AND wr.withdrawal_status = ?';
+        params.push(status);
+      }
+      if (search && search.trim()) {
+        const kw = `%${search.trim()}%`;
+        where += ' AND (wr.email LIKE ? OR wr.wallet_address LIKE ? OR wr.user_id LIKE ? OR wr.binance_uid LIKE ?)';
+        params.push(kw, kw, kw, kw);
+      }
+      if (startDate) {
+        where += ' AND DATE(wr.created_at) >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        where += ' AND DATE(wr.created_at) <= ?';
+        params.push(endDate);
+      }
 
-    if (search && search.trim()) {
-      where[Sequelize.Op.or] = [
-        { email:          { [Sequelize.Op.like]: `%${search.trim()}%` } },
-        { wallet_address: { [Sequelize.Op.like]: `%${search.trim()}%` } },
-        { user_id:        { [Sequelize.Op.like]: `%${search.trim()}%` } },
-      ];
-    }
+      const fromClause = `FROM withdrawal_records wr
+        LEFT JOIN user_information ui ON ui.user_id = wr.user_id`;
 
-    const { count, rows } = await WithdrawalRecord.findAndCountAll({
-      where,
-      limit:  parseInt(limit),
-      offset: parseInt(offset),
-      order:  [['id', 'DESC']],
-    });
+      const [[{ total }]] = await conn.query(
+        `SELECT COUNT(*) AS total ${fromClause} ${where}`, params
+      );
+      const [rows] = await conn.query(
+        `SELECT wr.id, wr.user_id, wr.email, wr.wallet_address, wr.binance_uid,
+                wr.withdrawal_request_amount, wr.network_fee, wr.received_amount,
+                wr.withdrawal_status, wr.reject_reason, wr.created_at, wr.updated_at,
+                COALESCE(wr.google_account, ui.google_account) AS google_account,
+                COALESCE(wr.apple_account, ui.apple_account, ui.apple_id) AS apple_account
+         ${fromClause} ${where}
+         ORDER BY wr.id DESC
+         LIMIT ? OFFSET ?`,
+        [...params, parseInt(limit), parseInt(offset)]
+      );
 
-    const withdrawals = rows.map(r => ({
-      id:             r.id,
-      userId:         r.user_id,
-      email:          r.email,
-      walletAddress:  r.wallet_address,
-      binanceUid:     r.binance_uid  || null,
-      amount:         parseFloat(r.withdrawal_request_amount),
-      networkFee:     parseFloat(r.network_fee),
-      receivedAmount: parseFloat(r.received_amount),
-      status:         r.withdrawal_status,
-      rejectReason:   r.reject_reason || null,
-      googleAccount:  r.google_account  || null,
-      appleAccount:    r.apple_account   || null,
-      createdAt:      r.created_at,
-      updatedAt:      r.updated_at      || null,
-    }));
+      const withdrawals = rows.map(r => ({
+        id:             r.id,
+        userId:         r.user_id,
+        email:          r.email,
+        walletAddress:  r.wallet_address,
+        binanceUid:     r.binance_uid  || null,
+        amount:         parseFloat(r.withdrawal_request_amount),
+        networkFee:     parseFloat(r.network_fee),
+        receivedAmount: parseFloat(r.received_amount),
+        status:         r.withdrawal_status,
+        rejectReason:   r.reject_reason || null,
+        googleAccount:  r.google_account  || null,
+        appleAccount:   r.apple_account   || null,
+        createdAt:      r.created_at,
+        updatedAt:      r.updated_at      || null,
+      }));
 
-    res.json({
-      success: true,
-      data: {
-        total: count,
-        withdrawals,
-        pagination: {
-          limit:   parseInt(limit),
-          offset:  parseInt(offset),
-          hasMore: parseInt(offset) + parseInt(limit) < count,
+      res.json({
+        success: true,
+        data: {
+          total,
+          withdrawals,
+          pagination: {
+            limit:   parseInt(limit),
+            offset:  parseInt(offset),
+            hasMore: parseInt(offset) + parseInt(limit) < total,
+          },
         },
-      },
-    });
+      });
+    } finally {
+      conn.release();
+    }
   } catch (error) {
     console.error('❌ 管理员查询提现列表失败:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch withdrawal list', error: error.message });
@@ -757,7 +782,7 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
          SUM(withdrawal_status = 'success')                 AS success,
          SUM(withdrawal_status = 'rejected')                AS rejected,
          COALESCE(SUM(withdrawal_request_amount), 0)        AS totalAmount,
-         COALESCE(SUM(CASE WHEN withdrawal_status='success' THEN received_amount ELSE 0 END), 0) AS paidAmount
+         COALESCE(SUM(CASE WHEN withdrawal_status='success' THEN withdrawal_request_amount ELSE 0 END), 0) AS paidAmount
        FROM withdrawal_records`
     );
     const s = rows[0];

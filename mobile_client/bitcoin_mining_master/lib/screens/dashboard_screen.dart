@@ -153,6 +153,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         _loadUserLevelAndNotify().then((_) => _loadPointsData());
         context.read<UserProvider>().fetchBitcoinBalance();
       });
+      // 3 秒后再重试电池加载：app 恢复时 Dio 连接池旧连接容易 connectionError，
+      // 3 秒后网络稳定，确保电池槽一定能被更新
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) _loadContractAndUpdateBatteries();
+      });
     }
   }
 
@@ -1514,8 +1519,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                               // 异步刷新余额与挖矿速率，确保 0.1s 递增立即启动
                               _refreshBalanceAfterMiningStart();
                             }
-                            // 后台刷新本页数据
+                            // 后台刷新本页数据（立即调用，但可能因 app 从后台恢复时网络未就绪而失败）
                             _loadContractAndUpdateBatteries();
+                            // 3 秒后再重试一次：从后台恢复后 Dio 连接池中的旧连接容易 connectionError，
+                            // 而 3 秒后网络通常已完全重建，确保电池槽必然得到更新
+                            Future.delayed(const Duration(seconds: 3), () {
+                              if (mounted) _loadContractAndUpdateBatteries();
+                            });
                             // 等待页面转场动画完成后再检测升级，避免弹窗被过渡动画覆盖
                             await Future.delayed(const Duration(milliseconds: 400));
                             final leveledUp = await _loadUserLevel();

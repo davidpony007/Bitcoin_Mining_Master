@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "1026466488683-oj0o8tkjdotapj219bd4d6n42eu2d93u.apps.googleusercontent.com",
+          "client_id": "1026466488683-ijn5vhvr9o24ikkljhd5r2c482udjh3g.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.cloudminingtool.bitcoin_mining_app",
-            "certificate_hash": "f95be571e0076e94fa4b9dab444728d3c2c9d5ea"
+            "certificate_hash": "e782340ce4e4b57ab0f05949d4c8097d55e9da5f"
           }
         },
         {
@@ -26,7 +26,7 @@
           "client_type": 1,
           "android_info": {
             "package_name": "com.cloudminingtool.bitcoin_mining_app",
-            "certificate_hash": "e29ddefafadff47f45034092fcff913f0bd5abac"
+            "certificate_hash": "f95be571e0076e94fa4b9dab444728d3c2c9d5ea"
           }
         },
         {

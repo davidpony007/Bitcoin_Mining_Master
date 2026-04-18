@@ -5,6 +5,7 @@ const router = express.Router(); // 创建路由实例
 const authenticateToken = require('../middleware/auth'); // JWT 认证中间件
 const { requireAdmin } = require('../middleware/role'); // 管理员权限校验中间件
 const CountryMiningService = require('../services/countryMiningService'); // 国家挖矿配置服务
+const MiningConfigService = require('../services/miningConfigService'); // 基础挖矿速率配置服务
 const pool = require('../config/database_native');
 const sequelize = require('../config/database');
 const { QueryTypes } = require('sequelize');
@@ -53,8 +54,11 @@ router.get('/dashboard/stats', authenticateToken, requireAdmin, async (req, res)
     const [[yesterdayActiveRow]] = await conn.query(
       "SELECT COUNT(*) AS cnt FROM user_status WHERE DATE(last_login_time) = ?", [yesterday]
     );
-    const [[revenueRow]] = await conn.query(
-      "SELECT COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS total FROM user_orders WHERE order_status NOT IN ('refund successful')"
+    const [[firstSubRevRow]] = await conn.query(
+      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS val FROM user_orders WHERE order_status NOT IN ('renewing', 'refund successful', 'error')"
+    );
+    const [[renewalRevRow]] = await conn.query(
+      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS val FROM user_orders WHERE order_status = 'renewing'"
     );
     const [[todayOrdersRow]] = await conn.query(
       "SELECT COUNT(*) AS cnt FROM user_orders WHERE DATE(order_creation_time) = ?", [today]
@@ -69,7 +73,7 @@ router.get('/dashboard/stats', authenticateToken, requireAdmin, async (req, res)
     const totalUsers = totalUsersRow.cnt;
     const todayActive = todayActiveRow.cnt;
     const yesterdayActive = yesterdayActiveRow.cnt;
-    const totalRevenue = parseFloat(revenueRow.total) || 0;
+    const totalRevenue = parseFloat(firstSubRevRow.val) + parseFloat(renewalRevRow.val);
     const todayOrders = todayOrdersRow.cnt;
     const newUsersToday = newUsersRow.cnt;
     const newUsersYest = newUsersYestRow.cnt;
@@ -116,9 +120,10 @@ router.get('/dashboard/trend', authenticateToken, requireAdmin, async (req, res)
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
        FROM user_orders
        WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         AND order_status NOT IN ('refund successful', 'error')
        GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
     );
 
@@ -278,30 +283,71 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 10, 200);
     const offset = (page - 1) * limit;
-    const uid       = req.query.uid       ? `%${req.query.uid}%` : null;
-    const search    = req.query.search    ? `%${req.query.search}%` : null;
-    const status    = req.query.status    || null;
-    const platform  = req.query.platform  || null;  // 'Android' | 'iOS'
-    const startDate = req.query.startDate || null;
-    const endDate   = req.query.endDate   || null;
+    // 统一搜索关键字：user_id / 订单号(payment_network_id) / 流水号(payment_gateway_id)
+    const search      = req.query.search      ? `%${req.query.search}%` : null;
+    // 兼容旧参数 uid
+    const uid         = req.query.uid         ? `%${req.query.uid}%` : null;
+    const searchKw    = search || uid;
+    const status      = req.query.status      || null;
+    const platform    = req.query.platform    || null;   // 'Android' | 'iOS'
+    const startDate   = req.query.startDate   || null;
+    const endDate     = req.query.endDate     || null;
+    const productName = req.query.productName || null;   // 标题筛选
+    const country     = req.query.country     ? `%${req.query.country}%` : null;  // 国家筛选
+    const orderType   = req.query.orderType   || null;   // 'first' | 'renewal'
 
+    const fromClause = 'FROM user_orders o LEFT JOIN user_information ui ON ui.user_id = o.user_id';
     let where = 'WHERE 1=1';
     const params = [];
-    if (uid)       { where += ' AND (user_id LIKE ? OR payment_network_id LIKE ?)'; params.push(uid, uid); }
-    if (search)    { where += ' AND (user_id LIKE ? OR email LIKE ? OR payment_gateway_id LIKE ?)'; params.push(search, search, search); }
-    if (status)    { where += ' AND order_status = ?'; params.push(status); }
-    if (platform === 'Android') { where += " AND payment_gateway_id LIKE 'GPA.%'"; }
-    if (platform === 'iOS')     { where += " AND payment_gateway_id NOT LIKE 'GPA.%'"; }
-    if (startDate) { where += ' AND DATE(order_creation_time) >= ?'; params.push(startDate); }
-    if (endDate)   { where += ' AND DATE(order_creation_time) <= ?'; params.push(endDate); }
 
-    const [[{ total }]] = await conn.query(`SELECT COUNT(*) AS total FROM user_orders ${where}`, params);
+    if (searchKw)   { where += ' AND (o.user_id LIKE ? OR o.payment_network_id LIKE ? OR o.payment_gateway_id LIKE ?)'; params.push(searchKw, searchKw, searchKw); }
+    if (status)     { where += ' AND o.order_status = ?'; params.push(status); }
+    if (platform === 'Android') { where += " AND o.payment_gateway_id LIKE 'GPA.%'"; }
+    if (platform === 'iOS')     { where += " AND o.payment_gateway_id NOT LIKE 'GPA.%'"; }
+    if (startDate)  { where += ' AND DATE(o.order_creation_time) >= ?'; params.push(startDate); }
+    if (endDate)    { where += ' AND DATE(o.order_creation_time) <= ?'; params.push(endDate); }
+    if (productName){ where += ' AND o.product_name = ?'; params.push(productName); }
+    if (country)    { where += ' AND (COALESCE(o.country_code, ui.country_code) LIKE ? OR ui.country_name_cn LIKE ?)'; params.push(country, country); }
+    // orderType 过滤：通过子查询判断 sub_seq，first=1，renewal>1
+    if (orderType === 'new_user_first') {
+      // 新用户首购：该产品首次订阅(sub_seq=1) 且 是用户第一笔订单(user_seq=1)
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_f WHERE uo_f.user_id = o.user_id AND uo_f.product_id = o.product_id
+                       AND (uo_f.order_creation_time < o.order_creation_time OR (uo_f.order_creation_time = o.order_creation_time AND uo_f.id <= o.id))) = 1`;
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_u WHERE uo_u.user_id = o.user_id
+                       AND (uo_u.order_creation_time < o.order_creation_time OR (uo_u.order_creation_time = o.order_creation_time AND uo_u.id <= o.id))) = 1`;
+    } else if (orderType === 'cross_product') {
+      // 跨产品首购：该产品首次订阅(sub_seq=1) 但 不是用户第一笔订单(user_seq>1)
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_f WHERE uo_f.user_id = o.user_id AND uo_f.product_id = o.product_id
+                       AND (uo_f.order_creation_time < o.order_creation_time OR (uo_f.order_creation_time = o.order_creation_time AND uo_f.id <= o.id))) = 1`;
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_u WHERE uo_u.user_id = o.user_id
+                       AND (uo_u.order_creation_time < o.order_creation_time OR (uo_u.order_creation_time = o.order_creation_time AND uo_u.id <= o.id))) > 1`;
+    } else if (orderType === 'renewal') {
+      // 续订：该产品第二次及以上订阅(sub_seq>1)
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_r WHERE uo_r.user_id = o.user_id AND uo_r.product_id = o.product_id
+                       AND (uo_r.order_creation_time < o.order_creation_time OR (uo_r.order_creation_time = o.order_creation_time AND uo_r.id <= o.id))) > 1`;
+    } else if (orderType === 'first') {
+      // 兼容旧值：首购（同 new_user_first + cross_product）
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_f WHERE uo_f.user_id = o.user_id AND uo_f.product_id = o.product_id
+                       AND (uo_f.order_creation_time < o.order_creation_time OR (uo_f.order_creation_time = o.order_creation_time AND uo_f.id <= o.id))) = 1`;
+    }
+
+    const [[{ total }]] = await conn.query(`SELECT COUNT(*) AS total ${fromClause} ${where}`, params);
     const [rows] = await conn.query(
-      `SELECT id, user_id, email, google_account, product_id, product_name, product_price,
-              order_status, order_creation_time, payment_time, currency_type, country_code,
-              payment_gateway_id, payment_network_id
-       FROM user_orders ${where}
-       ORDER BY id DESC
+      `SELECT o.id, o.user_id, o.email, o.google_account, o.product_id, o.product_name, o.product_price,
+              o.order_status, o.order_creation_time, o.payment_time, o.currency_type,
+              COALESCE(o.country_code, ui.country_code) AS country_code,
+              ui.country_name_cn,
+              o.payment_gateway_id, o.payment_network_id,
+              (SELECT COUNT(*) FROM user_orders uo2
+               WHERE uo2.user_id = o.user_id AND uo2.product_id = o.product_id
+                 AND (uo2.order_creation_time < o.order_creation_time
+                      OR (uo2.order_creation_time = o.order_creation_time AND uo2.id <= o.id))) AS sub_seq,
+              (SELECT COUNT(*) FROM user_orders uo3
+               WHERE uo3.user_id = o.user_id
+                 AND (uo3.order_creation_time < o.order_creation_time
+                      OR (uo3.order_creation_time = o.order_creation_time AND uo3.id <= o.id))) AS user_seq
+       ${fromClause} ${where}
+       ORDER BY o.id DESC
        LIMIT ? OFFSET ?`, [...params, limit, offset]
     );
     res.json({ success: true, data: { total, page, limit, list: rows } });
@@ -320,10 +366,10 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
 router.get('/orders/stats', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue FROM user_orders');
+    const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue FROM user_orders');
     const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status = 'active'");
     const [[refundRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status IN ('refund request in progress','refund successful')");
-    const [[todayRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE DATE(order_creation_time) = CURDATE()");
+    const [[todayRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE DATE(order_creation_time) = CURDATE()");
     res.json({
       success: true,
       data: {
@@ -643,7 +689,7 @@ router.get('/geography/data', authenticateToken, requireAdmin, async (req, res) 
     const [revenueRows] = await conn.query(
       `SELECT COALESCE(country_code,'Unknown') AS country,
               COUNT(*) AS orders,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue
        FROM user_orders GROUP BY country_code ORDER BY revenue DESC LIMIT 50`
     );
     // 合并
@@ -680,8 +726,9 @@ router.get('/analytics/trend', authenticateToken, requireAdmin, async (req, res)
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS orders,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
        FROM user_orders WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         AND order_status NOT IN ('refund successful', 'error')
        GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
     );
     const [checkins] = await conn.query(
@@ -719,9 +766,10 @@ router.get('/analytics/country-rank', authenticateToken, requireAdmin, async (re
     const [rows] = await conn.query(
       `SELECT COALESCE(ui.country_code,'Unknown') AS country,
               COUNT(DISTINCT ui.user_id) AS users,
-              COALESCE(SUM(CAST(uo.product_price AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(uo.product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
        FROM user_information ui
        LEFT JOIN user_orders uo ON ui.user_id = uo.user_id
+         AND uo.order_status NOT IN ('refund successful', 'error')
        GROUP BY country ORDER BY users DESC LIMIT 20`
     );
     res.json({ success: true, data: rows });
@@ -829,70 +877,110 @@ router.get('/ads/top-users', authenticateToken, requireAdmin, async (req, res) =
 router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const days = Math.min(parseInt(req.query.days) || 30, 365);
+    // Support both startDate/endDate (new) and legacy days param
+    let startDate, endDate;
+    if (req.query.startDate && req.query.endDate) {
+      startDate = req.query.startDate;
+      endDate   = req.query.endDate;
+    } else {
+      const days = Math.min(parseInt(req.query.days) || 30, 365);
+      endDate   = new Date().toISOString().slice(0, 10);
+      startDate = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
+    }
 
     const [newUsers] = await conn.query(
       `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt FROM user_information
-       WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY DATE(user_creation_time)`, [days]
-    );
+       WHERE DATE(user_creation_time) BETWEEN ? AND ?
+       GROUP BY DATE(user_creation_time)`, [startDate, endDate]);
+
     const [dau] = await conn.query(
       `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt FROM user_status
-       WHERE last_login_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY DATE(last_login_time)`, [days]
-    );
+       WHERE DATE(last_login_time) BETWEEN ? AND ?
+       GROUP BY DATE(last_login_time)`, [startDate, endDate]);
+
+    // 首次订阅订单（不含续期）
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
        FROM user_orders
-       WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY DATE(order_creation_time)`, [days]
-    );
+       WHERE DATE(order_creation_time) BETWEEN ? AND ?
+         AND order_status NOT IN ('renewing', 'refund successful', 'error')
+       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+
+    // 续期订单
+    const [renewalOrders] = await conn.query(
+      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))), 0) AS amount
+       FROM user_orders
+       WHERE DATE(order_creation_time) BETWEEN ? AND ?
+         AND order_status = 'renewing'
+       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+
+    // 广告观看量
     const [adViews] = await conn.query(
-      `SELECT view_date AS d, SUM(view_count) AS views, COALESCE(SUM(points_earned),0) AS rewards
+      `SELECT view_date AS d, SUM(view_count) AS views
        FROM ad_view_record
-       WHERE view_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY view_date`, [days]
-    );
+       WHERE view_date BETWEEN ? AND ?
+       GROUP BY view_date`, [startDate, endDate]);
+
+    // 广告奖励积分（来自points_transaction AD_VIEW类型）
+    const [adRewardRows] = await conn.query(
+      `SELECT DATE(created_at) AS d, SUM(points_change) AS rewards
+       FROM points_transaction
+       WHERE points_type = 'AD_VIEW'
+         AND DATE(created_at) BETWEEN ? AND ?
+       GROUP BY DATE(created_at)`, [startDate, endDate]);
+
+    // 提现记录（使用 received_amount 为实际BTC到账数量）
     const [withdrawals] = await conn.query(
       `SELECT DATE(created_at) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(withdrawal_request_amount),0) AS amount
-       FROM withdrawal_records WHERE withdrawal_status = 'success'
-         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY DATE(created_at)`, [days]
-    );
+              COALESCE(SUM(received_amount), 0) AS btcAmount
+       FROM withdrawal_records
+       WHERE withdrawal_status = 'success'
+         AND DATE(created_at) BETWEEN ? AND ?
+       GROUP BY DATE(created_at)`, [startDate, endDate]);
+
     const [checkins] = await conn.query(
       `SELECT check_in_date AS d, COUNT(*) AS cnt
-       FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY check_in_date`, [days]
-    );
+       FROM user_check_in
+       WHERE check_in_date BETWEEN ? AND ?
+       GROUP BY check_in_date`, [startDate, endDate]);
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
     const map = {};
-    newUsers.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers = r.cnt; });
-    dau.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau = r.cnt; });
-    orders.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders = r.cnt; map[k].revenue = parseFloat(r.revenue); });
-    adViews.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adViews = parseInt(r.views); map[k].adRewards = parseFloat(r.rewards); });
-    withdrawals.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].withdrawals = r.cnt; map[k].withdrawalAmount = parseFloat(r.amount); });
-    checkins.forEach(r => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].checkins = r.cnt; });
+    newUsers.forEach(r       => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers           = r.cnt; });
+    dau.forEach(r            => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau                = r.cnt; });
+    orders.forEach(r         => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders             = r.cnt; map[k].revenue = parseFloat(r.revenue); });
+    renewalOrders.forEach(r  => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].renewalCount       = r.cnt; map[k].renewalAmount = parseFloat(r.amount); });
+    adViews.forEach(r        => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adViews            = parseInt(r.views); });
+    adRewardRows.forEach(r   => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adRewards          = parseFloat(r.rewards); });
+    withdrawals.forEach(r    => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].withdrawals        = r.cnt; map[k].withdrawalBtcAmount = parseFloat(r.btcAmount); });
+    checkins.forEach(r       => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].checkins           = r.cnt; });
 
-    const result = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    // 生成日期序列
+    const dates = [];
+    let cur = new Date(startDate);
+    const endD = new Date(endDate);
+    while (cur <= endD) { dates.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+
+    const result = dates.map(d => {
       const m = map[d] || {};
-      result.push({
+      return {
         date: d,
-        newUsers: m.newUsers || 0,
-        dau: m.dau || 0,
-        firstSubOrders: m.orders || 0,
-        firstSubRevenue: m.revenue || 0,
-        adViews: m.adViews || 0,
-        adRewards: m.adRewards || 0,
-        withdrawals: m.withdrawals || 0,
-        withdrawalAmount: m.withdrawalAmount || 0,
-        checkins: m.checkins || 0
-      });
-    }
+        newUsers:             m.newUsers            || 0,
+        dau:                  m.dau                 || 0,
+        firstSubOrders:       m.orders              || 0,
+        firstSubRevenue:      m.revenue             || 0,
+        renewalCount:         m.renewalCount        || 0,
+        renewalAmount:        parseFloat((m.renewalAmount        || 0).toFixed(2)),
+        adViews:              m.adViews             || 0,
+        adRewards:            parseFloat((m.adRewards            || 0).toFixed(10)),
+        withdrawals:          m.withdrawals         || 0,
+        withdrawalBtcAmount:  parseFloat((m.withdrawalBtcAmount  || 0).toFixed(8)),
+        checkins:             m.checkins            || 0,
+      };
+    });
+
     res.json({ success: true, data: result });
   } catch (err) {
     console.error('DataCenter daily error:', err);
@@ -930,14 +1018,24 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
        WHERE DATE(last_login_time) BETWEEN ? AND ?
        GROUP BY DATE(last_login_time)`, [startDate, endDate]);
 
-    // 3. 订单（订阅单数 + 销售额）
+    // 3. 首次订阅订单（新购 & 跨产品首购，不含续订）
     const [ordRows] = await conn.query(
       `SELECT DATE(order_creation_time) AS d,
               COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue
        FROM user_orders
        WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status NOT IN ('refund successful','error')
+         AND order_status NOT IN ('renewing', 'refund successful','error')
+       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+
+    // 3b. 续期订单（order_status = 'renewing'）
+    const [renewOrdRows] = await conn.query(
+      `SELECT DATE(order_creation_time) AS d,
+              COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS amount
+       FROM user_orders
+       WHERE DATE(order_creation_time) BETWEEN ? AND ?
+         AND order_status = 'renewing'
        GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
 
     // 4. 取消订阅（status='refund successful'）
@@ -972,11 +1070,16 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
          AND DATE(created_at) BETWEEN ? AND ?
        GROUP BY DATE(created_at)`, [startDate, endDate]);
 
-    // 6. BTC 汇总统计
+    // 6. BTC 汇总统计（使用每个用户最新一笔非 NULL balance_after，避免 NULL 记录导致余额丢失）
     const [[btcRow]] = await conn.query(
-      `SELECT SUM(t.balance_after) AS totalBtc
-       FROM (SELECT user_id, MAX(id) AS mid FROM bitcoin_transaction_records GROUP BY user_id) x
-       JOIN bitcoin_transaction_records t ON t.id = x.mid`);
+      `SELECT COALESCE(SUM(t.balance_after), 0) AS totalBtc
+       FROM bitcoin_transaction_records t
+       INNER JOIN (
+         SELECT user_id, MAX(id) AS mid
+         FROM bitcoin_transaction_records
+         WHERE balance_after IS NOT NULL
+         GROUP BY user_id
+       ) x ON t.id = x.mid`);
     const [[wdRow]] = await conn.query(
       `SELECT COALESCE(SUM(received_amount),0) AS totalWithdrawn
        FROM withdrawal_records WHERE withdrawal_status = 'success'`);
@@ -992,11 +1095,12 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     };
 
     // 构建 map
-    const nuMap = {}, dauMap = {}, ordMap = {}, cancelMap = {}, adMap = {}, btcSentMap = {}, wdDailyMap = {};
-    nuMap; dauMap; ordMap; cancelMap; adMap; btcSentMap; wdDailyMap; // prevent unused warning
+    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, adMap = {}, btcSentMap = {}, wdDailyMap = {};
+    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; adMap; btcSentMap; wdDailyMap; // prevent unused warning
     nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
     dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
     ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
+    renewOrdRows.forEach(r => { renewOrdMap[toKey(r.d)] = { cnt: parseInt(r.cnt), amount: parseFloat(r.amount) }; });
     cancelRows.forEach(r => { cancelMap[toKey(r.d)] = parseInt(r.cnt); });
     adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
@@ -1022,14 +1126,15 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const ord             = ordMap[d] || {};
       const subOrders       = ord.cnt     || 0;
       const salesAmount     = parseFloat((ord.revenue || 0).toFixed(2));
-      const subRevenue      = salesAmount;
+      const subRevenue      = parseFloat((salesAmount * 0.75).toFixed(2));
       const cancelCount     = (cancelMap[d] || 0) + parseInt(ad.cancel_count || 0);
-      const renewalCount    = parseInt(ad.renewal_count  || 0);
-      const renewalAmount   = parseFloat(ad.renewal_amount   || 0);
-      const renewalRevenue  = parseFloat(ad.renewal_revenue  || 0);
+      const renewOrd        = renewOrdMap[d] || {};
+      const renewalCount    = renewOrd.cnt    || 0;
+      const renewalAmount   = parseFloat((renewOrd.amount || 0).toFixed(2));
+      const renewalRevenue  = parseFloat((renewalAmount * 0.75).toFixed(2));
       const adCount         = parseInt(ad.ad_count           || 0);
       const adRevenue       = parseFloat(ad.ad_revenue       || 0);
-      const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0);
+      const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0) || BTC_PRICE;
       const btcSentAmount      = btcSentMap[d] || 0;
       const withdrawalBtcAmount= wdDailyMap[d] || 0;
       const adPerUser          = dauVal   > 0 ? parseFloat((adCount / dauVal).toFixed(2)) : 0;
@@ -1067,11 +1172,12 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     const ttlAdNew = sum('adNewUsers');
     const ttlSub   = sum('subOrders');
     const ttlRev   = parseFloat(sum('salesAmount').toFixed(2));
+    const ttlSubRevenue = parseFloat(sum('subRevenue').toFixed(2));
     const ttlCancel= sum('cancelCount');
     const ttlAdRevenue       = parseFloat(sum('adRevenue').toFixed(2));
     const ttlAdCount         = sum('adCount');
     const ttlRenewalRevenue  = parseFloat(sum('renewalRevenue').toFixed(2));
-    const ttlTotalRevenue    = parseFloat((ttlRev + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
+    const ttlTotalRevenue    = parseFloat((ttlSubRevenue + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
     const ttlBtcSent         = sum('btcSentAmount');
     const ttlBtcSentValue    = parseFloat(sum('btcSentValue').toFixed(2));
     const ttlWdBtc           = sum('withdrawalBtcAmount');
@@ -1089,7 +1195,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       subOrders: ttlSub,
       subCost:  ttlSub > 0 ? parseFloat((ttlSpend / ttlSub).toFixed(2))  : 0,
       subRate:  ttlNew > 0 ? ((ttlSub / ttlNew) * 100).toFixed(2) + '%'  : '0%',
-      salesAmount: ttlRev, subRevenue: ttlRev,
+      salesAmount: ttlRev, subRevenue: parseFloat(sum('subRevenue').toFixed(2)),
       arppu:      ttlSub > 0 ? parseFloat((ttlRev / ttlSub).toFixed(2)) : 0,
       cancelCount: ttlCancel,
       cancelRate:  ttlSub > 0 ? ((ttlCancel / ttlSub) * 100).toFixed(2) + '%' : '0%',
@@ -1185,7 +1291,7 @@ router.get('/reports/summary', authenticateToken, requireAdmin, async (req, res)
   const conn = await pool.getConnection();
   try {
     const [[users]] = await conn.query('SELECT COUNT(*) AS total, COUNT(DISTINCT country_code) AS countries FROM user_information');
-    const [[orders]] = await conn.query("SELECT COUNT(*) AS total, COALESCE(SUM(CAST(product_price AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE order_status NOT IN ('refund successful')");
+    const [[orders]] = await conn.query("SELECT COUNT(*) AS total, COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE order_status NOT IN ('refund successful')");
     const [[mining]] = await conn.query('SELECT COUNT(*) AS total, COUNT(CASE WHEN contract_end_time > NOW() THEN 1 END) AS active FROM mining_contracts');
     const [[withdrawals]] = await conn.query("SELECT COUNT(*) AS total, COALESCE(SUM(withdrawal_request_amount),0) AS amount FROM withdrawal_records WHERE withdrawal_status = 'success'");
     const [[points]] = await conn.query('SELECT COALESCE(SUM(user_points),0) AS total FROM user_information');
@@ -2039,7 +2145,7 @@ router.get('/rate-config', authenticateToken, requireAdmin, async (req, res) => 
       `SELECT config_value FROM system_config WHERE config_key = 'base_mining_hashrate' LIMIT 1`
     );
     const [countries] = await conn.query(
-      `SELECT country_code, country_name_cn, mining_multiplier FROM country_mining_config ORDER BY country_code`
+      `SELECT country_code, country_name, country_name_cn, mining_multiplier, is_active FROM country_mining_config ORDER BY country_code`
     );
     res.json({
       success: true,
@@ -2061,11 +2167,30 @@ router.put('/rate-config/base-rate', authenticateToken, requireAdmin, async (req
   if (isNaN(num) || num <= 0) return res.status(400).json({ success: false, message: '无效的基础算力值' });
   const conn = await pool.getConnection();
   try {
+    // 1. 更新 system_config
     await conn.query(
       `UPDATE system_config SET config_value = ?, updated_at = NOW() WHERE config_key = 'base_mining_hashrate'`,
       [num.toFixed(18)]
     );
-    res.json({ success: true, message: '基础算力已更新', data: { baseHashrate: num.toFixed(18) } });
+    // 2. 同步更新所有正在运行的免费合约 base_hashrate
+    const [freeResult] = await conn.query(
+      `UPDATE free_contract_records SET base_hashrate = ?, hashrate = ?
+       WHERE free_contract_end_time > NOW()`,
+      [num.toFixed(18), num.toFixed(18)]
+    );
+    // 3. 同步更新活跃的 Bind Referrer Reward 合约
+    const [bindResult] = await conn.query(
+      `UPDATE mining_contracts SET base_hashrate = ?, hashrate = ?
+       WHERE contract_end_time > NOW() AND contract_type = 'Bind Referrer Reward' AND is_cancelled = 0`,
+      [num.toFixed(18), num.toFixed(18)]
+    );
+    // 4. 清除 Redis 基础速率缓存
+    await MiningConfigService.clearBaseHashrateCache();
+    res.json({
+      success: true,
+      message: `基础算力已更新，已同步 ${freeResult.affectedRows} 个免费合约、${bindResult.affectedRows} 个绑定推荐人合约`,
+      data: { baseHashrate: num.toFixed(18) }
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   } finally {

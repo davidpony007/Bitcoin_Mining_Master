@@ -219,7 +219,7 @@ function getTypeLabel(type) {
     'withdrawal':                   'Withdrawal',
     'subordinate rebate':           'Referral Rebate',
     'refund for withdrawal failure':'Withdrawal Refund',
-    'mining_reward':                'Mining Reward',
+    'mining_reward':                'Subscription Mining Reward',
   };
   return labels[type] || type;
 }
