@@ -9,6 +9,9 @@
     
     <!-- Push notification permission - Required for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- In-app purchases / Subscriptions - Required by Google Play Billing Library -->
+    <uses-permission android:name="com.android.vending.BILLING"/>
     
     <application
         android:label="Bitcoin Mining Master"

@@ -104,30 +104,46 @@ async function handleSubscriptionNotification(notification) {
       console.log('🎉 新订阅购买（通常在/verify endpoint已处理）');
       break;
 
+    case 5: // SUBSCRIPTION_ON_HOLD — 账号冻结（付款持续失败，Google 将等待最多 30 天）
+      // 政策：冻结期间应暂停服务访问权限
+      console.log('🔒 账号冻结（付款失败）');
+      await SubscriptionService.handleAccountHold(subscriptionId, purchaseToken);
+      break;
+
+    case 6: // SUBSCRIPTION_IN_GRACE_PERIOD — 宽限期（付款失败，Google 自动重试）
+      // 政策：宽限期（月订阅最多 7 天）内用户仍可访问服务，不立即停服
+      console.log('⏰ 进入宽限期（扣款失败，等待重试）');
+      await SubscriptionService.handleGracePeriod(subscriptionId, purchaseToken);
+      break;
+
     case 7: // SUBSCRIPTION_RESTARTED
       console.log('🔄 订阅已重启（取消后在到期前重新开启）');
       await SubscriptionService.handleSubscriptionRestarted(subscriptionId, purchaseToken);
       break;
 
-    case 10: // SUBSCRIPTION_PAUSED
-      // 暂停 = 付款失败进入重试窗口，合约当期仍有效，不立即取消
-      console.log('⏸️ 订阅已暂停（付款重试中，当期合约继续有效）');
-      await SubscriptionService.handleGracePeriod(subscriptionId, purchaseToken);
+    case 10: // SUBSCRIPTION_PAUSED — 用户主动暂停订阅（1-3 个月）
+      // 政策：暂停期间必须暂停服务访问权限
+      console.log('⏸️ 订阅已暂停（用户主动暂停）');
+      await SubscriptionService.handleSubscriptionPaused(subscriptionId, purchaseToken);
       break;
 
-    case 12: // SUBSCRIPTION_REVOKED
+    case 11: // SUBSCRIPTION_PAUSE_SCHEDULE_CHANGED — 暂停计划变更（仅记录）
+      console.log('📅 暂停计划已变更（不影响合约）');
+      break;
+
+    case 12: // SUBSCRIPTION_REVOKED — 订阅被撤销（退款）
       console.log('⚠️ 订阅已撤销（退款）');
       await SubscriptionService.handleSubscriptionCanceled(subscriptionId, purchaseToken);
       break;
 
-    case 13: // SUBSCRIPTION_IN_GRACE_PERIOD
-      console.log('⏰ 进入宽限期');
-      await SubscriptionService.handleGracePeriod(subscriptionId, purchaseToken);
+    case 13: // SUBSCRIPTION_EXPIRED — 订阅完全到期（宽限期/冻结期结束后最终到期）
+      // 政策：到期后立即停止服务访问权限
+      console.log('💀 订阅已完全到期');
+      await SubscriptionService.handleSubscriptionCanceled(subscriptionId, purchaseToken);
       break;
 
-    case 20: // SUBSCRIPTION_ON_HOLD
-      console.log('🔒 账号冻结');
-      await SubscriptionService.handleAccountHold(subscriptionId, purchaseToken);
+    case 20: // SUBSCRIPTION_PENDING_PURCHASE_CANCELED — 待处理购买已取消
+      console.log('🚫 待处理购买已取消（不影响已有合约）');
       break;
 
     default:

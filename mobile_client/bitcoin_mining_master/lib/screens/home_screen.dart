@@ -10,6 +10,7 @@ import 'wallet_screen.dart';
 import 'referral_screen.dart';
 import 'contracts_screen.dart';
 import 'settings_screen.dart';
+import 'guide_screen.dart';
 
 /// 主屏幕 - 对应MainActivity.kt
 class HomeScreen extends StatefulWidget {
@@ -77,6 +78,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_storageService.consumePendingReferralSuccessDialog()) {
         _showRefereeCelebration();
+      } else if (_storageService.isFirstLaunch()) {
+        // 首次打开 App：延迟 300ms 待页面渲染完成后弹出使用指南
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted) return;
+          _storageService.setLaunched();
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const GuideScreen(autoShow: true),
+            fullscreenDialog: true,
+          ));
+        });
       }
     });
 

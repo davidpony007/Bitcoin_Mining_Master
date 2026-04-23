@@ -8,6 +8,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'web_view_screen.dart';
+import 'guide_screen.dart';
 import '../constants/app_constants.dart';
 import '../services/storage_service.dart';
 import '../services/user_repository.dart';
@@ -796,6 +797,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             _buildSectionTitle('General'),
             _buildSettingsCard([
               _buildNavigationItem(
+                icon: Icons.menu_book_rounded,
+                iconColor: AppColors.primary,
+                title: 'How to Use',
+                subtitle: 'App guide & feature walkthrough',
+                onTap: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const GuideScreen(),
+                  ));
+                },
+              ),
+              _buildDivider(),
+              _buildNavigationItem(
                 icon: Icons.language,
                 iconColor: AppColors.primary,
                 title: 'Language',
@@ -911,14 +924,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 icon: Icons.description,
                 iconColor: AppColors.primary,
                 title: 'Terms of Service',
-                onTap: () => _openWebView('Terms of Service', 'https://davidpony007.github.io/bitcoin-mining-master-legal/terms-of-service.html'),
+                onTap: () => _openWebView('Terms of Service', 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/terms-of-service'),
               ),
               _buildDivider(),
               _buildNavigationItem(
                 icon: Icons.privacy_tip,
                 iconColor: AppColors.primary,
                 title: 'Privacy Policy',
-                onTap: () => _openWebView('Privacy Policy', 'https://davidpony007.github.io/bitcoin-mining-master-legal/privacy-policy.html'),
+                onTap: () => _openWebView('Privacy Policy', 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/privacy-policy'),
               ),
             ]),
 

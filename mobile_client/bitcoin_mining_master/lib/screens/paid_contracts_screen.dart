@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
 import '../constants/app_constants.dart';
 import '../services/google_play_billing_service.dart';
 import '../services/apple_in_app_purchase_service.dart';
@@ -21,6 +22,10 @@ class PaidContractsScreen extends StatefulWidget {
 class _PaidContractsScreenState extends State<PaidContractsScreen> {
   final GooglePlayBillingService _billingService = GooglePlayBillingService();
   final AppleInAppPurchaseService _appleService = AppleInAppPurchaseService();
+    static final Uri _privacyPolicyUri =
+      Uri.parse('https://bitcoin-mining-master-legal.davidpony007.workers.dev/privacy-policy');
+    static final Uri _termsOfServiceUri =
+      Uri.parse('https://bitcoin-mining-master-legal.davidpony007.workers.dev/terms-of-service');
   bool _serviceInitialized = false;
   String? _loadingTierId; // 正在发起购买的套餐内部ID
   bool _isLoadingProducts = true; // 正在从服务端加载产品列表
@@ -36,6 +41,10 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
 
   // 从服务端加载的产品列表（替代硬编码的 _contractTiers）
   List<Map<String, dynamic>> _contractTiers = [];
+
+  Future<void> _openExternalUrl(Uri uri) async {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   // Restore 状态
   bool _isRestoring = false;
@@ -677,41 +686,137 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
 
   // 底部说明信息
   Widget _buildFooterInfo() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1624),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: const [
-              Icon(
-                Icons.info_outline,
-                color: Color(0xFF6366F1),
-                size: 20,
+    return Column(
+      children: [
+        // How it works 卡片
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F1624),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(
+                    Icons.info_outline,
+                    color: Color(0xFF6366F1),
+                    size: 20,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'How it works',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(width: 8),
-              Text(
-                'How it works',
+              const SizedBox(height: 12),
+              _buildBulletPoint('Contract activates immediately after purchase'),
+              _buildBulletPoint('Mining runs automatically for 1 month'),
+              _buildBulletPoint('Daily earnings are added to your balance'),
+              _buildBulletPoint('Withdraw anytime once balance reaches minimum'),
+              _buildBulletPoint('No additional fees or hidden costs'),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // ── 自动续费法定披露文字（Apple/Google 政策要求）──────────────
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A0F1A),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white12, width: 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Subscription Terms',
                 style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '• Payment will be charged to your App Store / Google Play account at confirmation of purchase.\n'
+                '• Subscription automatically renews unless cancelled at least 24 hours before the end of the current period.\n'
+                '• Your account will be charged for renewal within 24 hours prior to the end of the current period.\n'
+                '• You can manage and cancel your subscriptions in your account settings on the App Store or Google Play Store.\n'
+                '• Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription.',
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 11,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 14,
+                runSpacing: 6,
+                children: [
+                  GestureDetector(
+                    onTap: () => _openExternalUrl(_privacyPolicyUri),
+                    child: const Text(
+                      'Privacy Policy',
+                      style: TextStyle(
+                        color: Color(0xFF6366F1),
+                        fontSize: 11,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Color(0xFF6366F1),
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => _openExternalUrl(_termsOfServiceUri),
+                    child: const Text(
+                      'Terms of Service',
+                      style: TextStyle(
+                        color: Color(0xFF6366F1),
+                        fontSize: 11,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Color(0xFF6366F1),
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      if (Platform.isIOS) {
+                        _openExternalUrl(
+                          Uri.parse('itms-apps://apps.apple.com/account/subscriptions'),
+                        );
+                      } else {
+                        _openExternalUrl(
+                          Uri.parse('https://play.google.com/store/account/subscriptions'),
+                        );
+                      }
+                    },
+                    child: const Text(
+                      'Manage Subscriptions',
+                      style: TextStyle(
+                        color: Color(0xFF6366F1),
+                        fontSize: 11,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Color(0xFF6366F1),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          _buildBulletPoint('Contract activates immediately after purchase'),
-          _buildBulletPoint('Mining runs automatically for 1 month'),
-          _buildBulletPoint('Daily earnings are added to your balance'),
-          _buildBulletPoint('Withdraw anytime once balance reaches minimum'),
-          _buildBulletPoint('No additional fees or hidden costs'),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

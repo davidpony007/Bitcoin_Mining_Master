@@ -80,7 +80,7 @@ interface UserDetail {
     transaction_creation_time: string;
     transaction_status: string;
   }[];
-  contractStats: { total_contracts: number; active_contracts: number; paid_contracts: number; expired_contracts: number };
+  contractStats: { total_contracts: number; active_contracts: number; paid_contracts: number; free_contracts: number; expired_contracts: number };
   orderStats: { total_orders: number; total_spent: string; refund_count: number };
   recentWithdrawals: {
     withdrawal_request_amount: string;
@@ -783,8 +783,8 @@ const Users: React.FC = () => {
           <Divider />
           <Row gutter={12}>
             {[
-              { label: '合约总数', value: contractStats.total_contracts, sub: `生效中 ${contractStats.active_contracts}`, color: '#faad14', bg: '#fffbe6' },
-              { label: '付费合约', value: contractStats.paid_contracts, sub: `已过期 ${contractStats.expired_contracts}`, color: '#52c41a', bg: '#f6ffed' },
+              { label: '合约总数', value: contractStats.total_contracts, sub: `付费 ${contractStats.paid_contracts} | 免费 ${contractStats.free_contracts}`, color: '#faad14', bg: '#fffbe6' },
+              { label: '付费合约', value: contractStats.paid_contracts, sub: `生效中 ${contractStats.active_contracts} | 已过期 ${contractStats.expired_contracts}`, color: '#52c41a', bg: '#f6ffed' },
               { label: '订单总数', value: orderStats.total_orders, sub: `退款 ${orderStats.refund_count}`, color: '#1890ff', bg: '#e6f7ff' },
               { label: '消费总额', value: `$${parseFloat(orderStats.total_spent || '0').toFixed(2)}`, color: '#eb2f96', bg: '#fff0f6' },
             ].map((item, i) => (

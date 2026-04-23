@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1024px; height: 500px; overflow: hidden; background: #000; }
+
+  .canvas {
+    width: 1024px;
+    height: 500px;
+    position: relative;
+    background: linear-gradient(135deg, #0a0e1a 0%, #0d1f0d 40%, #0a0e1a 100%);
+    font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
+    overflow: hidden;
+  }
+
+  /* 背景粒子网格 */
+  .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(247,147,26,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(247,147,26,0.06) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* 右侧发光球 */
+  .glow-orb {
+    position: absolute;
+    right: -60px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 440px;
+    height: 440px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(247,147,26,0.22) 0%, rgba(247,147,26,0.08) 40%, transparent 70%);
+    filter: blur(2px);
+  }
+
+  /* 左侧内容区 */
+  .left {
+    position: absolute;
+    left: 64px;
+    top: 44px;
+    bottom: 44px;
+    width: 500px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(247,147,26,0.15);
+    border: 1px solid rgba(247,147,26,0.4);
+    border-radius: 20px;
+    padding: 5px 14px;
+    margin-bottom: 16px;
+  }
+  .badge-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #f7931a;
+    box-shadow: 0 0 8px #f7931a;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; } 50% { opacity:0.4; }
+  }
+  .badge-text {
+    color: #f7931a;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .app-name {
+    font-size: 46px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.1;
+    letter-spacing: -1px;
+    margin-bottom: 8px;
+  }
+  .app-name span { color: #f7931a; }
+
+  .tagline {
+    font-size: 19px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.65);
+    margin-bottom: 24px;
+    line-height: 1.4;
+  }
+
+  .features {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .feature-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: rgba(247,147,26,0.15);
+    border: 1px solid rgba(247,147,26,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .feature-text {
+    font-size: 15px;
+    color: rgba(255,255,255,0.8);
+    font-weight: 500;
+  }
+
+  /* 右侧图形区 */
+  .right {
+    position: absolute;
+    right: 50px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  /* BTC 大图标 */
+  .btc-circle {
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f7931a 0%, #e67e00 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 80px;
+    font-weight: 900;
+    color: white;
+    box-shadow: 0 0 60px rgba(247,147,26,0.5), 0 0 120px rgba(247,147,26,0.2);
+    position: relative;
+  }
+  .btc-ring {
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+    border: 2px solid rgba(247,147,26,0.3);
+  }
+  .btc-ring2 {
+    position: absolute;
+    inset: -24px;
+    border-radius: 50%;
+    border: 1px solid rgba(247,147,26,0.15);
+  }
+
+  /* 统计卡片 */
+  .stats-row {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+  }
+  .stat-card {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: #f7931a;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.45);
+    margin-top: 3px;
+  }
+
+  /* 底部渐变遮罩 */
+  .bottom-fade {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    background: linear-gradient(transparent, rgba(10,14,26,0.6));
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="grid"></div>
+  <div class="glow-orb"></div>
+
+  <!-- 左侧文字内容 -->
+  <div class="left">
+    <div class="badge">
+      <div class="badge-dot"></div>
+      <span class="badge-text">Cloud Mining</span>
+    </div>
+
+    <div class="app-name">Bitcoin<br><span>Mining Master</span></div>
+    <div class="tagline">Earn Bitcoin — No Hardware Needed</div>
+
+    <div class="features">
+      <div class="feature-item">
+        <div class="feature-icon">⛏️</div>
+        <span class="feature-text">Mining Contracts · 24/7 Auto Earnings</span>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🎁</div>
+        <span class="feature-text">Free Contracts · Daily Check-in & Ad Rewards</span>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">👥</div>
+        <span class="feature-text">Referral Rebates · Invite & Earn Together</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧图形 -->
+  <div class="right">
+    <div class="btc-circle">
+      <div class="btc-ring"></div>
+      <div class="btc-ring2"></div>
+      ₿
+    </div>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-value">24/7</div>
+        <div class="stat-label">Auto Mining</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">FREE</div>
+        <div class="stat-label">Start Today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">BEP20</div>
+        <div class="stat-label">Withdrawal</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-fade"></div>
+</div>
+</body>
+</html>

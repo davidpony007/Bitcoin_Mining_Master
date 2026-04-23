@@ -238,17 +238,58 @@ class SubscriptionService {
   }
 
   /**
-   * 处理账号冻结（RTDN type 20）
-   * 账号冻结意味着扣费持续失败，但通常在 30 天后自动取消（届时发送 type 3 通知）。
-   * mining_contracts 没有冻结状态字段；此处仅记录日志，等待 type 3 取消通知到来。
+   * 处理账号冻结（RTDN type 5）
+   * 付款持续失败，Google 最长等待 30 天后发送 type 3 CANCELED。
+   * 冻结期间应暂停服务访问权限。将合约到期时间设为 now 使挖矿即时停止。
+   * 当账号恢复付款时（type 1 RECOVERED）会重新延长到期时间。
    */
   async handleAccountHold(subscriptionId, purchaseToken) {
     try {
-      console.log(`🔒 [RTDN] 账号冻结通知: subscriptionId=${subscriptionId} — 等待取消通知`);
-      // 不修改合约；当账号进入冻结后 Google 会再发 type 3 CANCELED，届时取消合约
+      console.log(`🔒 [RTDN] 账号冻结通知: subscriptionId=${subscriptionId}`);
+      const backendProductId = await this._resolveBackendProductId(subscriptionId);
+      const { userId } = await this._resolveUserFromToken(subscriptionId, purchaseToken).catch(() => ({ userId: null }));
+      const contract = await this._findContract(userId, backendProductId, purchaseToken);
+      if (!contract) {
+        console.log(`⚠️ [RTDN] 账号冻结：未找到合约 userId=${userId} product=${backendProductId}`);
+        return { success: true };
+      }
+      // 将到期时间设为 now，contractRewardService 不再产生收益；is_cancelled 不设为 1（等 type 3 / type 1）
+      await sequelize.query(
+        `UPDATE mining_contracts SET contract_end_time = NOW() WHERE id = ? AND is_cancelled = 0`,
+        { replacements: [contract.id] }
+      );
+      console.log(`✅ [RTDN] 账号冻结，挖矿已暂停: user=${contract.user_id} contractId=${contract.id}`);
       return { success: true };
     } catch (error) {
       console.error('❌ [RTDN] 处理账号冻结失败:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 处理用户主动暂停订阅（RTDN type 10 SUBSCRIPTION_PAUSED）
+   * 用户可暂停 1-3 个月，暂停期间必须停止服务访问权限。
+   * 暂停结束后 Google 会自动续订并发送 type 2 RENEWED，届时恢复到期时间。
+   */
+  async handleSubscriptionPaused(subscriptionId, purchaseToken) {
+    try {
+      console.log(`⏸️ [RTDN] 订阅暂停通知: subscriptionId=${subscriptionId}`);
+      const backendProductId = await this._resolveBackendProductId(subscriptionId);
+      const { userId } = await this._resolveUserFromToken(subscriptionId, purchaseToken).catch(() => ({ userId: null }));
+      const contract = await this._findContract(userId, backendProductId, purchaseToken);
+      if (!contract) {
+        console.log(`⚠️ [RTDN] 订阅暂停：未找到合约 userId=${userId} product=${backendProductId}`);
+        return { success: true };
+      }
+      // 将到期时间设为 now，停止挖矿收益；is_cancelled 不设为 1（暂停结束后 Google 会 RENEWED）
+      await sequelize.query(
+        `UPDATE mining_contracts SET contract_end_time = NOW() WHERE id = ? AND is_cancelled = 0`,
+        { replacements: [contract.id] }
+      );
+      console.log(`✅ [RTDN] 订阅已暂停，挖矿已停止: user=${contract.user_id} contractId=${contract.id}`);
+      return { success: true };
+    } catch (error) {
+      console.error('❌ [RTDN] 处理订阅暂停失败:', error);
       return { success: false, error: error.message };
     }
   }

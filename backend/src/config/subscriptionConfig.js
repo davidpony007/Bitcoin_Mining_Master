@@ -61,35 +61,37 @@ module.exports = {
   // Google Play要求: 宽限期+冻结期 >= 30天
   ACCOUNT_HOLD_DAYS: 23,
 
-  // Google Play 通知类型
+  // Google Play 通知类型（参考：https://developer.android.com/google/play/billing/rtdn-reference）
   NOTIFICATION_TYPES: {
-    1: 'SUBSCRIPTION_RECOVERED',       // 订阅恢复
-    2: 'SUBSCRIPTION_RENEWED',         // 订阅续订
-    3: 'SUBSCRIPTION_CANCELED',        // 订阅取消
-    4: 'SUBSCRIPTION_PURCHASED',       // 新订阅购买
-    5: 'SUBSCRIPTION_ON_HOLD',         // 账号冻结（已弃用，使用20）
-    6: 'SUBSCRIPTION_IN_GRACE_PERIOD', // 宽限期（已弃用，使用13）
-    7: 'SUBSCRIPTION_RESTARTED',       // 订阅重启
-    8: 'SUBSCRIPTION_PRICE_CHANGE_CONFIRMED', // 价格变更确认
-    9: 'SUBSCRIPTION_DEFERRED',        // 订阅延期
-    10: 'SUBSCRIPTION_PAUSED',         // 订阅暂停
+    1: 'SUBSCRIPTION_RECOVERED',              // 账号冻结/宽限期后恢复
+    2: 'SUBSCRIPTION_RENEWED',                // 续订成功
+    3: 'SUBSCRIPTION_CANCELED',               // 用户取消（关闭自动续费）
+    4: 'SUBSCRIPTION_PURCHASED',              // 新订阅购买
+    5: 'SUBSCRIPTION_ON_HOLD',                // 账号冻结（付款失败，最长 30 天等待）
+    6: 'SUBSCRIPTION_IN_GRACE_PERIOD',        // 宽限期（付款失败，最长 7 天重试）
+    7: 'SUBSCRIPTION_RESTARTED',              // 订阅重启（取消后到期前重新开启）
+    8: 'SUBSCRIPTION_PRICE_CHANGE_CONFIRMED', // 用户确认价格变更
+    9: 'SUBSCRIPTION_DEFERRED',               // 订阅延期
+    10: 'SUBSCRIPTION_PAUSED',                // 用户主动暂停（1-3 个月，暂停期间停止服务）
     11: 'SUBSCRIPTION_PAUSE_SCHEDULE_CHANGED', // 暂停计划变更
-    12: 'SUBSCRIPTION_REVOKED',        // 订阅撤销
-    13: 'SUBSCRIPTION_IN_GRACE_PERIOD', // 宽限期
-    20: 'SUBSCRIPTION_ON_HOLD',        // 账号冻结
+    12: 'SUBSCRIPTION_REVOKED',               // 订阅撤销（退款，立即停止服务）
+    13: 'SUBSCRIPTION_EXPIRED',               // 订阅完全到期（宽限期/冻结期结束后）
+    20: 'SUBSCRIPTION_PENDING_PURCHASE_CANCELED', // 待处理购买已取消
   },
 
   // 订阅通知类型映射到状态
   NOTIFICATION_TO_STATUS: {
-    1: 'active',         // RECOVERED
-    2: 'active',         // RENEWED
-    3: 'canceled',       // CANCELED
-    4: 'active',         // PURCHASED
-    7: 'active',         // RESTARTED
-    10: 'paused',        // PAUSED
-    12: 'canceled',      // REVOKED
-    13: 'grace_period',  // IN_GRACE_PERIOD
-    20: 'account_hold',  // ON_HOLD
+    1: 'active',        // RECOVERED
+    2: 'active',        // RENEWED
+    3: 'canceled',      // CANCELED
+    4: 'active',        // PURCHASED
+    5: 'account_hold',  // ON_HOLD（账号冻结，停止服务）
+    6: 'grace_period',  // IN_GRACE_PERIOD（宽限期，继续服务）
+    7: 'active',        // RESTARTED
+    10: 'paused',       // PAUSED（用户主动暂停，停止服务）
+    12: 'canceled',     // REVOKED（退款）
+    13: 'expired',      // EXPIRED（完全到期）
+    20: 'canceled',     // PENDING_PURCHASE_CANCELED
   },
 
   // 哪些状态下应该继续挖矿

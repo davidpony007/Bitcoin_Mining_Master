@@ -392,6 +392,7 @@ class ApiService {
       final response = await _dio.get(
         ApiConstants.userStatus,
         queryParameters: {'user_id': userId},
+        options: Options(extra: {'suppressToast': true}),
       );
       return response.data;
     } on DioException catch (e) {
@@ -419,6 +420,7 @@ class ApiService {
       final response = await _dio.get(
         ApiConstants.invitationInfo,
         queryParameters: {'user_id': userId},
+        options: Options(extra: {'suppressToast': true}),
       );
       return response.data;
     } on DioException catch (e) {
@@ -432,6 +434,7 @@ class ApiService {
       final response = await _dio.get(
         ApiConstants.invitationRebate,
         queryParameters: {'user_id': userId, 'page': page, 'limit': limit},
+        options: Options(extra: {'suppressToast': true}),
       );
       return response.data;
     } on DioException catch (e) {

@@ -24,8 +24,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  static const String _termsUrl = 'https://davidpony007.github.io/bitcoin-mining-master-legal/terms-of-service.html';
-  static const String _privacyUrl = 'https://davidpony007.github.io/bitcoin-mining-master-legal/privacy-policy.html';
+  static const String _termsUrl = 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/terms-of-service';
+  static const String _privacyUrl = 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/privacy-policy';
 
   final StorageService _storageService = StorageService();
   final ApiService _apiService = ApiService();
@@ -42,6 +42,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _referrerCodeController = TextEditingController();
   bool _isLoading = false;
   final bool _showReferrerInput = false;
+  // 用户是否已主动勾选同意条款（Apple/Google 政策要求明确同意）
+  bool _agreedToTerms = false;
 
   // iOS 广告追踪信息（在 initState 中通过 ATT 弹窗收集）
   String? _idfv;
@@ -886,9 +888,26 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// 登录前检查条款同意状态，未勾选则弹 SnackBar 提示
+  void _requireTermsAgreement(VoidCallback action) {
+    if (!_agreedToTerms) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please agree to the Terms of Service and Privacy Policy to continue.',
+          ),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    action();
+  }
+
   Widget _buildAppleSignInButton() {
     return ElevatedButton(
-      onPressed: _handleAppleSignIn,
+      onPressed: () => _requireTermsAgreement(_handleAppleSignIn),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
@@ -919,7 +938,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildGoogleSignInButton() {
     return ElevatedButton(
-      onPressed: _handleGoogleSignIn,
+      onPressed: () => _requireTermsAgreement(_handleGoogleSignIn),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
@@ -1066,7 +1085,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildGuestButton() {
     return OutlinedButton(
-      onPressed: _handleGuestMode,
+      onPressed: () => _requireTermsAgreement(_handleGuestMode),
       style: OutlinedButton.styleFrom(
         foregroundColor: Colors.white,
         side: BorderSide(
@@ -1122,21 +1141,45 @@ class _LoginScreenState extends State<LoginScreen> {
       fontWeight: FontWeight.w600,
     );
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('By continuing, you agree to our',
-            textAlign: TextAlign.center, style: textStyle),
-        const SizedBox(height: 4),
+        // Checkbox + 条款文字（Apple 5.1.1 / Google Play 要求明确用户同意）
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            GestureDetector(
-              onTap: () => _launchUrl(_termsUrl),
-              child: const Text('Terms of Service', style: linkStyle),
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
+                value: _agreedToTerms,
+                onChanged: (val) {
+                  setState(() => _agreedToTerms = val ?? false);
+                },
+                activeColor: const Color(0xFFFF9800),
+                checkColor: Colors.white,
+                side: const BorderSide(color: Color(0x99AAAAAA), width: 1.5),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
-            const Text('  •  ', style: textStyle),
-            GestureDetector(
-              onTap: () => _launchUrl(_privacyUrl),
-              child: const Text('Privacy Policy', style: linkStyle),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Wrap(
+                alignment: WrapAlignment.start,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text('I have read and agree to the ', style: textStyle),
+                  GestureDetector(
+                    onTap: () => _launchUrl(_termsUrl),
+                    child: const Text('Terms of Service', style: linkStyle),
+                  ),
+                  const Text(' and ', style: textStyle),
+                  GestureDetector(
+                    onTap: () => _launchUrl(_privacyUrl),
+                    child: const Text('Privacy Policy', style: linkStyle),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

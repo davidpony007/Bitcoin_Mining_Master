@@ -19,6 +19,7 @@
  *   REVOKE                     - 家庭共享订阅被撤销
  */
 
+const crypto = require('crypto');
 const axios = require('axios');
 const { UserOrder } = require('../models');
 const paidContractService = require('../services/paidContractService');
@@ -33,20 +34,88 @@ const PRODUCT_MAP = {
   'appstore19.99': 'p1999',
 };
 
+// Apple Root CA - G3 证书 SHA-256 指纹（固定根证书，防止伪造证书链）
+// 来源: https://www.apple.com/certificateauthority/
+const APPLE_ROOT_CA_G3_FP = '63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179';
+
 /**
- * 解析 Apple V2 JWT signedPayload（JWT 的 payload 部分为 base64url，未加密）
- * 返回 { notificationType, subtype, data: { signedTransactionInfo, signedRenewalInfo } }
- * 若解析失败返回 null
+ * 将 JWS ES256 原始签名（r||s 各 32 字节，共 64 字节）转换为 ASN.1 DER 格式
+ * Node.js crypto.verify 需要 DER 编码的 ECDSA 签名
  */
-function parseV2SignedPayload(signedPayload) {
+function rawEcSigToDer(raw) {
+  if (raw.length !== 64) return raw;
+  const encInt = (b) => {
+    let i = 0;
+    while (i < b.length - 1 && b[i] === 0) i++;
+    const t = b.slice(i);
+    return (t[0] & 0x80) ? Buffer.concat([Buffer.from([0x00]), t]) : t;
+  };
+  const r = encInt(raw.slice(0, 32));
+  const s = encInt(raw.slice(32));
+  return Buffer.concat([
+    Buffer.from([0x30, 2 + r.length + 2 + s.length]),
+    Buffer.from([0x02, r.length]), r,
+    Buffer.from([0x02, s.length]), s,
+  ]);
+}
+
+/**
+ * 验证 Apple V2 JWS 签名并返回 payload
+ * 利用 JWT 头部 x5c 内嵌证书链完成验证，无需 Apple API 密钥
+ * 验证流程：
+ *   1. 用叶子证书公钥验证 JWT 签名（ES256）
+ *   2. 验证证书链（每张证书由上级签名）
+ *   3. 固定根证书指纹为 Apple Root CA - G3
+ * @param {string} jws - Apple JWS 字符串
+ * @returns {{ valid: boolean, payload: object|null, error?: string }}
+ */
+function verifyAndParseV2JWS(jws) {
   try {
-    const parts = signedPayload.split('.');
-    if (parts.length < 2) return null;
+    const parts = jws.split('.');
+    if (parts.length !== 3) return { valid: false, payload: null, error: 'Not a 3-part JWS' };
+
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+    const x5c = header.x5c;
+    if (!Array.isArray(x5c) || x5c.length < 2) {
+      return { valid: false, payload: null, error: 'x5c chain missing or too short' };
+    }
+
+    // base64-DER → PEM
+    const certs = x5c.map(b64 => {
+      const lines = b64.match(/.{1,64}/g) || [];
+      return `-----BEGIN CERTIFICATE-----\n${lines.join('\n')}\n-----END CERTIFICATE-----`;
+    });
+
+    // 验证 JWT 签名（ES256 = ECDSA-P256-SHA256）
+    const message = `${parts[0]}.${parts[1]}`;
+    const derSig = rawEcSigToDer(Buffer.from(parts[2], 'base64url'));
+    const leafCert = new crypto.X509Certificate(certs[0]);
+    const v = crypto.createVerify('SHA256');
+    v.update(message);
+    if (!v.verify(leafCert.publicKey, derSig)) {
+      return { valid: false, payload: null, error: 'JWS signature invalid' };
+    }
+
+    // 验证证书链
+    for (let i = 0; i < certs.length - 1; i++) {
+      const child = new crypto.X509Certificate(certs[i]);
+      const parent = new crypto.X509Certificate(certs[i + 1]);
+      if (!child.verify(parent.publicKey)) {
+        return { valid: false, payload: null, error: `Chain broken at index ${i}` };
+      }
+    }
+
+    // 固定根证书（Apple Root CA - G3）
+    const rootFp = new crypto.X509Certificate(certs[certs.length - 1])
+      .fingerprint256.replace(/:/g, '').toLowerCase();
+    if (rootFp !== APPLE_ROOT_CA_G3_FP) {
+      return { valid: false, payload: null, error: `Root CA fingerprint mismatch: ${rootFp}` };
+    }
+
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    return payload;
+    return { valid: true, payload };
   } catch (e) {
-    console.warn('⚠️ [AppleNotif] V2 signedPayload 解析失败:', e.message);
-    return null;
+    return { valid: false, payload: null, error: e.message };
   }
 }
 
@@ -79,9 +148,10 @@ exports.handleNotification = async (req, res) => {
 
     if (req.body.signedPayload) {
       // ── Apple V2 格式 ──────────────────────────────────
-      const v2 = parseV2SignedPayload(req.body.signedPayload);
-      if (!v2) {
-        console.warn('⚠️ [AppleNotif] V2 signedPayload 无法解析，忽略');
+      // 验证 JWS 签名（x5c 证书链 + 固定根证书 Apple Root CA G3）
+      const { valid: jwsValid, payload: v2, error: jwsError } = verifyAndParseV2JWS(req.body.signedPayload);
+      if (!jwsValid || !v2) {
+        console.warn(`⚠️ [AppleNotif V2] JWS 验证失败，拒绝请求: ${jwsError}`);
         return;
       }
 
@@ -99,9 +169,6 @@ exports.handleNotification = async (req, res) => {
         console.warn(`⚠️ [AppleNotif V2] signedDate 超过 1 小时，忽略（可能重放攻击）: ${new Date(signedDate).toISOString()}`);
         return;
       }
-      // TODO(security): 实现完整 JWS 证书链签名验证（使用 @apple/app-store-server-library）。
-      // 需配置 App Store Connect API 私钥（.p8）、Key ID、Issuer ID 等环境变量。
-      // 参考: https://developer.apple.com/documentation/appstoreservernotifications/enabling_app_store_server_notifications
       notification_type = v2.notificationType || v2.notification_type;
       const subtype = v2.subtype || '';
       const txInfo = parseSignedInfo(v2.data?.signedTransactionInfo);

@@ -901,6 +901,7 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
     // 首次订阅订单（不含续期）
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))), 0) AS salesAmount,
               COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
        FROM user_orders
        WHERE DATE(order_creation_time) BETWEEN ? AND ?
@@ -950,7 +951,7 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
     const map = {};
     newUsers.forEach(r       => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].newUsers           = r.cnt; });
     dau.forEach(r            => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].dau                = r.cnt; });
-    orders.forEach(r         => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders             = r.cnt; map[k].revenue = parseFloat(r.revenue); });
+    orders.forEach(r         => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].orders = r.cnt; map[k].salesAmount = parseFloat(r.salesAmount); map[k].revenue = parseFloat(r.revenue); });
     renewalOrders.forEach(r  => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].renewalCount       = r.cnt; map[k].renewalAmount = parseFloat(r.amount); });
     adViews.forEach(r        => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adViews            = parseInt(r.views); });
     adRewardRows.forEach(r   => { const k = toKey(r.d); map[k] = map[k] || {}; map[k].adRewards          = parseFloat(r.rewards); });
@@ -970,9 +971,11 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
         newUsers:             m.newUsers            || 0,
         dau:                  m.dau                 || 0,
         firstSubOrders:       m.orders              || 0,
+        firstSubAmount:       parseFloat((m.salesAmount          || 0).toFixed(2)),
         firstSubRevenue:      m.revenue             || 0,
         renewalCount:         m.renewalCount        || 0,
         renewalAmount:        parseFloat((m.renewalAmount        || 0).toFixed(2)),
+        renewalRevenue:       parseFloat(((m.renewalAmount || 0) * 0.75).toFixed(2)),
         adViews:              m.adViews             || 0,
         adRewards:            parseFloat((m.adRewards            || 0).toFixed(10)),
         withdrawals:          m.withdrawals         || 0,
@@ -1038,13 +1041,13 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
          AND order_status = 'renewing'
        GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
 
-    // 4. 取消订阅（status='refund successful'）
+    // 4. 取消订阅（order_status='complete'：合约到期未续期 / 用户主动取消自动续期）
     const [cancelRows] = await conn.query(
-      `SELECT DATE(payment_time) AS d, COUNT(*) AS cnt
+      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt
        FROM user_orders
-       WHERE DATE(payment_time) BETWEEN ? AND ?
-         AND order_status = 'refund successful'
-       GROUP BY DATE(payment_time)`, [startDate, endDate]);
+       WHERE DATE(order_creation_time) BETWEEN ? AND ?
+         AND order_status = 'complete'
+       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
 
     // 5. 广告投放数据
     const [adRows] = await conn.query(
@@ -1796,13 +1799,21 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        ORDER BY transaction_creation_time DESC LIMIT 20`, [userId]
     );
 
-    // 5. 合约摘要
+    // 5. 合约摘要（同时统计 mining_contracts 和 free_contract_records）
     const [[contractStats]] = await conn.query(
       `SELECT COUNT(*) AS total_contracts,
-              SUM(CASE WHEN contract_end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
-              SUM(CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END) AS paid_contracts,
-              SUM(CASE WHEN (contract_end_time <= NOW() OR is_cancelled = 1) AND contract_type = 'paid contract' THEN 1 ELSE 0 END) AS expired_contracts
-       FROM mining_contracts WHERE user_id = ?`, [userId]
+              SUM(CASE WHEN end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
+              SUM(CASE WHEN is_paid = 1 THEN 1 ELSE 0 END) AS paid_contracts,
+              SUM(CASE WHEN is_paid = 0 THEN 1 ELSE 0 END) AS free_contracts,
+              SUM(CASE WHEN (end_time <= NOW() OR is_cancelled = 1) AND is_paid = 1 THEN 1 ELSE 0 END) AS expired_contracts
+       FROM (
+         SELECT contract_end_time AS end_time, is_cancelled,
+                CASE WHEN contract_type = 'paid contract' THEN 1 ELSE 0 END AS is_paid
+         FROM mining_contracts WHERE user_id = ?
+         UNION ALL
+         SELECT free_contract_end_time AS end_time, 0 AS is_cancelled, 0 AS is_paid
+         FROM free_contract_records WHERE user_id = ?
+       ) combined`, [userId, userId]
     );
 
     // 6. 订单摘要
