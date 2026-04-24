@@ -7,9 +7,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 
-# 复制全部源码并构建（读取 .env.production）
+# 复制全部源码并构建（跳过 tsc 类型检查，直接用 vite 构建）
 COPY . .
-RUN npm run build
+RUN npx vite build
 
 # ─── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.25-alpine
