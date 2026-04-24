@@ -55,7 +55,7 @@ const DataCenter: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const utcToday = new Date().toISOString().slice(0, 10);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs(utcToday).subtract(7, 'day'),
+    dayjs(utcToday).subtract(13, 'day'),
     dayjs(utcToday),
   ]);
   const [platform, setPlatform] = useState('all');

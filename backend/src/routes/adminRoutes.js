@@ -360,6 +360,69 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
 });
 
 /**
+ * GET /api/admin/orders/subscription-stats
+ * 订阅用户数统计 + 各档位活跃/取消明细
+ */
+router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    // 正在订阅中的用户总数
+    const [[activeUsersRow]] = await conn.query(
+      `SELECT COUNT(DISTINCT user_id) AS cnt FROM user_orders WHERE order_status IN ('active','renewing')`
+    );
+    // 活跃中的付费plan总数
+    const [[activePlansRow]] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status IN ('active','renewing')`
+    );
+    // 已取消订阅的用户总数（mining_contracts 中明确标记 is_cancelled=1 的唯一用户）
+    const [[cancelledUsersRow]] = await conn.query(
+      `SELECT COUNT(DISTINCT user_id) AS cnt FROM mining_contracts WHERE is_cancelled = 1 AND contract_type = 'paid contract'`
+    );
+    // 已取消的plan总数
+    const [[cancelledPlansRow]] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM mining_contracts WHERE is_cancelled = 1 AND contract_type = 'paid contract'`
+    );
+    // 各档位活跃订阅数
+    const [activeByPlan] = await conn.query(
+      `SELECT product_name, product_price,
+              COUNT(DISTINCT user_id) AS user_cnt,
+              COUNT(*) AS plan_cnt
+       FROM user_orders
+       WHERE order_status IN ('active','renewing')
+       GROUP BY product_name, product_price
+       ORDER BY CAST(product_price AS DECIMAL(10,2))`
+    );
+    // 各档位已结束/取消订阅数（order_status='complete' 代表订阅周期结束或被取消）
+    const [cancelledByPlan] = await conn.query(
+      `SELECT product_name, product_price,
+              COUNT(DISTINCT user_id) AS user_cnt,
+              COUNT(*) AS plan_cnt
+       FROM user_orders
+       WHERE order_status = 'complete'
+       GROUP BY product_name, product_price
+       ORDER BY CAST(product_price AS DECIMAL(10,2))`
+    );
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          activeUsers:    parseInt(activeUsersRow.cnt),
+          activePlans:    parseInt(activePlansRow.cnt),
+          cancelledUsers: parseInt(cancelledUsersRow.cnt),
+          cancelledPlans: parseInt(cancelledPlansRow.cnt),
+        },
+        activeByPlan,
+        cancelledByPlan,
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
+
+/**
  * GET /api/admin/orders/stats
  * 订单统计汇总
  */
@@ -1041,13 +1104,14 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
          AND order_status = 'renewing'
        GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
 
-    // 4. 取消订阅（order_status='complete'：合约到期未续期 / 用户主动取消自动续期）
+    // 4. 取消订阅（按实际取消时间统计，cancelled_at 在 is_cancelled=1 时写入）
     const [cancelRows] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt
-       FROM user_orders
-       WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status = 'complete'
-       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+      `SELECT DATE(cancelled_at) AS d, COUNT(*) AS cnt
+       FROM mining_contracts
+       WHERE DATE(cancelled_at) BETWEEN ? AND ?
+         AND is_cancelled = 1
+         AND contract_type = 'paid contract'
+       GROUP BY DATE(cancelled_at)`, [startDate, endDate]);
 
     // 5. 广告投放数据
     const [adRows] = await conn.query(
@@ -1072,6 +1136,23 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
        WHERE withdrawal_status = 'success'
          AND DATE(created_at) BETWEEN ? AND ?
        GROUP BY DATE(created_at)`, [startDate, endDate]);
+
+    // 5d. 次留数：D日注册的用户中，在D+1日有活跃记录的用户数
+    // 查询范围：startDate 的前一天注册的用户是否在 startDate 活跃，直到 endDate 前一天注册用户在 endDate 的活跃
+    // 即：注册日为 [startDate-1, endDate-1]，但在报表中展示到对应的 D+1 日（即 [startDate, endDate]）
+    const [retentionRows] = await conn.query(
+      `SELECT
+         DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY) AS retention_date,
+         COUNT(DISTINCT uda.user_id) AS d1_count,
+         COUNT(DISTINCT ui.user_id)  AS reg_count
+       FROM user_information ui
+       LEFT JOIN user_daily_active uda
+         ON uda.user_id = ui.user_id
+         AND uda.active_date = DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)
+       WHERE DATE(ui.user_creation_time) BETWEEN DATE_SUB(?, INTERVAL 1 DAY) AND DATE_SUB(?, INTERVAL 1 DAY)
+       GROUP BY DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)`,
+      [startDate, endDate]);
+
 
     // 6. BTC 汇总统计（使用每个用户最新一笔非 NULL balance_after，避免 NULL 记录导致余额丢失）
     const [[btcRow]] = await conn.query(
@@ -1098,8 +1179,8 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     };
 
     // 构建 map
-    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, adMap = {}, btcSentMap = {}, wdDailyMap = {};
-    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; adMap; btcSentMap; wdDailyMap; // prevent unused warning
+    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, adMap = {}, btcSentMap = {}, wdDailyMap = {}, retentionMap = {};
+    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; adMap; btcSentMap; wdDailyMap; retentionMap; // prevent unused warning
     nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
     dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
     ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
@@ -1108,6 +1189,12 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
     wdDailyRows.forEach(r  => { wdDailyMap[toKey(r.d)]  = parseFloat(r.amt  || 0); });
+    retentionRows.forEach(r => {
+      retentionMap[toKey(r.retention_date)] = {
+        d1Count:  parseInt(r.d1_count  || 0),
+        regCount: parseInt(r.reg_count || 0),
+      };
+    });
 
     // 生成日期序列
     const dates = [];
@@ -1156,10 +1243,14 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const subRate = totalNewUsers > 0 ? ((subOrders / totalNewUsers) * 100).toFixed(2) + '%' : '0%';
       const arppu   = subOrders     > 0 ? parseFloat((salesAmount / subOrders).toFixed(2))    : 0;
       const cancelRate = subOrders  > 0 ? ((cancelCount / subOrders) * 100).toFixed(2) + '%'  : '0%';
+      const retention      = retentionMap[d] || {};
+      const retentionCount = retention.d1Count  || 0;
+      const retentionBase  = retention.regCount || 0;
+      const retentionPct   = retentionBase > 0 ? ((retentionCount / retentionBase) * 100).toFixed(2) + '%' : '-';
       return {
         date: d, totalSpend, googleSpend, applovinSpend, mintegralSpend,
         adNewUsers, newUsersM1, newUsersM2, totalNewUsers,
-        retentionRate: '-', retentionRatePct: '-', dau: dauVal, cpa, adCpa,
+        retentionRate: retentionCount, retentionRatePct: retentionPct, dau: dauVal, cpa, adCpa,
         subOrders, subCost, subRate, salesAmount, subRevenue, arppu,
         cancelCount, cancelRate, renewalCount, renewalAmount,
         renewalRevenue, adCount, adPerUser, ecpm, adRevenue, totalRevenue,
@@ -1192,7 +1283,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       totalSpend: ttlSpend, googleSpend: parseFloat(sum('googleSpend').toFixed(2)),
       applovinSpend: parseFloat(sum('applovinSpend').toFixed(2)), mintegralSpend: parseFloat(sum('mintegralSpend').toFixed(2)),
       adNewUsers: ttlAdNew, newUsersM1: sum('newUsersM1'), newUsersM2: sum('newUsersM2'),
-      totalNewUsers: ttlNew, retentionRate: '-', dau: '-',
+      totalNewUsers: ttlNew, retentionRate: sum('retentionRate'), retentionRatePct: '-', dau: '-',
       cpa:    ttlNew   > 0 ? parseFloat((ttlSpend / ttlNew).toFixed(2))   : 0,
       adCpa:  ttlAdNew > 0 ? parseFloat((ttlSpend / ttlAdNew).toFixed(2)) : 0,
       subOrders: ttlSub,
@@ -1212,7 +1303,6 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       btcAvgPrice: '-',
       withdrawalBtcAmount: ttlWdBtc, withdrawalBtcValue: ttlWdBtcValue,
       actualCost: ttlSpend, profitSent: ttlProfitSent, profitWithdraw: ttlProfitWithdraw,
-      retentionRate: '-', retentionRatePct: '-',
       roi:        ttlSpend > 0 ? ((ttlProfitSent     / ttlSpend) * 100).toFixed(2) + '%' : '0%',
       roiWithdraw: ttlSpend > 0 ? ((ttlProfitWithdraw / ttlSpend) * 100).toFixed(2) + '%' : '0%',
     };
