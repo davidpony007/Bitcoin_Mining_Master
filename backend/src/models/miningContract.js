@@ -78,6 +78,12 @@ const MiningContract = sequelize.define('mining_contracts', {
     defaultValue: 0,
     comment: '是否已取消订阅: 0=正常, 1=用户已取消'
   },
+  cancelled_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+    comment: '取消订阅时间，用于按日统计取消数'
+  },
   // iOS originalTransactionId / Android 初始购买token：整个订阅生命周期唯一，用于精准续订定位
   original_transaction_id: {
     type: DataTypes.STRING(100),
