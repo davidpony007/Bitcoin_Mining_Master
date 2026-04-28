@@ -116,11 +116,16 @@ class PushNotificationService {
     try {
       final userId = StorageService().getUserId();
       if (userId == null || userId.isEmpty) return;
+      final token = StorageService().getAuthToken();
+      if (token == null || token.isEmpty) return;
 
       await http
           .post(
             Uri.parse('${ApiConstants.baseUrl}/notifications/active'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
             body: jsonEncode({'user_id': userId}),
           )
           .timeout(const Duration(seconds: 5));
@@ -153,13 +158,21 @@ class PushNotificationService {
         debugPrint('⚠️ [push] 用户未登录，跳过 token 上报');
         return;
       }
+      final authToken = StorageService().getAuthToken();
+      if (authToken == null || authToken.isEmpty) {
+        debugPrint('⚠️ [push] 无 JWT token，跳过 token 上报');
+        return;
+      }
 
       final platform = Platform.isIOS ? 'ios' : 'android';
 
       final response = await http
           .post(
             Uri.parse('${ApiConstants.baseUrl}/notifications/register-token'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $authToken',
+            },
             body: jsonEncode({
               'user_id': userId,
               'fcm_token': fcmToken,

@@ -26,6 +26,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   bool _useAllBalance = false;
   // iOS 绑定状态：null=未检测，true/false=已知
   bool? _isAccountBound;
+  bool _isWithdrawing = false; // 防止并发/重复提现
 
   double get _minimumAmount => 0.00002200;
   double get _networkFee =>
@@ -979,7 +980,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   : null,
             ),
             child: ElevatedButton(
-              onPressed: _canWithdraw ? () => _handleWithdraw(provider) : null,
+              onPressed: (_canWithdraw && !_isWithdrawing) ? () => _handleWithdraw(provider) : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
                 disabledBackgroundColor: Colors.transparent,
@@ -1058,6 +1059,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   }
 
   Future<void> _handleWithdraw(UserProvider provider) async {
+    if (_isWithdrawing) return; // 防止重入
+    setState(() => _isWithdrawing = true);
+    try {
     final storage = StorageService();
     // 检查账户封禁状态（封禁用户禁止提现）
     if (storage.isBanned()) {
@@ -1234,12 +1238,29 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       );
 
       // 执行提现
-      final success = await provider.withdrawBitcoin(
-        _withdrawAmount.toString(),
-        _addressController.text,
-        _selectedWithdrawMethod == 'Binance UID' ? 'BINANCE_UID' : 'BEP20',
-        _networkFee.toString(),
-      );
+      bool success = false;
+      try {
+        success = await provider.withdrawBitcoin(
+          _withdrawAmount.toString(),
+          _addressController.text,
+          _selectedWithdrawMethod == 'Binance UID' ? 'BINANCE_UID' : 'BEP20',
+          _networkFee.toString(),
+        );
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // 关闭加载对话框（异常兜底）
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Withdrawal failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+              backgroundColor: AppColors.error,
+              duration: const Duration(seconds: 4),
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.only(bottom: 80, left: 16, right: 16),
+            ),
+          );
+        }
+        return;
+      }
 
       if (mounted) {
         Navigator.pop(context); // 关闭加载对话框
@@ -1284,6 +1305,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
           );
         }
       }
+    }
+    } finally {
+      if (mounted) setState(() => _isWithdrawing = false);
     }
   }
 }

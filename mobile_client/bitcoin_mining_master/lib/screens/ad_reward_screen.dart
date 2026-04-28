@@ -945,8 +945,8 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
                     print('🎁 执行广告奖励领取...');
                     success = await _extendContract();
                     if (success) {
-                      print('✅ 广告奖励成功，发放1积分');
-                      pointsSuccess = await _addPoints(1);
+                      print('✅ 广告奖励成功，积分由extend-contract接口统一发放');
+                      pointsSuccess = true; // extend-contract接口已包含积分发放逻辑，无需再次调用_addPoints
                     }
                   }
                   

@@ -52,10 +52,12 @@ export const usersApi = {
 
 export const ordersApi = {
   /** 分页订单列表 */
-  list: (params: { page?: number; limit?: number; uid?: string; search?: string; status?: string; platform?: string; startDate?: string; endDate?: string; orderType?: string }) =>
+  list: (params: { page?: number; limit?: number; uid?: string; search?: string; status?: string; platform?: string; startDate?: string; endDate?: string; orderType?: string; productName?: string; country?: string }) =>
     request.get('/admin/orders/list', { params }),
   /** 订单统计概要 */
   stats: () => request.get('/admin/orders/stats'),
+  /** 订阅用户数 + 各档位活跃/取消明细 */
+  subscriptionStats: () => request.get('/admin/orders/subscription-stats'),
   /** 删除单条订单 */
   deleteOne: (id: number) => request.delete(`/admin/orders/${id}`),
   /** 批量删除订单 */

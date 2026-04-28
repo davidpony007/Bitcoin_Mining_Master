@@ -88,6 +88,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             fullscreenDialog: true,
           ));
         });
+      } else {
+        // 冷启动兜底检测：FCM 推送未触发时（App 被杀死、通知权限关闭等），
+        // 仍能在打开 App 时检测到新邀请绑定并弹出邀请方庆祝弹窗。
+        // 延迟 1s 确保页面渲染完成、网络就绪后再查询。
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          if (!mounted) return;
+          _checkPendingInviteCelebration();
+        });
       }
     });
 

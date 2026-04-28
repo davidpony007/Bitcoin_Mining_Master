@@ -459,7 +459,7 @@ async function markContractRefunded(originalTransactionId) {
     // 必须同时更新 contract_end_time，因为 contractRewardService 只检查该字段
     const now = new Date();
     const [rows] = await MiningContract.update(
-      { is_cancelled: 1, contract_end_time: now },
+      { is_cancelled: 1, cancelled_at: now, contract_end_time: now },
       {
         where: {
           original_transaction_id: originalTransactionId,
@@ -496,7 +496,7 @@ async function markContractCancelled(originalTransactionId) {
     // 若 DID_RENEW 已将到期时间延长至未来，则跳过取消
     const cutoff = new Date(Date.now() + 10 * 60 * 1000); // now + 10min
     const [rows] = await MiningContract.update(
-      { is_cancelled: 1 },
+      { is_cancelled: 1, cancelled_at: new Date() },
       {
         where: {
           original_transaction_id: originalTransactionId,
@@ -561,7 +561,7 @@ exports.cancelContractManually = async (req, res) => {
       });
     }
 
-    await contract.update({ is_cancelled: 1 });
+    await contract.update({ is_cancelled: 1, cancelled_at: new Date() });
     await UserOrder.update(
       { order_status: 'complete' },
       { where: { payment_network_id: originalTransactionId, user_id: userId } }

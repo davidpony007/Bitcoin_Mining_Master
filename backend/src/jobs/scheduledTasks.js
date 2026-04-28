@@ -8,8 +8,7 @@ const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const PointsService = require('../services/pointsService');
 const InvitationPointsService = require('../services/invitationPointsService');
 const ContractRewardService = require('../services/contractRewardService');
-const RealtimeBalanceService = require('../services/realtimeBalanceService');
-
+const RealtimeBalanceService = require('../services/realtimeBalanceService');const { startAdMobSyncJob } = require('./admobSyncJob');
 /**
  * 每日签到加成过期清理任务
  * 每分钟执行一次，清理已过期的加成用户
@@ -484,6 +483,7 @@ function startAllScheduledTasks() {
   startPointsCacheCleanup();         // 积分缓存清理（每天凌晨4点）
   startAutoReferralRewards();        // 邀请奖励自动发放（每2小时）
   startContractRewardDistribution(); // 合约奖励发放（每2小时UTC整点）
+  startAdMobSyncJob();               // AdMob 数据自动同步（每天 UTC 02:00）
   
   // 启动实时余额更新服务（每秒执行）
   RealtimeBalanceService.startRealtimeUpdates();

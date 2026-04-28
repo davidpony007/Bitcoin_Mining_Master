@@ -328,7 +328,8 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (success) {
         // 埋点：签到成功
         final totalDays = (_status?.totalDays ?? 0) + 1;
-        AnalyticsService.instance.logCheckIn(day: totalDays, points: 10);
+        final int pointsEarned = (response['points_awarded'] as num?)?.toInt() ?? 10;
+        AnalyticsService.instance.logCheckIn(day: totalDays, points: pointsEarned);
         // 签到成功,保存今日日期到本地存储
         final today = DateTime.now().toUtc().toIso8601String().split('T')[0];
         final saved = await _storageService.saveLastCheckInDate(today);

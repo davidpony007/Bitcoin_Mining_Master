@@ -354,7 +354,7 @@ class UserRepository {
         );
         return Result.success(fallbackResponse);
       }
-      return Result.failure(e as Exception);
+      return Result.failure(e is Exception ? e : Exception(e.toString()));
     }
   }
 
@@ -377,7 +377,7 @@ class UserRepository {
       );
       return Result.success(result);
     } catch (e) {
-      return Result.failure(e as Exception);
+      return Result.failure(e is Exception ? e : Exception(e.toString()));
     }
   }
 
@@ -424,7 +424,7 @@ class UserRepository {
         return Result.failure(Exception(response['message'] ?? 'Withdrawal failed'));
       }
     } catch (e) {
-      return Result.failure(e as Exception);
+      return Result.failure(e is Exception ? e : Exception(e.toString()));
     }
   }
 }

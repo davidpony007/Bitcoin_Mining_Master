@@ -29,10 +29,12 @@ class AdPointsService {
 
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (UTC)
 
-      // 1. 获取或创建今日观看记录
+      const AD_TYPE = 'Free Ad Reward'; // 明确指定类型，避免污染 Daily Check-in Reward 等其他行
+
+      // 1. 获取或创建今日观看记录（仅针对 Free Ad Reward 类型）
       let [todayRecord] = await connection.query(
-        'SELECT id, view_count, points_earned FROM ad_view_record WHERE user_id = ? AND view_date = ? FOR UPDATE',
-        [userId, today]
+        'SELECT id, view_count, points_earned FROM ad_view_record WHERE user_id = ? AND view_date = ? AND ad_type = ? FOR UPDATE',
+        [userId, today, AD_TYPE]
       );
 
       let viewCount = 0;
@@ -41,9 +43,9 @@ class AdPointsService {
       if (todayRecord.length === 0) {
         // 首次观看，创建记录
         await connection.query(
-          `INSERT INTO ad_view_record (user_id, view_date, view_count, points_earned) 
-           VALUES (?, ?, 1, ?)`,
-          [userId, today, this.AD_REWARD_POINTS]
+          `INSERT INTO ad_view_record (user_id, ad_type, view_date, view_count, points_earned) 
+           VALUES (?, ?, ?, 1, ?)`,
+          [userId, AD_TYPE, today, this.AD_REWARD_POINTS]
         );
         viewCount = 1;
         totalPointsToday = this.AD_REWARD_POINTS;
@@ -56,14 +58,14 @@ class AdPointsService {
           totalPointsToday = todayRecord[0].points_earned + this.AD_REWARD_POINTS;
           
           await connection.query(
-            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',
-            [viewCount, totalPointsToday, userId, today]
+            'UPDATE ad_view_record SET view_count = ?, points_earned = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ? AND ad_type = ?',
+            [viewCount, totalPointsToday, userId, today, AD_TYPE]
           );
         } else {
           // 已达上限，只增加观看次数，不增加积分
           await connection.query(
-            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ?',
-            [viewCount, userId, today]
+            'UPDATE ad_view_record SET view_count = ?, updated_at = NOW() WHERE user_id = ? AND view_date = ? AND ad_type = ?',
+            [viewCount, userId, today, AD_TYPE]
           );
         }
       }

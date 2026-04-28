@@ -163,7 +163,7 @@ class SubscriptionService {
       }
 
       await sequelize.query(
-        `UPDATE mining_contracts SET is_cancelled = 1 WHERE id = ? AND is_cancelled = 0`,
+        `UPDATE mining_contracts SET is_cancelled = 1, cancelled_at = NOW() WHERE id = ? AND is_cancelled = 0`,
         { replacements: [contract.id] }
       );
 
@@ -299,6 +299,43 @@ class SubscriptionService {
    */
   canMine(subscriptionStatus) {
     return config.MINING_ALLOWED_STATUSES?.includes(subscriptionStatus) ?? true;
+  }
+
+  /**
+   * 定时任务：将已过期但未标记取消的付费合约标记为取消
+   * 作为 Apple/Google S2S 通知丢失的安全兜底机制：
+   *   - Apple EXPIRED 通知有 10 分钟时间窗口保护，偶尔可能因网络问题丢失
+   *   - Google CANCELED 通知同理
+   * 每次运行时查找 contract_end_time < NOW 且 is_cancelled = 0 的付费合约并取消。
+   */
+  async checkGracePeriodExpiry() {
+    try {
+      const [result] = await sequelize.query(
+        `UPDATE mining_contracts
+         SET is_cancelled = 1, cancelled_at = NOW()
+         WHERE contract_type = 'paid contract'
+           AND is_cancelled = 0
+           AND contract_end_time < NOW()`,
+      );
+      const affected = result?.affectedRows ?? 0;
+      if (affected > 0) {
+        console.log(`[SubscriptionService] checkGracePeriodExpiry: 已标记 ${affected} 个过期付费合约为取消`);
+      }
+      return { checked: affected };
+    } catch (e) {
+      console.error('[SubscriptionService] checkGracePeriodExpiry error:', e.message);
+      return { checked: 0 };
+    }
+  }
+
+  /**
+   * 定时任务：检查账号冻结期是否到期
+   * Google Play 账号冻结（Account Hold）通过 RTDN type 5 实时处理（contract_end_time = NOW），
+   * 冻结结束后 Google 发送 RECOVERED（type 1）或 CANCELED（type 3），均由对应 RTDN 处理器处理。
+   * 无需额外定时轮询，此方法为预留占位（与 subscriptionCheckJob 接口保持兼容）。
+   */
+  async checkAccountHoldExpiry() {
+    return { checked: 0 };
   }
 }
 

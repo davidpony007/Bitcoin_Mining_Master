@@ -315,11 +315,14 @@ class GooglePlayBillingService {
   }
 
   /// 恢复购买（处理未完成的交易）
+  /// 注意：不直接调用 onPurchaseUpdate。实际的成功/失败结果通过
+  /// purchaseStream → _onPurchaseUpdate → _verifyAndDeliver 路径异步回调，
+  /// 与新购买流程保持一致，避免在无订阅时误报"恢复成功"。
   Future<void> restorePurchases() async {
     try {
       print('🔄 恢复购买...');
       await _iap.restorePurchases();
-      onPurchaseUpdate?.call(true, 'Purchases restored.');
+      // 结果通过 purchaseStream 异步回调，_onPurchaseUpdate 会处理每笔 restored 事件
     } catch (e) {
       print('❌ 恢复购买失败: $e');
       onPurchaseUpdate?.call(false, 'Restore failed: $e');

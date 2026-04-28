@@ -13,7 +13,7 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
       TZ: UTC
     ports:
-      - "127.0.0.1:3306:3306"  # 只监听本地，通过SSH隧道访问
+      - "127.0.0.1:3307:3306"  # 避开宝塔默认3306冲突，仍仅监听本地
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backup:/backup  # 备份目录

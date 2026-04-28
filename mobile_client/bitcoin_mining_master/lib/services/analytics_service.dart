@@ -225,8 +225,8 @@ class AnalyticsService {
     final userId = StorageService().getUserId() ?? 'unknown';
     final valueUsd = valueMicros / 1_000_000.0;
 
-    // 1. 使用 Firebase 官方 ad_impression 事件（GA4 Revenue 报表可识别）
-    await _logCustomEvent('ad_impression', {
+    // 1. 使用自定义 admob_impression 事件（避免与 Firebase SDK 自动上报的 ad_impression 事件冲突）
+    await _logCustomEvent('admob_impression', {
       'ad_platform': 'Google AdMob',
       'ad_format': 'Rewarded',
       'ad_unit_name': adUnitId,

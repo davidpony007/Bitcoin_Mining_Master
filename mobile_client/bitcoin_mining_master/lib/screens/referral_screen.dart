@@ -255,15 +255,13 @@ class ReferralScreenState extends State<ReferralScreen> with WidgetsBindingObser
     }
     
     if (_invitationCode != 'Loading...' && _invitationCode != 'Error' && _invitationCode != 'N/A') {
-      const String downloadUrl = 'https://bitcoin-mining-master-legal.davidpony007.workers.dev/download.html';
-      final String copyText = '🎁 Join Bitcoin Mining Master!\n\nUse my invitation code to get a FREE 2-hour mining contract:\n\n📋 Code: $_invitationCode\n\nDownload now and start earning Bitcoin! 💰\n$downloadUrl';
-      Clipboard.setData(ClipboardData(text: copyText));
+      Clipboard.setData(ClipboardData(text: _invitationCode));
       AnalyticsService.instance.logShareReferral(method: 'copy');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invitation message copied!'),
+        SnackBar(
+          content: Text('Invitation code copied: $_invitationCode'),
           backgroundColor: Colors.green,
-          duration: Duration(seconds: 2),
+          duration: const Duration(seconds: 2),
         ),
       );
     }

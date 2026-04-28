@@ -183,8 +183,9 @@ async function sendBatch(targets, notificationType, referenceId, title, body, da
       } else {
         console.warn(`⚠️ [notification] FCM 发送失败 user=${userId}: ${result.error}`);
         // token 无效时清理（FCM 会返回 404 / UNREGISTERED）
+        // 只删除该失效 token，而非该用户所有设备的 token
         if (result.error && (result.error.includes('404') || result.error.includes('UNREGISTERED'))) {
-          await pool.query('DELETE FROM push_tokens WHERE user_id = ?', [userId]);
+          await pool.query('DELETE FROM push_tokens WHERE fcm_token = ?', [fcmToken]);
         }
       }
     } catch (err) {

@@ -26,6 +26,7 @@ class UserProvider with ChangeNotifier {
   bool _isLoadingMoreTransactions = false;
   bool _isOfflineMode = false; // 离线模式标记
   Timer? _offlineDebounce; // 防抖：避免短暂断连立即弹 Toast
+  bool _isFetchingBalance = false; // 防止余额并发请求
   
   StreamSubscription? _connectivitySubscription;
 
@@ -116,21 +117,8 @@ class UserProvider with ChangeNotifier {
         final inWindow = ApiService.isInResumeSilenceWindow;
         print('📴 [Provider] 防抖触发，inSilenceWindow=$inWindow');
         _setError('Network connection lost, using offline mode');
-        // 从后台恢复的静默窗口期内不弹 Toast（网络重建的正常抖动）
-        if (!inWindow) {
-          // 若 ApiService 近 30 秒内已弹过网络错误 Toast，跳过此次，避免重复打扰用户
-          final lastApiToast = ApiService.lastNetworkErrorToastTime;
-          final now = DateTime.now();
-          final recentlyShown = lastApiToast != null &&
-              now.difference(lastApiToast).inSeconds < 30;
-          if (!recentlyShown) {
-            Fluttertoast.showToast(
-              msg: 'Network connection error, please try again!',
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.CENTER,
-            );
-          }
-        }
+        // 连接变化由 Provider 状态处理，不弹 Toast 打扰用户
+        // (VPN 切换 / 信号切换 / 后台恢复等场景均会触发此回调，toast 体验差)
       });
     }
   }
@@ -161,7 +149,10 @@ class UserProvider with ChangeNotifier {
 
   /// 获取比特币余额
   Future<void> fetchBitcoinBalance() async {
+    if (_isFetchingBalance) return; // 防止并发请求
+    _isFetchingBalance = true;
     _setLoading(true);
+    try {
     
     print('🔍 Provider: 开始获取余额...');
     // 记录上次的余额和时间，用于在 speedPerSecond=0 时推导本地速率
@@ -212,7 +203,10 @@ class UserProvider with ChangeNotifier {
       _setError('Failed to get balance: ${result.error}');
     }
     
-    _setLoading(false);
+    } finally {
+      _isFetchingBalance = false;
+      _setLoading(false);
+    }
   }
 
   /// 获取交易记录（第一页，替换现有数据）

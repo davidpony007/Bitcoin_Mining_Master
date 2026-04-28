@@ -132,11 +132,12 @@ class _LoginScreenState extends State<LoginScreen> {
           await _storageService.saveAppleAccount(appleEmail);
         }
         await _storageService.saveIsLoggedOut(false);
+        final bool appleIsNewUser = response['isNewUser'] == true;
         // 如果 Apple 返回了邀请码逻辑需要
         final referrerResult = await _handleReferrerCode(userId);
         if (!referrerResult) return;
 
-        _navigateToHome(loginMethod: 'apple');
+        _navigateToHome(loginMethod: 'apple', isNewUser: appleIsNewUser);
       } else {
         final msg = response['message']?.toString() ?? response['error']?.toString() ?? 'Apple sign-in failed.';
         _showError(msg);
@@ -223,6 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await _storageService.saveGoogleSignInStatus(true);
         await _storageService.saveGoogleEmail(email);
         await _storageService.saveIsLoggedOut(false);
+        final bool googleIsNewUser = response['isNewUser'] == true;
 
         final referrerResult = await _handleReferrerCode(userId);
         if (!referrerResult) {
@@ -230,7 +232,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        _navigateToHome(loginMethod: 'google');
+        _navigateToHome(loginMethod: 'google', isNewUser: googleIsNewUser);
       } else {
         final messageValue = response['message'] ?? response['error'];
         String errorMsg = messageValue?.toString() ?? 'Google sign-in failed. Please try again.';
@@ -526,7 +528,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
         
-        _navigateToHome();
+        _navigateToHome(isNewUser: false);
       } else {
         // 没有已存在的账号 → 创建新账号
         print('✅ 新账号模式: 创建全新的游客账号');
@@ -544,7 +546,7 @@ class _LoginScreenState extends State<LoginScreen> {
               return;
             }
           }
-          _navigateToHome();
+          _navigateToHome(isNewUser: true);
         } else {
           // 网络或服务器错误，显示错误提示
           final errorValue = result.error;
@@ -708,8 +710,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// 导航到主页（loginMethod: 'apple' | 'google' | 'device'）
-  void _navigateToHome({String loginMethod = 'device'}) {
+  void _navigateToHome({String loginMethod = 'device', bool isNewUser = false}) {
     if (!mounted) return;
+    // 埋点：关联用户 ID（必须在 login/signup 之前调用，否则事件无法按用户归因）
+    final userId = _storageService.getUserId();
+    AnalyticsService.instance.setUserId(userId);
+    // 埋点：新用户注册
+    if (isNewUser) {
+      AnalyticsService.instance.logSignUp(method: loginMethod);
+    }
     // 埋点：登录成功
     AnalyticsService.instance.logLogin(method: loginMethod);
     Navigator.of(context).pushReplacement(

@@ -3,6 +3,8 @@
  * 接收并处理来自Google Play的订阅状态变更通知
  * 
  * 配置路径: Google Play Console → 创收 → 货币化设置 → Real-time Developer Notifications
+ * 安全说明: webhook endpoint 需在 Pub/Sub 推送订阅 URL 中追加 ?token=<GOOGLE_PUBSUB_TOKEN>
+ *   环境变量 GOOGLE_PUBSUB_TOKEN 必须是随机强密码，与 Google Pub/Sub 配置一致
  */
 
 const express = require('express');
@@ -10,12 +12,31 @@ const router = express.Router();
 const sequelize = require('../config/database');
 const SubscriptionService = require('../services/subscriptionService');
 const subscriptionConfig = require('../config/subscriptionConfig');
+const authenticate = require('../middleware/auth');
+
+/**
+ * 验证 Pub/Sub 推送来源
+ * Google Pub/Sub 会在推送订阅 URL 上携带预配置的 token 参数
+ * 未配置 GOOGLE_PUBSUB_TOKEN 时直接放行（本地开发兼容），生产必须配置
+ */
+function verifyPubSubToken(req, res, next) {
+  const expectedToken = process.env.GOOGLE_PUBSUB_TOKEN;
+  if (expectedToken) {
+    const receivedToken = req.query.token;
+    if (!receivedToken || receivedToken !== expectedToken) {
+      console.warn('⚠️ [play-notifications] Pub/Sub token 验证失败，拒绝请求');
+      return res.status(401).send('Unauthorized');
+    }
+  }
+  next();
+}
 
 /**
  * POST /api/play-notifications/webhook
  * Google Play Pub/Sub推送通知到这个endpoint
+ * 安全: 通过 verifyPubSubToken 中间件验证来源
  */
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', verifyPubSubToken, async (req, res) => {
   try {
     console.log('\n========== 收到Google Play通知 ==========');
     
@@ -208,9 +229,9 @@ router.get('/test', async (req, res) => {
 
 /**
  * GET /api/play-notifications/stats
- * 获取通知统计
+ * 获取通知统计（需管理员 JWT 鉴权）
  */
-router.get('/stats', async (req, res) => {
+router.get('/stats', authenticate, async (req, res) => {
   try {
     // 最近24小时的通知
     const [recentNotifications] = await sequelize.query(`

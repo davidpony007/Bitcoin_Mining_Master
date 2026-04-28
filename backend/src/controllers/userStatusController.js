@@ -19,6 +19,7 @@
 
 const { UserStatus, UserInformation } = require('../models');
 const { Op } = require('sequelize');
+const pool = require('../config/database_native');
 
 /**
  * 获取用户状态信息
@@ -339,6 +340,22 @@ exports.updateLastLoginTime = async (req, res, next) => {
     
     // 保存到数据库
     await userStatus.save();
+
+    // 记录每日活跃（用于次留计算），每天每用户只写一次
+    try {
+      const conn = await pool.getConnection();
+      try {
+        await conn.query(
+          'INSERT IGNORE INTO user_daily_active (user_id, active_date) VALUES (?, CURDATE())',
+          [user_id]
+        );
+      } finally {
+        conn.release();
+      }
+    } catch (dailyActiveErr) {
+      // 次留记录写入失败不影响登录主流程
+      console.error('user_daily_active insert error:', dailyActiveErr.message);
+    }
 
     // 返回更新结果
     res.json({

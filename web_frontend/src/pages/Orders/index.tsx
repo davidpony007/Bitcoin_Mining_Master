@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Space, Input, Select, Modal, Form, message, DatePicker, Tag, Descriptions,
+  Card, Statistic, Row, Col,
 } from 'antd';
-import { DeleteOutlined, PlusOutlined, ExportOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, ExportOutlined, SearchOutlined, EyeOutlined, TeamOutlined, FileTextOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { Resizable } from 'react-resizable';
 import type { ResizeCallbackData } from 'react-resizable';
@@ -51,6 +52,24 @@ interface OrderRow {
   user_seq: number | string;  // 该用户第几笔订单总
 }
 
+interface PlanStat {
+  product_name: string;
+  product_price: string;
+  user_cnt: number;
+  plan_cnt: number;
+}
+
+interface SubStats {
+  summary: {
+    activeUsers: number;
+    activePlans: number;
+    cancelledUsers: number;
+    cancelledPlans: number;
+  };
+  activeByPlan: PlanStat[];
+  cancelledByPlan: PlanStat[];
+}
+
 const PRODUCTS = [
   { id: 'p0499', name: 'contract_4.99',  price: '4.99'  },
   { id: 'p0699', name: 'contract_6.99',  price: '6.99'  },
@@ -91,6 +110,8 @@ const Orders: React.FC = () => {
   const [addVisible, setAddVisible]       = useState(false);
   const [selected, setSelected]     = useState<OrderRow | null>(null);
   const [addForm]                   = Form.useForm();
+  const [subStats, setSubStats]     = useState<SubStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
   const [colWidths, setColWidths]   = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem('col_widths_orders') || '{}'); } catch { return {}; }
   });
@@ -123,8 +144,18 @@ const Orders: React.FC = () => {
     setLoading(false);
   }, []);
 
+  const fetchSubStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res: any = await ordersApi.subscriptionStats();
+      if (res?.success) setSubStats(res.data);
+    } catch { message.error('加载订阅统计失败'); }
+    setStatsLoading(false);
+  }, []);
+
   useEffect(() => {
     fetchList(1, 10, '', '', new Date(Date.now() - 6*86400000).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10), '', '', '');
+    fetchSubStats();
   }, []);
 
   const doSearch = () => {
@@ -248,9 +279,80 @@ const Orders: React.FC = () => {
     return { ...col, width: w, onHeaderCell: () => ({ width: w, onResize: handleResize(k) }) };
   });
 
+  // 合并各档位活跃与取消数据为一张表
+  const planTableData = PRODUCTS.map(p => {
+    const act = subStats?.activeByPlan?.find(r => r.product_name === p.name);
+    const can = subStats?.cancelledByPlan?.find(r => r.product_name === p.name);
+    return {
+      key: p.id,
+      product_name: p.name,
+      product_price: p.price,
+      activeUsers:    act?.user_cnt  ?? 0,
+      activePlans:    act?.plan_cnt  ?? 0,
+      cancelledPlans: can?.plan_cnt  ?? 0,
+    };
+  });
+
+  const planColumns: ColumnsType<typeof planTableData[0]> = [
+    { title: '产品档位', dataIndex: 'product_name', key: 'product_name', width: 180,
+      render: (v: string, r: any) => <span style={{ fontWeight: 600 }}>{v} <span style={{ color: '#faad14' }}>(${r.product_price})</span></span> },
+    { title: '活跃用户数', dataIndex: 'activeUsers', key: 'activeUsers', width: 120, align: 'center' as const,
+      render: (v: number) => <span style={{ color: '#52c41a', fontWeight: v > 0 ? 600 : 400 }}>{v}</span> },
+    { title: '活跃订阅数', dataIndex: 'activePlans', key: 'activePlans', width: 120, align: 'center' as const,
+      render: (v: number) => <span style={{ color: '#1890ff', fontWeight: v > 0 ? 600 : 400 }}>{v}</span> },
+    { title: '已结束/取消数', dataIndex: 'cancelledPlans', key: 'cancelledPlans', width: 140, align: 'center' as const,
+      render: (v: number) => <span style={{ color: v > 0 ? '#ff4d4f' : '#999' }}>{v}</span> },
+  ];
+
   return (
     <div style={{ padding: '0 24px' }}>
       <h1 className="page-title">订单管理</h1>
+
+      {/* 订阅统计卡片 */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={12} sm={6}>
+          <Card size="small" loading={statsLoading} style={{ borderLeft: '3px solid #52c41a' }}>
+            <Statistic title="正在订阅用户数" value={subStats?.summary?.activeUsers ?? '-'}
+              prefix={<TeamOutlined style={{ color: '#52c41a' }} />}
+              valueStyle={{ color: '#52c41a', fontSize: 24 }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card size="small" loading={statsLoading} style={{ borderLeft: '3px solid #1890ff' }}>
+            <Statistic title="活跃订阅plan总数" value={subStats?.summary?.activePlans ?? '-'}
+              prefix={<FileTextOutlined style={{ color: '#1890ff' }} />}
+              valueStyle={{ color: '#1890ff', fontSize: 24 }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card size="small" loading={statsLoading} style={{ borderLeft: '3px solid #ff4d4f' }}>
+            <Statistic title="已取消订阅用户数" value={subStats?.summary?.cancelledUsers ?? '-'}
+              prefix={<TeamOutlined style={{ color: '#ff4d4f' }} />}
+              valueStyle={{ color: '#ff4d4f', fontSize: 24 }} />
+          </Card>
+        </Col>
+        <Col xs={12} sm={6}>
+          <Card size="small" loading={statsLoading} style={{ borderLeft: '3px solid #fa8c16' }}>
+            <Statistic title="已取消plan总数" value={subStats?.summary?.cancelledPlans ?? '-'}
+              prefix={<FileTextOutlined style={{ color: '#fa8c16' }} />}
+              valueStyle={{ color: '#fa8c16', fontSize: 24 }} />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* 各档位统计明细 */}
+      <Card size="small" title="各档位订阅统计" style={{ marginBottom: 16 }}
+        extra={<span style={{ color: '#999', fontSize: 12 }}>已结束/取消 = 订阅周期已完成或主动取消</span>}>
+        <Table
+          columns={planColumns}
+          dataSource={planTableData}
+          loading={statsLoading}
+          pagination={false}
+          size="small"
+          bordered
+          rowKey="key"
+        />
+      </Card>
 
       {/* 搜索栏 */}
       <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>

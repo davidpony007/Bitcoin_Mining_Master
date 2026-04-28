@@ -10,13 +10,19 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database_native');
+const authenticate = require('../middleware/auth');
 
 // ── POST /api/notifications/register-token ───────────────────
-router.post('/register-token', async (req, res) => {
+// JWT 认证：防止攻击者劫持其他用户的推送通知接收设备
+router.post('/register-token', authenticate, async (req, res) => {
   const { user_id, fcm_token, platform, app_version } = req.body;
 
   if (!user_id || !fcm_token || !platform) {
     return res.status(400).json({ success: false, message: '缺少必要参数: user_id, fcm_token, platform' });
+  }
+  // 校验 token 中的 user_id 与请求体 user_id 一致，防止越权注册他人 token
+  if (String(req.user.user_id) !== String(user_id)) {
+    return res.status(403).json({ success: false, message: '无权操作该用户的推送 Token' });
   }
   if (!['ios', 'android'].includes(platform)) {
     return res.status(400).json({ success: false, message: 'platform 必须为 ios 或 android' });
@@ -47,11 +53,16 @@ router.post('/register-token', async (req, res) => {
 
 // ── POST /api/notifications/active ───────────────────────────
 // 每次 App 进入前台时调用，更新 last_active_at，用于沉默用户召回判断
-router.post('/active', async (req, res) => {
+// JWT 认证：防止攻击者伪造任意用户的活跃状态
+router.post('/active', authenticate, async (req, res) => {
   const { user_id } = req.body;
 
   if (!user_id) {
     return res.status(400).json({ success: false, message: '缺少 user_id' });
+  }
+  // 只允许更新自己的活跃状态
+  if (String(req.user.user_id) !== String(user_id)) {
+    return res.status(403).json({ success: false, message: '无权操作该用户的活跃状态' });
   }
 
   try {

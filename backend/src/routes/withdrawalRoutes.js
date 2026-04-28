@@ -224,9 +224,10 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
-    // 5. 查询用户余额
+    // 5. 查询用户余额（使用 FOR UPDATE 行级锁，防止并发提现竞态导致余额变负）
     const userStatus = await UserStatus.findOne({
       where: { user_id: userId },
+      lock: transaction.LOCK.UPDATE,
       transaction
     });
 
@@ -250,11 +251,19 @@ router.post('/request', authenticateToken, async (req, res) => {
       });
     }
 
-    // 7. 扣除用户余额
-    await sequelize.query(
-      'UPDATE user_status SET current_bitcoin_balance = current_bitcoin_balance - ? WHERE user_id = ?',
-      { replacements: [withdrawAmountStr, userId], transaction }
+    // 7. 扣除用户余额（双重保险：WHERE 条件确保即使并发也不会扣出负数）
+    const [, deductMeta] = await sequelize.query(
+      'UPDATE user_status SET current_bitcoin_balance = current_bitcoin_balance - ? WHERE user_id = ? AND current_bitcoin_balance >= ?',
+      { replacements: [withdrawAmountStr, userId, withdrawAmountStr], transaction }
     );
+    const affectedRows = deductMeta?.affectedRows ?? deductMeta ?? 0;
+    if (parseInt(affectedRows) === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Insufficient balance. Please try again.'
+      });
+    }
 
     // 8. 创建提现记录（使用原生SQL避免Sequelize验证问题）
     // binance_uid 单独存储：isBinanceUID 时 walletAddress 即为 UID，同时写入专用列方便管理员识别

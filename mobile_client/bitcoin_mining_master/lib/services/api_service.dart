@@ -693,7 +693,10 @@ class ApiService {
   /// 获取用户的合约详情（My Contract页面）
   Future<Map<String, dynamic>> getMyContracts(String userId) async {
     try {
-      final response = await _dio.get('/contract-status/my-contracts/$userId');
+      final response = await _dio.get(
+        '/contract-status/my-contracts/$userId',
+        options: Options(extra: {'suppressToast': true}),
+      );
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);
@@ -706,6 +709,7 @@ class ApiService {
       final response = await _dio.get(
         '/level/info',
         queryParameters: {'user_id': userId},
+        options: Options(extra: {'suppressToast': true}),
       );
       return response.data;
     } on DioException catch (e) {
@@ -750,7 +754,10 @@ class ApiService {
     final bool isReceiveTimeout = error.type == DioExceptionType.receiveTimeout;
 
     // 调用方通过 options.extra['suppressToast']=true 声明静默处理（如自动加载的只读请求）
-    final bool suppressToast = error.requestOptions.extra['suppressToast'] == true;
+    // GET 请求为后台自动轮询，网络失败时始终静默——避免轮询抖动打扰用户
+    final bool isGetRequest = error.requestOptions.method.toUpperCase() == 'GET';
+    final bool suppressToast = isGetRequest ||
+        error.requestOptions.extra['suppressToast'] == true;
 
     if (isNetworkError && !suppressToast) {
       // 从后台恢复后 6 秒静默窗口内不弹 Toast（网络重建的正常抖动）

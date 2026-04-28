@@ -1317,6 +1317,34 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
 });
 
 /**
+ * POST /api/admin/datacenter/admob-sync
+ * 手动触发 AdMob 数据同步
+ * body: { startDate?: 'YYYY-MM-DD', endDate?: 'YYYY-MM-DD', platform?: 'Android'|'iOS' }
+ */
+router.post('/datacenter/admob-sync', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { syncAdMobData } = require('../jobs/admobSyncJob');
+    const { startDate: startStr, endDate: endStr, platform } = req.body;
+
+    const startDate = startStr ? new Date(startStr + 'T00:00:00Z') : undefined;
+    const endDate   = endStr   ? new Date(endStr   + 'T00:00:00Z') : undefined;
+
+    if (startDate && isNaN(startDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'startDate 格式无效，请使用 YYYY-MM-DD' });
+    }
+    if (endDate && isNaN(endDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'endDate 格式无效，请使用 YYYY-MM-DD' });
+    }
+
+    const result = await syncAdMobData({ startDate, endDate, platform });
+    res.json(result);
+  } catch (err) {
+    console.error('[AdMobSync] 手动触发失败:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
  * POST /api/admin/datacenter/ad-spend  添加/更新广告消耗
  */
 router.post('/datacenter/ad-spend', authenticateToken, requireAdmin, async (req, res) => {
