@@ -189,10 +189,12 @@ router.get('/my-contracts/:userId', async (req, res) => {
       }
     );
 
-    // 查询Invite Friend Reward合约总数（供客户端检测新邀请绑定，用于后台恢复时弹庆祝弹窗）
+    // 查询推荐人累计成功邀请数（供客户端检测新邀请绑定，用于后台恢复时弹庆祝弹窗）
+    // 注意：不能用 free_contract_records 计数——后续邀请只会延长现有合约记录而不新建行，
+    //       导致 count 永远停在 1，客户端 seenCount 追上后再也不会触发庆祝弹窗。
+    // 正确来源：invitation_relationship 表，每新增一个被邀请人必然新增一行，单调递增。
     const inviteFriendCountResult = await sequelize.query(
-      `SELECT COUNT(*) as count FROM free_contract_records
-       WHERE user_id = ? AND free_contract_type = 'Invite Friend Reward'`,
+      `SELECT COUNT(*) as count FROM invitation_relationship WHERE referrer_user_id = ?`,
       {
         replacements: [userId],
         type: sequelize.QueryTypes.SELECT
