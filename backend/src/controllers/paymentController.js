@@ -158,33 +158,54 @@ exports.verifyPurchase = async (req, res) => {
             newExpiry = fallbackExpiry;
             console.warn(`⚠️ [paymentController] 续订 expiresDate 已过期 (${rawExpiry.toISOString()})，回退自然月延期(from now): newExpiry=${newExpiry.toISOString()}`);
           }
-          await MiningContract.update(
+          const [updatedRows] = await MiningContract.update(
             { contract_end_time: newExpiry, is_renewal: 1, is_cancelled: 0 },
             { where: { original_transaction_id: originalTxId, user_id: user_id } }
           );
-          console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
-          const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email', 'apple_account'] });
-          await UserOrder.create({
-            user_id,
-            email: renewUser?.email || '',
-            apple_account: renewUser?.apple_account || null,
-            product_id: resolvedBackendProductId,
-            product_name: productInfo?.product_name || store_product_id,
-            product_price: String(productInfo?.product_price || 0),
-            hashrate: productInfo?.hashrate_raw || 0,
-            order_creation_time: new Date(),
-            payment_time: new Date(),
-            currency_type: 'USD',
-            payment_gateway_id: transaction_id,
-            payment_network_id: originalTxId,
-            order_status: 'renewing',
-          });
-          return res.status(200).json({
-            success: true,
-            message: '订阅续订成功，合约已延期',
-            renewed: true,
-            newExpiry,
-          });
+          let contractUpdated = updatedRows > 0;
+          if (!contractUpdated) {
+            // 回退：按 (user_id, product_id) 查找合约，处理 original_transaction_id=null 的历史数据
+            const fallbackContract = await MiningContract.findOne({
+              where: { user_id, product_id: resolvedBackendProductId, contract_type: 'paid contract' },
+              order: [['id', 'DESC']],
+            });
+            if (fallbackContract) {
+              await MiningContract.update(
+                { contract_end_time: newExpiry, is_renewal: 1, is_cancelled: 0, original_transaction_id: originalTxId },
+                { where: { id: fallbackContract.id } }
+              );
+              contractUpdated = true;
+              console.log(`✅ [paymentController] 续订回退修复合约(id=${fallbackContract.id}): original_transaction_id已补全`);
+            } else {
+              console.warn(`⚠️ [paymentController] 续订：未找到合约，将作为新购处理: user=${user_id} product=${resolvedBackendProductId}`);
+            }
+          }
+          if (contractUpdated) {
+            console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
+            const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email', 'apple_account'] });
+            await UserOrder.create({
+              user_id,
+              email: renewUser?.email || '',
+              apple_account: renewUser?.apple_account || null,
+              product_id: resolvedBackendProductId,
+              product_name: productInfo?.product_name || store_product_id,
+              product_price: String(productInfo?.product_price || 0),
+              hashrate: productInfo?.hashrate_raw || 0,
+              order_creation_time: new Date(),
+              payment_time: new Date(),
+              currency_type: 'USD',
+              payment_gateway_id: transaction_id,
+              payment_network_id: originalTxId,
+              order_status: 'renewing',
+            });
+            return res.status(200).json({
+              success: true,
+              message: '订阅续订成功，合约已延期',
+              renewed: true,
+              newExpiry,
+            });
+          }
+          // contractUpdated=false: 降级为新购流程（不 return，继续往下走）
         }
         // renewalOrder 不存在，或 renewalOrder 不匹配 → 视为首次订阅，直接往下走
         // ⚠️ 架构说明：本 App 采用「4 独立订阅组」设计，每个 Plan 各自独立订阅组，
