@@ -142,6 +142,12 @@ exports.handleNotification = async (req, res) => {
   res.status(200).json({ received: true });
 
   try {
+    // ── 入口诊断日志（排查格式与字段问题）────────────────
+    const bodyKeys = req.body ? Object.keys(req.body) : [];
+    const isV2 = !!req.body?.signedPayload;
+    const pwField = req.body?.password || req.body?.shared_secret || '';
+    console.log(`📥 [AppleNotif] 收到通知 format=${isV2 ? 'V2(signedPayload)' : 'V1'} keys=[${bodyKeys.join(',')}] notification_type=${req.body?.notification_type || 'n/a'} password_present=${!!req.body?.password} shared_secret_present=${!!req.body?.shared_secret} pw_prefix=${pwField.substring(0, 8)}`);
+
     // ── 判断是 V1 还是 V2 格式 ────────────────────────────
     let notification_type, original_transaction_id, product_id,
         expires_date_ms, auto_renew_status;
@@ -163,10 +169,10 @@ exports.handleNotification = async (req, res) => {
         console.warn(`⚠️ [AppleNotif V2] bundleId 不匹配，拒绝: received=${receivedBundleId} expected=${expectedBundleId}`);
         return;
       }
-      // 2. 时间戳防重放：signedDate 超过 1 小时的通知直接丢弃
+      // 2. 时间戳防重放：signedDate 超过 24 小时的通知才丢弃（Apple 会在数小时内重试）
       const signedDate = v2.signedDate;
-      if (signedDate && Math.abs(Date.now() - signedDate) > 3600 * 1000) {
-        console.warn(`⚠️ [AppleNotif V2] signedDate 超过 1 小时，忽略（可能重放攻击）: ${new Date(signedDate).toISOString()}`);
+      if (signedDate && Math.abs(Date.now() - signedDate) > 24 * 3600 * 1000) {
+        console.warn(`⚠️ [AppleNotif V2] signedDate 超过 24 小时，忽略（可能重放攻击）: ${new Date(signedDate).toISOString()}`);
         return;
       }
       notification_type = v2.notificationType || v2.notification_type;
@@ -197,10 +203,24 @@ exports.handleNotification = async (req, res) => {
           const order = await UserOrder.findOne({ where: { payment_network_id: original_transaction_id } });
           if (order) {
             const { MiningContract } = require('../models');
-            await MiningContract.update(
+            const [renewUpdated] = await MiningContract.update(
               { contract_end_time: newExpiry, is_cancelled: 0 },
               { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
             );
+            if (renewUpdated === 0) {
+              // 回退：original_transaction_id 未存储（历史数据），按用户最新合约修复
+              const fallbackC = await MiningContract.findOne({
+                where: { user_id: order.user_id, contract_type: 'paid contract' },
+                order: [['id', 'DESC']],
+              });
+              if (fallbackC) {
+                await MiningContract.update(
+                  { contract_end_time: newExpiry, is_cancelled: 0, original_transaction_id },
+                  { where: { id: fallbackC.id } }
+                );
+                console.log(`🔧 [AppleNotif V2] DID_RENEW 回退修复合约(id=${fallbackC.id}): original_transaction_id已补全`);
+              }
+            }
             // 补录续订订单（避免重复：同一 transaction_id 只记录一次）
             const newTxId = txInfo?.transactionId || txInfo?.transaction_id;
             if (newTxId) {
@@ -234,11 +254,54 @@ exports.handleNotification = async (req, res) => {
       // autoRenewProductId 存在 = 升/降档切换，当期继续有效
       if (notification_type === 'DID_CHANGE_RENEWAL_STATUS' && subtype === 'AUTO_RENEW_DISABLED') {
         const autoRenewProductId = renewalInfo?.autoRenewProductId;
-        if (!autoRenewProductId) {
-          // ⚠️ 用户关闭了自动续期，但当期合约继续有效直到 contract_end_time。
-          // markContractCancelled 内置 10 分钟时间窗口保护，若合约仍在有效期内，此处不会实际取消。
-          console.log(`ℹ️ [AppleNotif V2] 用户关闭自动续期，当期继续有效（到期后正式停止）: original_tx=${original_transaction_id}`);
-          await markContractCancelled(original_transaction_id);
+        // autoRenewProductId 缺失 或 与当前产品相同 = 明确取消（不是升降档）
+        // autoRenewProductId 存在且与当前产品不同 = 升/降档切换，当期继续有效
+        if (!autoRenewProductId || autoRenewProductId === product_id) {
+          // ✅ 用户主动取消订阅：立即标记 is_cancelled=1，但合约继续运行至 contract_end_time（当期权益保留）
+          // 这与 Apple 策略一致：取消后显示"已取消，将于X日到期"
+          const { MiningContract } = require('../models');
+          const sequelize = require('../config/database');
+          const cancelOrder = await UserOrder.findOne({ where: { payment_network_id: original_transaction_id } });
+          let [rows] = await MiningContract.update(
+            { is_cancelled: 1 },
+            { where: { original_transaction_id, contract_type: 'paid contract', is_cancelled: 0 } }
+          );
+          if (rows === 0 && cancelOrder?.user_id) {
+            // 回退：original_transaction_id 未存储，按用户最新未取消合约修复
+            const fallbackC = await MiningContract.findOne({
+              where: { user_id: cancelOrder.user_id, contract_type: 'paid contract', is_cancelled: 0 },
+              order: [['id', 'DESC']],
+            });
+            if (fallbackC) {
+              [rows] = await MiningContract.update(
+                { is_cancelled: 1, original_transaction_id },
+                { where: { id: fallbackC.id } }
+              );
+              if (rows > 0) {
+                // 原生SQL写入cancelled_at，避免Sequelize日期类型转换问题
+                await sequelize.query(
+                  'UPDATE mining_contracts SET cancelled_at = NOW() WHERE id = ? AND cancelled_at IS NULL',
+                  { replacements: [fallbackC.id] }
+                );
+                console.log(`🔧 [AppleNotif V2] DISABLED 回退修复合约(id=${fallbackC.id}): original_transaction_id已补全`);
+              }
+            }
+          } else if (rows > 0) {
+            // 原生SQL写入cancelled_at，避免Sequelize日期类型转换问题
+            await sequelize.query(
+              'UPDATE mining_contracts SET cancelled_at = NOW() WHERE original_transaction_id = ? AND is_cancelled = 1 AND cancelled_at IS NULL',
+              { replacements: [original_transaction_id] }
+            );
+          }
+          if (rows > 0) {
+            await UserOrder.update(
+              { order_status: 'complete' },
+              { where: { payment_network_id: original_transaction_id } }
+            );
+            console.log(`📴 [AppleNotif V2] 用户取消订阅，合约标记取消（当期继续有效至到期）: original_tx=${original_transaction_id} rows=${rows}`);
+          } else {
+            console.log(`ℹ️ [AppleNotif V2] 用户关闭自动续期（合约已取消或不存在）: original_tx=${original_transaction_id}`);
+          }
         } else {
           console.log(`ℹ️ [AppleNotif V2] 档位切换（非明确取消），当期继续有效: original_tx=${original_transaction_id} nextPlan=${autoRenewProductId}`);
         }
@@ -247,10 +310,25 @@ exports.handleNotification = async (req, res) => {
       // AUTO_RENEW_ENABLED → 用户重新开启自动续费（取消后反悔），恢复合约活跃状态
       if (notification_type === 'DID_CHANGE_RENEWAL_STATUS' && subtype === 'AUTO_RENEW_ENABLED') {
         const { MiningContract } = require('../models');
-        await MiningContract.update(
+        const enableOrder = await UserOrder.findOne({ where: { payment_network_id: original_transaction_id } });
+        const [enabledRows] = await MiningContract.update(
           { is_cancelled: 0 },
           { where: { original_transaction_id, contract_type: 'paid contract' } }
         );
+        if (enabledRows === 0 && enableOrder?.user_id) {
+          // 回退：original_transaction_id 未存储
+          const fallbackC = await MiningContract.findOne({
+            where: { user_id: enableOrder.user_id, contract_type: 'paid contract' },
+            order: [['id', 'DESC']],
+          });
+          if (fallbackC) {
+            await MiningContract.update(
+              { is_cancelled: 0, original_transaction_id },
+              { where: { id: fallbackC.id } }
+            );
+            console.log(`🔧 [AppleNotif V2] ENABLED 回退修复合约(id=${fallbackC.id}): original_transaction_id已补全`);
+          }
+        }
         console.log(`✅ [AppleNotif V2] 用户恢复自动续费，合约重新激活: original_tx=${original_transaction_id}`);
         return;
       }
@@ -272,10 +350,24 @@ exports.handleNotification = async (req, res) => {
           }
           const updateFields = { is_cancelled: 0 };
           if (resubExpiry) updateFields.contract_end_time = resubExpiry;
-          await MiningContract.update(
+          const [resubUpdated] = await MiningContract.update(
             updateFields,
             { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
           );
+          if (resubUpdated === 0) {
+            // 回退：original_transaction_id 未存储，按用户最新合约修复
+            const fallbackC = await MiningContract.findOne({
+              where: { user_id: order.user_id, contract_type: 'paid contract' },
+              order: [['id', 'DESC']],
+            });
+            if (fallbackC) {
+              await MiningContract.update(
+                { ...updateFields, original_transaction_id },
+                { where: { id: fallbackC.id } }
+              );
+              console.log(`🔧 [AppleNotif V2] RESUBSCRIBE 回退修复合约(id=${fallbackC.id}): original_transaction_id已补全`);
+            }
+          }
           console.log(`✅ [AppleNotif V2] 用户重新订阅，合约恢复${resubExpiry ? ` 新到期: ${resubExpiry.toISOString()}` : ''}: original_tx=${original_transaction_id}`);
         }
         return;
@@ -297,12 +389,14 @@ exports.handleNotification = async (req, res) => {
     }
 
     // ── Apple V1 格式 ──────────────────────────────────────
-    const { password, unified_receipt, latest_receipt_info } = req.body;
+    // Apple V1 通知的共享密钥字段名在不同版本中为 password 或 shared_secret
+    const password = req.body.password || req.body.shared_secret || '';
+    const { unified_receipt, latest_receipt_info } = req.body;
     notification_type = req.body.notification_type;
 
     // 校验 shared secret，防止伪造请求
-    if (password !== SHARED_SECRET) {
-      console.warn(`⚠️ [AppleNotif V1] shared secret 不匹配，忽略 (received=${(password || '').substring(0, 6)}...)`);
+    if (SHARED_SECRET && password !== SHARED_SECRET) {
+      console.warn(`⚠️ [AppleNotif V1] shared secret 不匹配，忽略 (received=${password.substring(0, 8)}... expected_prefix=${SHARED_SECRET.substring(0, 8)}...)`);
       return;
     }
 
@@ -455,11 +549,12 @@ async function markContractRefunded(originalTransactionId) {
   if (!originalTransactionId) return;
   try {
     const { MiningContract } = require('../models');
+    const sequelize = require('../config/database');
     // 强制终止：不受有效期限制，退款即停止挖矿
     // 必须同时更新 contract_end_time，因为 contractRewardService 只检查该字段
     const now = new Date();
     const [rows] = await MiningContract.update(
-      { is_cancelled: 1, cancelled_at: now, contract_end_time: now },
+      { is_cancelled: 1, contract_end_time: now },
       {
         where: {
           original_transaction_id: originalTransactionId,
@@ -469,6 +564,11 @@ async function markContractRefunded(originalTransactionId) {
       }
     );
     if (rows > 0) {
+      // 原生SQL写入cancelled_at
+      await sequelize.query(
+        'UPDATE mining_contracts SET cancelled_at = NOW() WHERE original_transaction_id = ? AND is_cancelled = 1 AND cancelled_at IS NULL',
+        { replacements: [originalTransactionId] }
+      );
       await UserOrder.update(
         { order_status: 'refund successful' },
         { where: { payment_network_id: originalTransactionId } }
@@ -490,13 +590,14 @@ async function markContractRefunded(originalTransactionId) {
 async function markContractCancelled(originalTransactionId) {
   if (!originalTransactionId) return;
   try {
-    const { MiningContract, Sequelize } = require('../models');
-    const { Op } = Sequelize;
+    const { MiningContract } = require('../models');
+    const { Op } = require('sequelize');
+    const sequelize = require('../config/database');
     // 只取消 contract_end_time 在 10 分钟内已到期或即将到期的合约
     // 若 DID_RENEW 已将到期时间延长至未来，则跳过取消
     const cutoff = new Date(Date.now() + 10 * 60 * 1000); // now + 10min
     const [rows] = await MiningContract.update(
-      { is_cancelled: 1, cancelled_at: new Date() },
+      { is_cancelled: 1 },
       {
         where: {
           original_transaction_id: originalTransactionId,
@@ -507,6 +608,11 @@ async function markContractCancelled(originalTransactionId) {
       }
     );
     if (rows > 0) {
+      // 原生SQL写入cancelled_at，避免Sequelize日期类型转换问题
+      await sequelize.query(
+        'UPDATE mining_contracts SET cancelled_at = NOW() WHERE original_transaction_id = ? AND is_cancelled = 1 AND cancelled_at IS NULL',
+        { replacements: [originalTransactionId] }
+      );
       // 同步标记关联订单
       await UserOrder.update(
         { order_status: 'complete' },
@@ -536,9 +642,8 @@ exports.cancelContractManually = async (req, res) => {
       return res.status(400).json({ success: false, message: '缺少必要参数' });
     }
 
-    const { MiningContract, Sequelize } = require('../models');
-    const { Op } = Sequelize;
-    // ⚠️ 与 markContractCancelled 保持一致：只允许取消已到期或即将到期（10分钟内）的合约。
+    const { MiningContract } = require('../models');
+    const { Op } = require('sequelize');
     // 防止在计费周期中途误取消活跃合约（Apple 政策：取消后当期仍有效）。
     const cutoff = new Date(Date.now() + 10 * 60 * 1000);
     // 安全性：只允许操作属于当前用户的合约

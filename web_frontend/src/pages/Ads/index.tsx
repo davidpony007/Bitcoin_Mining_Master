@@ -25,6 +25,7 @@ interface AdsTopUser {
   email: string;
   total_ad_views: number;
   points_earned: number;
+  todayViews: number;
 }
 
 const Ads: React.FC = () => {

@@ -766,7 +766,7 @@ const Users: React.FC = () => {
             <Descriptions.Item label="应用版本">{basic.app_version || '-'}</Descriptions.Item>
             <Descriptions.Item label="累计签到天数"><Text style={{ color: '#13c2c2', fontWeight: 600 }}>{totalCheckinDays} 天</Text></Descriptions.Item>
             <Descriptions.Item label="实时挖矿速率" span={2}>
-              <Text style={{ color: '#f7931a', fontWeight: 600 }}>{totalMiningRatePerSecond}</Text>
+              <Text style={{ color: '#f7931a', fontWeight: 600 }}>{totalMiningRatePerSecond ? parseFloat(String(totalMiningRatePerSecond)).toFixed(18) : '0.000000000000000000'}</Text>
               <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>BTC/s</Text>
             </Descriptions.Item>
             <Descriptions.Item label="账号状态">
@@ -978,6 +978,7 @@ const Users: React.FC = () => {
                           : <Tag color="purple" style={{ fontSize: 10 }}>免费</Tag>
                       ),
                     },
+
                   ]}
                 />
               )}

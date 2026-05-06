@@ -27,6 +27,8 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
     static final Uri _termsOfServiceUri =
       Uri.parse('https://bitcoin-mining-master-legal.davidpony007.workers.dev/terms-of-service');
   bool _serviceInitialized = false;
+  String? _billingInitError; // 记录 Google Play Billing 初始化失败原因（用于诊断）
+  bool _isBillingInitializing = false; // 是否正在初始化中（用于重试按钮状态）
   String? _loadingTierId; // 正在发起购买的套餐内部ID
   bool _isLoadingProducts = true; // 正在从服务端加载产品列表
 
@@ -177,13 +179,40 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         if (mounted) _showPointsReward(pts);
       });
     };
+    if (mounted) setState(() => _isBillingInitializing = true);
     final available = await _billingService.init();
-    if (available) {
-      await _billingService.loadProducts();
+    if (!available) {
+      if (mounted) setState(() {
+        _billingInitError = 'Google Play Billing is not available on this device. '  
+            'Please ensure Google Play Services is up to date and your account has a payment method.';
+        _serviceInitialized = false;
+        _isBillingInitializing = false;
+      });
+      return;
     }
+    await _billingService.loadProducts();
     // 只有在商品成功加载时才标记服务可用（否则点击购买会立即报 Product not found）
     final productsLoaded = _billingService.subscriptionProducts.isNotEmpty;
-    if (mounted) setState(() => _serviceInitialized = available && productsLoaded);
+    if (mounted) setState(() {
+      _serviceInitialized = productsLoaded;
+      _isBillingInitializing = false;
+      if (!productsLoaded) {
+        _billingInitError = 'Failed to load subscription products from Google Play. '
+            'Please check your internet connection and try again.';
+      } else {
+        _billingInitError = null;
+      }
+    });
+  }
+
+  /// 用户手动重试 Google Play Billing 初始化
+  Future<void> _retryBillingInit() async {
+    if (_isBillingInitializing) return;
+    setState(() {
+      _billingInitError = null;
+      _serviceInitialized = false;
+    });
+    await _initBillingService();
   }
 
   Future<void> _initAppleService() async {
@@ -397,6 +426,46 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: Center(
                   child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+                ),
+              )
+            else if (Platform.isAndroid && !_serviceInitialized && _billingInitError != null && !_isBillingInitializing)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16213E),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.payment_outlined, color: Colors.orange, size: 40),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Payment Service Unavailable',
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _billingInitError!,
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _retryBillingInit,
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Retry'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6366F1),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               )
             else
@@ -719,9 +788,7 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
               const SizedBox(height: 12),
               _buildBulletPoint('Contract activates immediately after purchase'),
               _buildBulletPoint('Mining runs automatically for 1 month'),
-              _buildBulletPoint('Daily earnings are added to your balance'),
-              _buildBulletPoint('Withdraw anytime once balance reaches minimum'),
-              _buildBulletPoint('No additional fees or hidden costs'),
+              _buildBulletPoint('Subscribe to multiple plan tiers to cumulatively stack your hashrate.'),
             ],
           ),
         ),
@@ -862,8 +929,18 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
     if (Platform.isAndroid) {
       // Android: 调起 Google Play Billing
       if (!_serviceInitialized) {
-        _showPurchaseResult(false, 'Payment service unavailable. Please check your connection and try again.');
-        return;
+        // 可能 init() 仍在运行（loadProducts 最多重试约12秒），等待最多 15 秒再检查
+        setState(() => _loadingTierId = tier['id'] as String);
+        int waited = 0;
+        while (!_serviceInitialized && waited < 150) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          waited++;
+        }
+        if (!_serviceInitialized) {
+          setState(() => _loadingTierId = null);
+          _showPurchaseResult(false, 'Payment service unavailable. Please check your connection and try again.');
+          return;
+        }
       }
       final userId = StorageService().getUserId();
       if (userId == null || userId.isEmpty) {

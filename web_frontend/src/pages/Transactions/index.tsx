@@ -1,13 +1,32 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Card, Table, Input, Space, Select, DatePicker, Tabs, Tag, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { Resizable } from 'react-resizable';
 import dayjs from 'dayjs';
 import { bitcoinTxApi } from '@/services/api/admin';
+import 'react-resizable/css/styles.css';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 const { TabPane } = Tabs;
+
+// ─── 可拖拽表头 ──────────────────────────────────────────────────────────────
+const ResizableTitle = (props: any) => {
+  const { onResize, width, ...restProps } = props;
+  if (!width) return <th {...restProps} />;
+  return (
+    <Resizable
+      width={width}
+      height={0}
+      handle={<span className="react-resizable-handle" onClick={e => e.stopPropagation()} />}
+      onResize={onResize}
+      draggableOpts={{ enableUserSelectHack: false }}
+    >
+      <th {...restProps} />
+    </Resizable>
+  );
+};
 
 // ─── Bitcoin Transaction 类型标签颜色 ────────────────────────────────────────
 const typeColor: Record<string, string> = {
@@ -18,6 +37,7 @@ const typeColor: Record<string, string> = {
   'subordinate rebate': 'green',
   'withdrawal': 'red',
   'refund for withdrawal failure': 'purple',
+  'mining_reward': 'volcano',
 };
 
 interface TxRecord {
@@ -40,6 +60,10 @@ interface RebateRecord {
   createdAt: string;
 }
 
+// ─── 初始列宽配置 ─────────────────────────────────────────────────────────────
+const TX_COL_WIDTHS_INIT = { id: 80, userId: 180, type: 180, amount: 200, balanceAfter: 200, description: 300, status: 90, createdAt: 175 };
+const RBT_COL_WIDTHS_INIT = { id: 80, userId: 180, invitationCode: 130, subordinateUserId: 180, amount: 200, createdAt: 175 };
+
 const Transactions: React.FC = () => {
   // ─── 交易记录 Tab ────────────────────────────────────────────────────────
   const [txList, setTxList] = useState<TxRecord[]>([]);
@@ -52,6 +76,11 @@ const Transactions: React.FC = () => {
     const utcToday = new Date().toISOString().slice(0, 10);
     return [dayjs(utcToday).subtract(2, 'day'), dayjs(utcToday)];
   });
+  const [txColWidths, setTxColWidths] = useState(TX_COL_WIDTHS_INIT);
+
+  const handleTxResize = (col: keyof typeof TX_COL_WIDTHS_INIT) => (_: any, { size }: { size: { width: number } }) => {
+    setTxColWidths(prev => ({ ...prev, [col]: size.width }));
+  };
 
   const loadTx = useCallback(async (p: number, uid: string, t: string, dates: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
     setTxLoading(true);
@@ -76,33 +105,49 @@ const Transactions: React.FC = () => {
   }, []);
 
   const txColumns: ColumnsType<TxRecord> = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '用户ID', dataIndex: 'userId', width: 160, ellipsis: true },
     {
-      title: '类型', dataIndex: 'type', width: 170,
+      title: 'ID', dataIndex: 'id', width: txColWidths.id,
+      onHeaderCell: () => ({ width: txColWidths.id, onResize: handleTxResize('id') } as any),
+    },
+    {
+      title: '用户ID', dataIndex: 'userId', width: txColWidths.userId, ellipsis: true,
+      onHeaderCell: () => ({ width: txColWidths.userId, onResize: handleTxResize('userId') } as any),
+    },
+    {
+      title: '类型', dataIndex: 'type', width: txColWidths.type,
+      onHeaderCell: () => ({ width: txColWidths.type, onResize: handleTxResize('type') } as any),
       render: (v: string) => <Tag color={typeColor[v] || 'default'}>{v}</Tag>,
     },
     {
-      title: '金额 (BTC)', dataIndex: 'amount', width: 140,
+      title: '金额 (BTC)', dataIndex: 'amount', width: txColWidths.amount,
+      onHeaderCell: () => ({ width: txColWidths.amount, onResize: handleTxResize('amount') } as any),
       render: (v: number, r: TxRecord) => (
-        <span style={{ color: r.type === 'withdrawal' ? '#f5222d' : '#52c41a' }}>
-          {r.type === 'withdrawal' ? '-' : '+'}{v.toFixed(8)}
+        <span style={{ color: r.type === 'withdrawal' ? '#f5222d' : '#52c41a', fontFamily: 'monospace', fontSize: 12 }}>
+          {r.type === 'withdrawal' ? '-' : '+'}{Number(v).toFixed(18)}
         </span>
       ),
     },
     {
-      title: '余额 (BTC)', dataIndex: 'balanceAfter', width: 140,
-      render: (v: number | null) => v != null ? v.toFixed(8) : '-',
+      title: '余额 (BTC)', dataIndex: 'balanceAfter', width: txColWidths.balanceAfter,
+      onHeaderCell: () => ({ width: txColWidths.balanceAfter, onResize: handleTxResize('balanceAfter') } as any),
+      render: (v: number | null) => v != null
+        ? <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{Number(v).toFixed(18)}</span>
+        : '-',
     },
-    { title: '说明', dataIndex: 'description', ellipsis: true },
     {
-      title: '状态', dataIndex: 'status', width: 90,
+      title: '说明', dataIndex: 'description', width: txColWidths.description, ellipsis: true,
+      onHeaderCell: () => ({ width: txColWidths.description, onResize: handleTxResize('description') } as any),
+    },
+    {
+      title: '状态', dataIndex: 'status', width: txColWidths.status,
+      onHeaderCell: () => ({ width: txColWidths.status, onResize: handleTxResize('status') } as any),
       render: (v: string) => (
         <Tag color={v === 'success' ? 'success' : v === 'pending' ? 'warning' : 'error'}>{v}</Tag>
       ),
     },
     {
-      title: '时间', dataIndex: 'createdAt', width: 170,
+      title: '时间', dataIndex: 'createdAt', width: txColWidths.createdAt,
+      onHeaderCell: () => ({ width: txColWidths.createdAt, onResize: handleTxResize('createdAt') } as any),
       render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
   ];
@@ -117,6 +162,11 @@ const Transactions: React.FC = () => {
     const utcToday = new Date().toISOString().slice(0, 10);
     return [dayjs(utcToday).subtract(2, 'day'), dayjs(utcToday)];
   });
+  const [rbtColWidths, setRbtColWidths] = useState(RBT_COL_WIDTHS_INIT);
+
+  const handleRbtResize = (col: keyof typeof RBT_COL_WIDTHS_INIT) => (_: any, { size }: { size: { width: number } }) => {
+    setRbtColWidths(prev => ({ ...prev, [col]: size.width }));
+  };
 
   const loadRebate = useCallback(async (p: number, uid: string, dates: [dayjs.Dayjs, dayjs.Dayjs] | null) => {
     setRbtLoading(true);
@@ -140,19 +190,39 @@ const Transactions: React.FC = () => {
   }, []);
 
   const rebateColumns: ColumnsType<RebateRecord> = [
-    { title: 'ID', dataIndex: 'id', width: 80 },
-    { title: '用户ID', dataIndex: 'userId', width: 160, ellipsis: true },
-    { title: '邀请码', dataIndex: 'invitationCode', width: 120 },
-    { title: '下级用户ID', dataIndex: 'subordinateUserId', width: 160, ellipsis: true },
     {
-      title: '返利金额 (BTC)', dataIndex: 'amount', width: 150,
-      render: (v: number) => <span style={{ color: '#52c41a' }}>+{v.toFixed(8)}</span>,
+      title: 'ID', dataIndex: 'id', width: rbtColWidths.id,
+      onHeaderCell: () => ({ width: rbtColWidths.id, onResize: handleRbtResize('id') } as any),
     },
     {
-      title: '时间', dataIndex: 'createdAt', width: 170,
+      title: '用户ID', dataIndex: 'userId', width: rbtColWidths.userId, ellipsis: true,
+      onHeaderCell: () => ({ width: rbtColWidths.userId, onResize: handleRbtResize('userId') } as any),
+    },
+    {
+      title: '邀请码', dataIndex: 'invitationCode', width: rbtColWidths.invitationCode,
+      onHeaderCell: () => ({ width: rbtColWidths.invitationCode, onResize: handleRbtResize('invitationCode') } as any),
+    },
+    {
+      title: '下级用户ID', dataIndex: 'subordinateUserId', width: rbtColWidths.subordinateUserId, ellipsis: true,
+      onHeaderCell: () => ({ width: rbtColWidths.subordinateUserId, onResize: handleRbtResize('subordinateUserId') } as any),
+    },
+    {
+      title: '返利金额 (BTC)', dataIndex: 'amount', width: rbtColWidths.amount,
+      onHeaderCell: () => ({ width: rbtColWidths.amount, onResize: handleRbtResize('amount') } as any),
+      render: (v: number) => <span style={{ color: '#52c41a', fontFamily: 'monospace', fontSize: 12 }}>+{Number(v).toFixed(18)}</span>,
+    },
+    {
+      title: '时间', dataIndex: 'createdAt', width: rbtColWidths.createdAt,
+      onHeaderCell: () => ({ width: rbtColWidths.createdAt, onResize: handleRbtResize('createdAt') } as any),
       render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
   ];
+
+  // 页面挂载时自动加载交易记录（默认日期范围）
+  useEffect(() => {
+    loadTx(1, '', '', txDates);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div style={{ padding: 24 }}>
@@ -172,17 +242,19 @@ const Transactions: React.FC = () => {
               <Select
                 placeholder="交易类型"
                 allowClear
-                style={{ width: 180 }}
+                style={{ width: 200 }}
                 value={txType || undefined}
                 onChange={v => { setTxType(v || ''); setTxPage(1); loadTx(1, txUserId, v || '', txDates); }}
               >
                 <Option value="all">全部</Option>
+                <Option value="mining_reward">挖矿收益（付费合约）</Option>
                 <Option value="Free Ad Reward">广告奖励</Option>
                 <Option value="Daily Check-in Reward">签到奖励</Option>
                 <Option value="Invite Friend Reward">邀请奖励</Option>
                 <Option value="Bind Referrer Reward">绑定奖励</Option>
                 <Option value="subordinate rebate">返利收入</Option>
                 <Option value="withdrawal">提现</Option>
+                <Option value="refund for withdrawal failure">提现退款</Option>
               </Select>
               <RangePicker
                 value={txDates}
@@ -201,7 +273,8 @@ const Transactions: React.FC = () => {
               loading={txLoading}
               dataSource={txList}
               columns={txColumns}
-              scroll={{ x: 1100 }}
+              components={{ header: { cell: ResizableTitle } }}
+              scroll={{ x: 'max-content' }}
               pagination={{
                 total: txTotal,
                 current: txPage,
@@ -241,7 +314,8 @@ const Transactions: React.FC = () => {
               loading={rbtLoading}
               dataSource={rbtList}
               columns={rebateColumns}
-              scroll={{ x: 900 }}
+              components={{ header: { cell: ResizableTitle } }}
+              scroll={{ x: 'max-content' }}
               pagination={{
                 total: rbtTotal,
                 current: rbtPage,

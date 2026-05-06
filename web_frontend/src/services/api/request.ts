@@ -61,7 +61,9 @@ instance.interceptors.response.use(
           window.location.href = '/data-system/login';
           break;
         case 403:
-          message.error('没有权限访问');
+          message.error('登录已过期，请重新登录');
+          localStorage.removeItem('token');
+          window.location.href = '/data-system/login';
           break;
         case 404:
           message.error('请求的资源不存在');

@@ -15,9 +15,10 @@
 
 'use strict';
 
-const cron        = require('node-cron');
-const { google }  = require('googleapis');
-const pool        = require('../config/database_native');
+const cron                = require('node-cron');
+const { google }          = require('googleapis');
+const pool                = require('../config/database_native');
+const bitcoinPriceService = require('../services/bitcoinPriceService');
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -141,16 +142,18 @@ async function fetchAdMobData(startDate, endDate, platform) {
 async function upsertAdMobData(dataMap, platform) {
   if (dataMap.size === 0) return;
 
+  const btcPrice = bitcoinPriceService.getCurrentPrice()?.price || 0;
   const conn = await pool.getConnection();
   try {
     for (const [dateStr, { impressions, estimatedEarnings }] of dataMap) {
       await conn.query(
-        `INSERT INTO daily_ad_stats (stat_date, platform, ad_count, ad_revenue)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO daily_ad_stats (stat_date, platform, ad_count, ad_revenue, btc_avg_price)
+         VALUES (?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
-           ad_count    = VALUES(ad_count),
-           ad_revenue  = VALUES(ad_revenue)`,
-        [dateStr, platform, impressions, estimatedEarnings]
+           ad_count      = VALUES(ad_count),
+           ad_revenue    = VALUES(ad_revenue),
+           btc_avg_price = IF(VALUES(btc_avg_price) > 0, VALUES(btc_avg_price), btc_avg_price)`,
+        [dateStr, platform, impressions, estimatedEarnings, btcPrice]
       );
     }
   } finally {
@@ -181,6 +184,11 @@ async function syncAdMobData({ startDate, endDate, platform } = {}) {
   let totalDates = 0;
 
   for (const pf of platforms) {
+    // Android 若没配 App ID 则跳过（账户下没有 Android 应用时不拉）
+    if (pf === 'Android' && !process.env.ADMOB_APP_ID_ANDROID) {
+      console.log(`[AdMobSync] 跳过 Android（未配置 ADMOB_APP_ID_ANDROID）`);
+      continue;
+    }
     // iOS 若没配 App ID 则跳过（避免误拉全量数据）
     if (pf === 'iOS' && !process.env.ADMOB_APP_ID_IOS && !process.env.ADMOB_PUBLISHER_ID) {
       continue;

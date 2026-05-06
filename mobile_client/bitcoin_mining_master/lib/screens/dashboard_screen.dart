@@ -197,6 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             _batteries[i].remainingSeconds = batterySeconds - remaining;
             _batteries[i].level =
                 (_batteries[i].remainingSeconds / 900).ceil().clamp(0, 4);
+            _batteries[i].isMining = true; // 此电池变为当前正在消耗的电池
             remaining = 0;
           }
         }
@@ -612,10 +613,12 @@ class _DashboardScreenState extends State<DashboardScreen>
         _sortBatteries();
       }
 
-      // 每30秒从后端同步一次真实余额和挖矿速率（校准基准值）
+      // 每30秒从后端同步一次真实余额、挖矿速率和电池状态（校准基准值）
       _syncCounter++;
       if (mounted && _syncCounter >= 30) {
         await context.read<UserProvider>().fetchBitcoinBalance();
+        // 同步电池状态：用服务器真实剩余时间覆盖本地计时，防止长时间漂移
+        if (mounted) await _loadContractAndUpdateBatteries();
         _syncCounter = 0;
       }
     });
@@ -738,7 +741,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     int batteryIndex = 0;
 
     // 设置完整小时对应的满电池（每个满电池 = 4格 = 60分钟）
-    for (int i = 0; i < totalHours && batteryIndex < _batteries.length; i++) {
+    // 最后一个电池（当前正在消耗的那个）会在后面单独处理
+    final fullBatteryCount = remainingSecondsAfterHours > 0 ? totalHours : (totalHours > 0 ? totalHours - 1 : 0);
+    for (int i = 0; i < fullBatteryCount && batteryIndex < _batteries.length; i++) {
       _batteries[batteryIndex].level = 4;
       _batteries[batteryIndex].isMining = false;
       _batteries[batteryIndex].totalSeconds = 3600;
@@ -748,19 +753,30 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     print('🔋 已设置 $batteryIndex 个满电池');
 
-    // 如果还有剩余时间（不足1小时的部分），设置为正在挖矿的电池
-    if (remainingSecondsAfterHours > 0 && batteryIndex < _batteries.length) {
+    // 当前正在消耗的电池：
+    // - 若有余数（不足1小时），用余数秒数
+    // - 若恰好是整数小时（无余数），最后一个完整小时作为当前挖矿电池
+    final int currentMiningSeconds;
+    if (remainingSecondsAfterHours > 0) {
+      currentMiningSeconds = remainingSecondsAfterHours;
+    } else if (totalHours > 0) {
+      currentMiningSeconds = 3600;
+    } else {
+      currentMiningSeconds = 0;
+    }
+
+    if (currentMiningSeconds > 0 && batteryIndex < _batteries.length) {
       // 计算这个电池应该显示几格（每15分钟1格）
-      final level = (remainingSecondsAfterHours / 900).ceil().clamp(1, 4);
+      final level = (currentMiningSeconds / 900).ceil().clamp(1, 4);
 
       _batteries[batteryIndex].level = level;
       _batteries[batteryIndex].isMining = true;
       _batteries[batteryIndex].totalSeconds = 3600; // 一个完整电池的总时间
-      _batteries[batteryIndex].remainingSeconds = remainingSecondsAfterHours;
+      _batteries[batteryIndex].remainingSeconds = currentMiningSeconds;
       batteryIndex++;
 
       print(
-        '🔋 已设置正在挖矿的电池 - level: $level, remainingSeconds: $remainingSecondsAfterHours',
+        '🔋 已设置正在挖矿的电池 - level: $level, remainingSeconds: $currentMiningSeconds',
       );
     }
 

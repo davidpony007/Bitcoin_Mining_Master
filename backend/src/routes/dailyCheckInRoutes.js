@@ -123,11 +123,23 @@ router.post('/daily', async (req, res) => {
     res.status(200).json({
       success: true,
       message: '签到成功，已获得2小时挖矿合约和积分奖励',
+      points_awarded: pointsResult.pointsAwarded || 4,
+      daily_points: pointsResult.dailyPoints || 4,
+      milestone_bonus: pointsResult.milestoneBonus || 0,
+      milestone_rewards: pointsResult.milestoneRewards || [],
+      cumulative_days: pointsResult.cumulativeDays,
       data: {
         ...result,
         points: {
           earned: pointsResult.pointsAwarded || 4,
+          dailyPoints: pointsResult.dailyPoints || 4,
+          milestoneBonus: pointsResult.milestoneBonus || 0,
+          milestoneRewards: pointsResult.milestoneRewards || [],
           cumulativeDays: pointsResult.cumulativeDays
+        },
+        milestone: {
+          triggered: pointsResult.milestoneTriggered || false,
+          rewards: pointsResult.milestoneRewards || []
         }
       }
     });

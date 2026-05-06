@@ -17,6 +17,22 @@ const axios = require('axios');
 const geoip = require('geoip-lite');
 
 /**
+ * 记录用户当天登录日志（DAU 统计用）
+ * 同一用户同一天只记录一次（UNIQUE KEY 保证），失败不影响主流程
+ */
+async function recordLoginLog(userId) {
+  try {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    await pool.execute(
+      'INSERT IGNORE INTO user_login_logs (user_id, login_date) VALUES (?, ?)',
+      [userId, today]
+    );
+  } catch (e) {
+    console.error('[recordLoginLog] failed:', e.message);
+  }
+}
+
+/**
  * 通过 IP 检测国家，优先使用本地 geoip-lite，失败时降级到 ip-api.com 在线查询
  * @param {string} ip
  * @returns {Promise<string|null>} 两位国家代码，如 "HK"，识别失败返回 null
@@ -282,6 +298,7 @@ exports.deviceLogin = async (req, res) => {
         console.error('   ❌ 创建用户状态失败:', statusErr);
         // 状态创建失败不影响用户注册
       }
+      recordLoginLog(user.user_id);
 
       // 3. 如果填写了推荐人邀请码，建立邀请关系
       if (referrer_invitation_code && referrer_invitation_code.trim() !== '') {
@@ -385,6 +402,7 @@ exports.deviceLogin = async (req, res) => {
           { last_login_time: new Date() },
           { where: { user_id: user.user_id } }
         );
+        recordLoginLog(user.user_id);
         
         // 更新用户的国家信息：仅当用户尚未分配国家时才写入（防止 VPN 登录覆盖已有的正确值）
         const hasCountry = user.country_code && user.country_code.trim() !== '';
@@ -803,6 +821,7 @@ const { google_id, google_account, google_name, gaid, country, device_country, s
       } catch (statusErr) {
         console.error('   ❌ 创建用户状态失败:', statusErr);
       }
+      recordLoginLog(user.user_id);
     }
 
     res.json({
@@ -1805,6 +1824,7 @@ exports.emailLogin = async (req, res) => {
       { last_login_time: new Date() },
       { where: { user_id: user.user_id } }
     );
+    recordLoginLog(user.user_id);
 
     res.json({
       success: true,
@@ -2040,6 +2060,7 @@ exports.appleLoginOrCreate = async (req, res) => {
     try {
       await UserStatus.update({ last_login_time: new Date() }, { where: { user_id: user.user_id } });
     } catch (_) {}
+    recordLoginLog(user.user_id);
 
     res.json({
       success: true,

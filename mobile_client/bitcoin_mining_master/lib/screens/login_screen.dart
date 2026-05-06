@@ -144,13 +144,18 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
-        // 用户取消，不提示
+        // 用户主动取消，不提示
+      } else if (e.code == AuthorizationErrorCode.failed ||
+                 e.code == AuthorizationErrorCode.unknown) {
+        // 密码错误 / 2FA未开启 / 账号问题
+        _showError('Apple sign-in failed. Please ensure Two-Factor Authentication is enabled on your Apple ID.');
       } else {
-        _showError('Apple sign-in failed. Please try again.');
+        _showError('Apple sign-in failed (${e.code}). Please try again.');
       }
     } catch (e) {
-      final msg = e.toString();
-      if (!msg.contains('canceled') && !msg.contains('cancelled')) {
+      final msg = e.toString().toLowerCase();
+      // 仅过滤真正的用户取消操作
+      if (!msg.contains('usercancel') && !msg.contains('user_cancel')) {
         _showError('Apple sign-in failed. Please try again.');
       }
     } finally {

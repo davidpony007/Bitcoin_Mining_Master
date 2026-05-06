@@ -67,7 +67,8 @@ class ContractRewardService {
         'Free Ad Reward', 
         startTime, 
         endTime,
-        speedPerSecond
+        speedInfo.levelMultiplier,
+        speedInfo.countryMultiplier
       );
       details.adFreeContracts = adRevenue;
       totalRevenue += adRevenue;
@@ -78,7 +79,8 @@ class ContractRewardService {
         'Daily Check-in Reward', 
         startTime, 
         endTime,
-        speedPerSecond
+        speedInfo.levelMultiplier,
+        speedInfo.countryMultiplier
       );
       details.dailySignInContracts = signInRevenue;
       totalRevenue += signInRevenue;
@@ -89,7 +91,8 @@ class ContractRewardService {
         'Invite Friend Reward', 
         startTime, 
         endTime,
-        speedPerSecond
+        speedInfo.levelMultiplier,
+        speedInfo.countryMultiplier
       );
       details.invitationContracts = invitationRevenue;
       totalRevenue += invitationRevenue;
@@ -138,13 +141,16 @@ class ContractRewardService {
 
   /**
    * 计算免费合约收益
+   * 公式：base_hashrate × levelMultiplier × countryMultiplier × has_daily_bonus(1.36) × seconds
    */
-  static async calculateFreeContractRevenue(userId, contractType, startTime, endTime, speedPerSecond) {
+  static async calculateFreeContractRevenue(userId, contractType, startTime, endTime, levelMultiplier, countryMultiplier) {
     try {
       const [contracts] = await pool.query(`
         SELECT 
           id,
+          base_hashrate,
           hashrate,
+          has_daily_bonus,
           free_contract_creation_time,
           free_contract_end_time
         FROM free_contract_records
@@ -169,11 +175,16 @@ class ContractRewardService {
         // 计算秒数
         const seconds = Math.floor((effectiveEnd - effectiveStart) / 1000);
         
-        // 计算收益：使用合约的hashrate（已应用公式）
-        const revenue = contract.hashrate * seconds;
+        // 应用完整倍率公式：base × level × country × daily_bonus
+        const baseSpeed = contract.base_hashrate
+          ? parseFloat(contract.base_hashrate)
+          : parseFloat(contract.hashrate);
+        const bonus = (contract.has_daily_bonus === 1) ? 1.36 : 1.0;
+        const finalSpeed = baseSpeed * levelMultiplier * countryMultiplier * bonus;
+        const revenue = finalSpeed * seconds;
         totalRevenue += revenue;
 
-        console.log(`  ${contractType}: ${seconds}秒 × ${contract.hashrate} = ${revenue} BTC`);
+        console.log(`  ${contractType}: ${seconds}秒 × ${finalSpeed.toFixed(18)} BTC/s (base=${baseSpeed}, level=${levelMultiplier}, country=${countryMultiplier}, bonus=${bonus}) = ${revenue} BTC`);
       }
 
       return totalRevenue;

@@ -131,6 +131,11 @@ class AdMobService {
       await _rewardedAd!.show(
         onUserEarnedReward: (ad, reward) {
           print('🎉 用户获得奖励: ${reward.amount} ${reward.type}');
+          // 上报广告奖励观看完成事件
+          AnalyticsService.instance.logAdRewardEarned(
+            adUnit: ad.adUnitId,
+            points: reward.amount.toInt(),
+          );
           if (!completer.isCompleted) completer.complete(true);
         },
       );

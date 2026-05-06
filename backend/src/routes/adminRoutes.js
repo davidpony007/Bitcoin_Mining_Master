@@ -113,10 +113,10 @@ router.get('/dashboard/trend', authenticateToken, requireAdmin, async (req, res)
        GROUP BY DATE(user_creation_time) ORDER BY d`, [days]
     );
     const [dau] = await conn.query(
-      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt
-       FROM user_status
-       WHERE last_login_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY DATE(last_login_time) ORDER BY d`, [days]
+      `SELECT login_date AS d, COUNT(*) AS cnt
+       FROM user_login_logs
+       WHERE login_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY login_date ORDER BY login_date`, [days]
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
@@ -370,9 +370,10 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
     const [[activeUsersRow]] = await conn.query(
       `SELECT COUNT(DISTINCT user_id) AS cnt FROM user_orders WHERE order_status IN ('active','renewing')`
     );
-    // 活跃中的付费plan总数
+    // 活跃中的付费plan总数（按 user+product 去重，避免将同一订阅的多次续订记录累加）
     const [[activePlansRow]] = await conn.query(
-      `SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status IN ('active','renewing')`
+      `SELECT COUNT(DISTINCT CONCAT(user_id,'-',product_name)) AS cnt
+       FROM user_orders WHERE order_status IN ('active','renewing')`
     );
     // 已取消订阅的用户总数（mining_contracts 中明确标记 is_cancelled=1 的唯一用户）
     const [[cancelledUsersRow]] = await conn.query(
@@ -382,25 +383,34 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
     const [[cancelledPlansRow]] = await conn.query(
       `SELECT COUNT(*) AS cnt FROM mining_contracts WHERE is_cancelled = 1 AND contract_type = 'paid contract'`
     );
-    // 各档位活跃订阅数
+    // 各档位活跃订阅数（user_orders 为权威来源）+ 历史总计订单数（含首购和续订）
     const [activeByPlan] = await conn.query(
       `SELECT product_name, product_price,
               COUNT(DISTINCT user_id) AS user_cnt,
-              COUNT(*) AS plan_cnt
-       FROM user_orders
+              COUNT(DISTINCT user_id) AS plan_cnt,
+              (SELECT COUNT(*) FROM user_orders t2
+               WHERE t2.product_name = t1.product_name
+                 AND t2.product_price = t1.product_price
+                 AND t2.order_status != 'refund successful') AS total_cnt
+       FROM user_orders t1
        WHERE order_status IN ('active','renewing')
        GROUP BY product_name, product_price
        ORDER BY CAST(product_price AS DECIMAL(10,2))`
     );
-    // 各档位已结束/取消订阅数（order_status='complete' 代表订阅周期结束或被取消）
+    // 各档位已取消订阅数（与汇总数同源：mining_contracts.is_cancelled=1）
     const [cancelledByPlan] = await conn.query(
-      `SELECT product_name, product_price,
-              COUNT(DISTINCT user_id) AS user_cnt,
+      `SELECT p.product_name, p.product_price,
+              COUNT(DISTINCT mc.user_id) AS user_cnt,
               COUNT(*) AS plan_cnt
-       FROM user_orders
-       WHERE order_status = 'complete'
-       GROUP BY product_name, product_price
-       ORDER BY CAST(product_price AS DECIMAL(10,2))`
+       FROM mining_contracts mc
+       LEFT JOIN paid_products_list_config p ON p.product_id = COALESCE(
+         mc.product_id,
+         (SELECT product_id FROM paid_products_list_config pfb WHERE pfb.hashrate_raw = mc.hashrate LIMIT 1)
+       )
+       WHERE mc.is_cancelled = 1
+         AND mc.contract_type = 'paid contract'
+       GROUP BY p.product_name, p.product_price
+       ORDER BY CAST(p.product_price AS DECIMAL(10,2))`
     );
     res.json({
       success: true,
@@ -855,7 +865,7 @@ router.get('/ads/stats', authenticateToken, requireAdmin, async (req, res) => {
     const [[totalRow]] = await conn.query('SELECT COALESCE(SUM(total_ad_views),0) AS total, COUNT(*) AS users FROM user_information');
     const [[todayRow]] = await conn.query('SELECT COALESCE(SUM(view_count),0) AS cnt FROM ad_view_record WHERE view_date = CURDATE()');
     const [[weekRow]] = await conn.query('SELECT COALESCE(SUM(view_count),0) AS cnt FROM ad_view_record WHERE view_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
-    const [[rewardRow]] = await conn.query("SELECT COALESCE(SUM(points_change),0) AS pts FROM points_transaction WHERE points_type LIKE '%AD%' OR points_type LIKE '%ad%' AND points_change > 0");
+    const [[rewardRow]] = await conn.query("SELECT COALESCE(SUM(points_change),0) AS pts FROM points_transaction WHERE points_type = 'AD_VIEW' AND points_change > 0");
     res.json({
       success: true,
       data: {
@@ -915,12 +925,20 @@ router.get('/ads/top-users', authenticateToken, requireAdmin, async (req, res) =
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const [rows] = await conn.query(
-      `SELECT ui.user_id, ui.email, ui.total_ad_views, ui.user_points,
-              COALESCE(avr.today_views,0) AS todayViews
+      `SELECT ui.user_id, ui.email, ui.total_ad_views,
+              COALESCE(pt.ad_points, 0) AS points_earned,
+              COALESCE(avr.today_views, 0) AS todayViews
        FROM user_information ui
        LEFT JOIN (
-         SELECT user_id, SUM(view_count) AS today_views FROM ad_view_record WHERE view_date = CURDATE() GROUP BY user_id
+         SELECT user_id, SUM(view_count) AS today_views
+         FROM ad_view_record WHERE view_date = CURDATE() GROUP BY user_id
        ) avr ON ui.user_id COLLATE utf8mb4_unicode_ci = avr.user_id COLLATE utf8mb4_unicode_ci
+       LEFT JOIN (
+         SELECT user_id, SUM(points_change) AS ad_points
+         FROM points_transaction
+         WHERE points_type = 'AD_VIEW' AND points_change > 0
+         GROUP BY user_id
+       ) pt ON ui.user_id COLLATE utf8mb4_unicode_ci = pt.user_id COLLATE utf8mb4_unicode_ci
        ORDER BY ui.total_ad_views DESC LIMIT ?`, [limit]
     );
     res.json({ success: true, data: rows });
@@ -951,64 +969,91 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
       startDate = new Date(Date.now() - (days - 1) * 86400000).toISOString().slice(0, 10);
     }
 
+    // platform: 'all' | 'Android' | 'iOS'
+    const platform = req.query.platform || 'all';
+    const hasPlatformFilter = platform !== 'all';
+
     const [newUsers] = await conn.query(
       `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt FROM user_information
        WHERE DATE(user_creation_time) BETWEEN ? AND ?
-       GROUP BY DATE(user_creation_time)`, [startDate, endDate]);
+       ${hasPlatformFilter ? 'AND \`system\` = ?' : ''}
+       GROUP BY DATE(user_creation_time)`,
+      hasPlatformFilter ? [startDate, endDate, platform] : [startDate, endDate]);
 
     const [dau] = await conn.query(
-      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt FROM user_status
-       WHERE DATE(last_login_time) BETWEEN ? AND ?
-       GROUP BY DATE(last_login_time)`, [startDate, endDate]);
+      `SELECT ll.login_date AS d, COUNT(*) AS cnt
+       FROM user_login_logs ll
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = ll.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE ll.login_date BETWEEN ? AND ?
+       GROUP BY ll.login_date`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
-    // 首次订阅订单（不含续期）
+    // 首次订阅订单：每个订阅生命周期(payment_network_id)只取最早一笔，避免取消重订同一 original_transaction_id 被重复计入
     const [orders] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))), 0) AS salesAmount,
-              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
-       FROM user_orders
-       WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status NOT IN ('renewing', 'refund successful', 'error')
-       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+      `SELECT DATE(o.order_creation_time) AS d,
+              COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))), 0) AS salesAmount,
+              COALESCE(ROUND(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
+       FROM user_orders o
+       INNER JOIN (
+         SELECT MIN(id) AS first_id
+         FROM user_orders
+         WHERE order_status NOT IN ('renewing', 'refund successful', 'error')
+         GROUP BY COALESCE(payment_network_id, CAST(id AS CHAR))
+       ) fst ON o.id = fst.first_id
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = o.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE DATE(o.order_creation_time) BETWEEN ? AND ?
+       GROUP BY DATE(o.order_creation_time)`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
     // 续期订单
     const [renewalOrders] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))), 0) AS amount
-       FROM user_orders
-       WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status = 'renewing'
-       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+      `SELECT DATE(o.order_creation_time) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))), 0) AS amount
+       FROM user_orders o
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = o.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE DATE(o.order_creation_time) BETWEEN ? AND ?
+         AND o.order_status = 'renewing'
+       GROUP BY DATE(o.order_creation_time)`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
     // 广告观看量
     const [adViews] = await conn.query(
-      `SELECT view_date AS d, SUM(view_count) AS views
-       FROM ad_view_record
-       WHERE view_date BETWEEN ? AND ?
-       GROUP BY view_date`, [startDate, endDate]);
+      `SELECT av.view_date AS d, SUM(av.view_count) AS views
+       FROM ad_view_record av
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = av.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE av.view_date BETWEEN ? AND ?
+       GROUP BY av.view_date`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
     // 广告奖励积分（来自points_transaction AD_VIEW类型）
     const [adRewardRows] = await conn.query(
-      `SELECT DATE(created_at) AS d, SUM(points_change) AS rewards
-       FROM points_transaction
-       WHERE points_type = 'AD_VIEW'
-         AND DATE(created_at) BETWEEN ? AND ?
-       GROUP BY DATE(created_at)`, [startDate, endDate]);
+      `SELECT DATE(pt.created_at) AS d, SUM(pt.points_change) AS rewards
+       FROM points_transaction pt
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = pt.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE pt.points_type = 'AD_VIEW'
+         AND DATE(pt.created_at) BETWEEN ? AND ?
+       GROUP BY DATE(pt.created_at)`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
     // 提现记录（使用 received_amount 为实际BTC到账数量）
     const [withdrawals] = await conn.query(
-      `SELECT DATE(created_at) AS d, COUNT(*) AS cnt,
-              COALESCE(SUM(received_amount), 0) AS btcAmount
-       FROM withdrawal_records
-       WHERE withdrawal_status = 'success'
-         AND DATE(created_at) BETWEEN ? AND ?
-       GROUP BY DATE(created_at)`, [startDate, endDate]);
+      `SELECT DATE(wr.created_at) AS d, COUNT(*) AS cnt,
+              COALESCE(SUM(wr.received_amount), 0) AS btcAmount
+       FROM withdrawal_records wr
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = wr.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE wr.withdrawal_status = 'success'
+         AND DATE(wr.created_at) BETWEEN ? AND ?
+       GROUP BY DATE(wr.created_at)`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
     const [checkins] = await conn.query(
-      `SELECT check_in_date AS d, COUNT(*) AS cnt
-       FROM user_check_in
-       WHERE check_in_date BETWEEN ? AND ?
-       GROUP BY check_in_date`, [startDate, endDate]);
+      `SELECT uc.check_in_date AS d, COUNT(*) AS cnt
+       FROM user_check_in uc
+       ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = uc.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
+       WHERE uc.check_in_date BETWEEN ? AND ?
+       GROUP BY uc.check_in_date`,
+      hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
     const map = {};
@@ -1064,93 +1109,137 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
 router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const platform = req.query.platform || 'Android';
+    const platformRaw = req.query.platform || 'all';
+    const platform = ['all', 'Android', 'iOS'].includes(platformRaw) ? platformRaw : 'all';
     const endDate   = (req.query.endDate   || new Date().toISOString().slice(0, 10));
     const startDate = (req.query.startDate || new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 
-    // 1. 每日新增用户
+    // 平台过滤条件（user_information.system 字段值为 'Android'/'iOS'）
+    const sysFilter   = platform === 'all' ? '' : ` AND ui.\`system\` = '${platform}'`;
+    // mining_contracts.platform 枚举值为小写 'android'/'ios'/'system'
+    const mcPlatform  = platform === 'all' ? null : platform.toLowerCase();
+    const mcFilter    = platform === 'all' ? '' : ` AND mc.platform = '${mcPlatform}'`;
+
+    // 1. 每日新增用户（按平台过滤）
     const [nuRows] = await conn.query(
       `SELECT DATE(user_creation_time) AS d, COUNT(*) AS cnt
-       FROM user_information
-       WHERE DATE(user_creation_time) BETWEEN ? AND ?
+       FROM user_information ui
+       WHERE DATE(user_creation_time) BETWEEN ? AND ?${sysFilter}
        GROUP BY DATE(user_creation_time)`, [startDate, endDate]);
 
-    // 2. DAU
+    // 2. DAU（按平台过滤，JOIN user_information）
     const [dauRows] = await conn.query(
-      `SELECT DATE(last_login_time) AS d, COUNT(*) AS cnt
-       FROM user_status
-       WHERE DATE(last_login_time) BETWEEN ? AND ?
-       GROUP BY DATE(last_login_time)`, [startDate, endDate]);
+      `SELECT ll.login_date AS d, COUNT(*) AS cnt
+       FROM user_login_logs ll
+       JOIN user_information ui ON ui.user_id = ll.user_id
+       WHERE ll.login_date BETWEEN ? AND ?${sysFilter}
+       GROUP BY ll.login_date`, [startDate, endDate]);
 
-    // 3. 首次订阅订单（新购 & 跨产品首购，不含续订）
+    // 3. 首次订阅订单（按平台过滤，JOIN user_information）
     const [ordRows] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d,
+      `SELECT DATE(o.order_creation_time) AS d,
               COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue
-       FROM user_orders
-       WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status NOT IN ('renewing', 'refund successful','error')
-       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+              COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue
+       FROM user_orders o
+       JOIN user_information ui ON ui.user_id = o.user_id
+       INNER JOIN (
+         SELECT MIN(id) AS first_id
+         FROM user_orders
+         WHERE order_status NOT IN ('renewing', 'refund successful', 'error')
+         GROUP BY COALESCE(payment_network_id, CAST(id AS CHAR))
+       ) fst ON o.id = fst.first_id
+       WHERE DATE(o.order_creation_time) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(o.order_creation_time)`, [startDate, endDate]);
 
-    // 3b. 续期订单（order_status = 'renewing'）
+    // 3b. 续期订单（按平台过滤，JOIN user_information）
     const [renewOrdRows] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d,
+      `SELECT DATE(o.order_creation_time) AS d,
               COUNT(*) AS cnt,
-              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS amount
-       FROM user_orders
-       WHERE DATE(order_creation_time) BETWEEN ? AND ?
-         AND order_status = 'renewing'
-       GROUP BY DATE(order_creation_time)`, [startDate, endDate]);
+              COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))),0) AS amount
+       FROM user_orders o
+       JOIN user_information ui ON ui.user_id = o.user_id
+       WHERE DATE(o.order_creation_time) BETWEEN ? AND ?
+         AND o.order_status = 'renewing'${sysFilter}
+       GROUP BY DATE(o.order_creation_time)`, [startDate, endDate]);
 
-    // 4. 取消订阅（按实际取消时间统计，cancelled_at 在 is_cancelled=1 时写入）
+    // 4. 取消订阅（mining_contracts.platform 枚举过滤）
     const [cancelRows] = await conn.query(
-      `SELECT DATE(cancelled_at) AS d, COUNT(*) AS cnt
-       FROM mining_contracts
-       WHERE DATE(cancelled_at) BETWEEN ? AND ?
-         AND is_cancelled = 1
-         AND contract_type = 'paid contract'
-       GROUP BY DATE(cancelled_at)`, [startDate, endDate]);
+      `SELECT DATE(mc.cancelled_at) AS d, COUNT(*) AS cnt
+       FROM mining_contracts mc
+       WHERE DATE(mc.cancelled_at) BETWEEN ? AND ?
+         AND mc.is_cancelled = 1
+         AND mc.contract_type = 'paid contract'${mcFilter}
+       GROUP BY DATE(mc.cancelled_at)`, [startDate, endDate]);
 
-    // 5. 广告投放数据
-    const [adRows] = await conn.query(
-      `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
-              ad_new_users, new_users_m1, new_users_m2,
-              cancel_count, renewal_count, renewal_amount,
-              renewal_revenue, ad_count, ad_revenue, btc_avg_price
-       FROM daily_ad_stats
-       WHERE stat_date BETWEEN ? AND ? AND platform = ?`, [startDate, endDate, platform]);
+    // 5. 广告投放数据（platform=all 时聚合所有平台）
+    const adSql = platform === 'all'
+      ? `SELECT stat_date,
+                SUM(google_spend) AS google_spend, SUM(applovin_spend) AS applovin_spend,
+                SUM(mintegral_spend) AS mintegral_spend,
+                SUM(ad_new_users) AS ad_new_users, SUM(new_users_m1) AS new_users_m1,
+                SUM(new_users_m2) AS new_users_m2,
+                SUM(cancel_count) AS cancel_count, SUM(renewal_count) AS renewal_count,
+                SUM(renewal_amount) AS renewal_amount, SUM(renewal_revenue) AS renewal_revenue,
+                SUM(ad_count) AS ad_count, SUM(ad_revenue) AS ad_revenue,
+                AVG(NULLIF(btc_avg_price, 0)) AS btc_avg_price
+         FROM daily_ad_stats
+         WHERE stat_date BETWEEN ? AND ?
+         GROUP BY stat_date`
+      : `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
+                ad_new_users, new_users_m1, new_users_m2,
+                cancel_count, renewal_count, renewal_amount,
+                renewal_revenue, ad_count, ad_revenue, btc_avg_price
+         FROM daily_ad_stats
+         WHERE stat_date BETWEEN ? AND ? AND platform = ?`;
+    const adParams = platform === 'all' ? [startDate, endDate] : [startDate, endDate, platform];
+    const [adRows] = await conn.query(adSql, adParams);
 
-    // 5b. 每日送出BTC数量（所有类型）
+    // 5b. 每日送出BTC数量（按平台过滤，JOIN user_information）
     const [btcSentRows] = await conn.query(
-      `SELECT DATE(transaction_creation_time) AS d, SUM(transaction_amount) AS sent
-       FROM bitcoin_transaction_records
-       WHERE DATE(transaction_creation_time) BETWEEN ? AND ?
-       GROUP BY DATE(transaction_creation_time)`, [startDate, endDate]);
+      `SELECT DATE(t.transaction_creation_time) AS d, SUM(t.transaction_amount) AS sent
+       FROM bitcoin_transaction_records t
+       JOIN user_information ui ON ui.user_id = t.user_id
+       WHERE DATE(t.transaction_creation_time) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(t.transaction_creation_time)`, [startDate, endDate]);
 
-    // 5c. 每日提现BTC数量
+    // 5c. 每日提现BTC数量（按平台过滤，JOIN user_information）
     const [wdDailyRows] = await conn.query(
-      `SELECT DATE(created_at) AS d, SUM(received_amount) AS amt
-       FROM withdrawal_records
-       WHERE withdrawal_status = 'success'
-         AND DATE(created_at) BETWEEN ? AND ?
-       GROUP BY DATE(created_at)`, [startDate, endDate]);
+      `SELECT DATE(w.created_at) AS d, SUM(w.received_amount) AS amt
+       FROM withdrawal_records w
+       JOIN user_information ui ON ui.user_id = w.user_id
+       WHERE w.withdrawal_status = 'success'
+         AND DATE(w.created_at) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(w.created_at)`, [startDate, endDate]);
 
-    // 5d. 次留数：D日注册的用户中，在D+1日有活跃记录的用户数
-    // 查询范围：startDate 的前一天注册的用户是否在 startDate 活跃，直到 endDate 前一天注册用户在 endDate 的活跃
-    // 即：注册日为 [startDate-1, endDate-1]，但在报表中展示到对应的 D+1 日（即 [startDate, endDate]）
+    // 5d. 次留数：D日注册用户中，在D+1日有任意行为（签到/看广告/下单）的用户数
+    // key 为注册日 D，展示在 D 的行里（即当天注册，次日留存归因到当天）
+    // 查询注册日为 [startDate, endDate]，D+1 的行为覆盖到 endDate+1
+    const retentionSysFilter = platform === 'all' ? '' : ` AND ui.\`system\` = '${platform}'`;
     const [retentionRows] = await conn.query(
       `SELECT
-         DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY) AS retention_date,
-         COUNT(DISTINCT uda.user_id) AS d1_count,
-         COUNT(DISTINCT ui.user_id)  AS reg_count
+         DATE(ui.user_creation_time) AS reg_date,
+         COUNT(DISTINCT ui.user_id) AS reg_count,
+         COUNT(DISTINCT CASE
+           WHEN ck.user_id IS NOT NULL
+             OR av.user_id IS NOT NULL
+             OR od.user_id IS NOT NULL
+           THEN ui.user_id
+         END) AS d1_count
        FROM user_information ui
-       LEFT JOIN user_daily_active uda
-         ON uda.user_id = ui.user_id
-         AND uda.active_date = DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)
-       WHERE DATE(ui.user_creation_time) BETWEEN DATE_SUB(?, INTERVAL 1 DAY) AND DATE_SUB(?, INTERVAL 1 DAY)
-       GROUP BY DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)`,
+       LEFT JOIN user_check_in ck
+         ON ck.user_id COLLATE utf8mb4_unicode_ci = ui.user_id COLLATE utf8mb4_unicode_ci
+         AND ck.check_in_date = DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)
+       LEFT JOIN ad_view_record av
+         ON av.user_id COLLATE utf8mb4_unicode_ci = ui.user_id COLLATE utf8mb4_unicode_ci
+         AND av.view_date = DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)
+         AND av.ad_type = 'Free Ad Reward'
+       LEFT JOIN user_orders od
+         ON od.user_id COLLATE utf8mb4_unicode_ci = ui.user_id COLLATE utf8mb4_unicode_ci
+         AND DATE(od.order_creation_time) = DATE_ADD(DATE(ui.user_creation_time), INTERVAL 1 DAY)
+       WHERE DATE(ui.user_creation_time) BETWEEN ? AND ?${retentionSysFilter}
+       GROUP BY DATE(ui.user_creation_time)`,
       [startDate, endDate]);
 
 
@@ -1168,7 +1257,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       `SELECT COALESCE(SUM(received_amount),0) AS totalWithdrawn
        FROM withdrawal_records WHERE withdrawal_status = 'success'`);
 
-    const BTC_PRICE = 74000; // 可在 app_config 中配置
+    const BTC_PRICE = bitcoinPriceService.getCurrentPrice()?.price || 74000;
     const totalBtc       = parseFloat(btcRow.totalBtc || 0);
     const totalWithdrawn = parseFloat(wdRow.totalWithdrawn || 0);
     const summary = {
@@ -1190,7 +1279,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
     wdDailyRows.forEach(r  => { wdDailyMap[toKey(r.d)]  = parseFloat(r.amt  || 0); });
     retentionRows.forEach(r => {
-      retentionMap[toKey(r.retention_date)] = {
+      retentionMap[toKey(r.reg_date)] = {
         d1Count:  parseInt(r.d1_count  || 0),
         regCount: parseInt(r.reg_count || 0),
       };
@@ -1242,7 +1331,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const subCost = subOrders     > 0 ? parseFloat((totalSpend / subOrders).toFixed(2))     : 0;
       const subRate = totalNewUsers > 0 ? ((subOrders / totalNewUsers) * 100).toFixed(2) + '%' : '0%';
       const arppu   = subOrders     > 0 ? parseFloat((salesAmount / subOrders).toFixed(2))    : 0;
-      const cancelRate = subOrders  > 0 ? ((cancelCount / subOrders) * 100).toFixed(2) + '%'  : '0%';
+      const cancelRate = subOrders > 0 ? ((cancelCount / subOrders) * 100).toFixed(2) + '%' : (cancelCount > 0 ? '-' : '0%');
       const retention      = retentionMap[d] || {};
       const retentionCount = retention.d1Count  || 0;
       const retentionBase  = retention.regCount || 0;
@@ -1953,6 +2042,33 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
        ORDER BY created_at DESC LIMIT 5`, [userId]
     );
 
+    // 8. 累计签到天数
+    const [[checkinRow]] = await conn.query(
+      `SELECT COALESCE(MAX(cumulative_days), 0) AS totalCheckinDays
+       FROM user_check_in WHERE user_id = ?`, [userId]
+    );
+
+    // 9. 实时挖矿速率（BTC/s）
+    const [[rateRow]] = await conn.query(
+      `SELECT
+         COALESCE((
+           SELECT SUM(
+             COALESCE(fc.base_hashrate, fc.hashrate)
+             * COALESCE(ui.miner_level_multiplier, 1.0)
+             * COALESCE(ui.country_multiplier, 1.0)
+             * IF(fc.has_daily_bonus = 1, 1.36, 1.0)
+           )
+           FROM free_contract_records fc
+           WHERE fc.user_id = ui.user_id AND fc.free_contract_end_time > NOW()
+         ), 0)
+         + COALESCE((
+           SELECT SUM(mc.hashrate)
+           FROM mining_contracts mc
+           WHERE mc.user_id = ui.user_id AND mc.contract_end_time > NOW() AND mc.is_cancelled = 0
+         ), 0) AS totalMiningRatePerSecond
+       FROM user_information ui WHERE ui.user_id = ?`, [userId]
+    );
+
     res.json({
       success: true,
       data: {
@@ -1964,6 +2080,8 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
         contractStats,
         orderStats,
         recentWithdrawals,
+        totalCheckinDays: checkinRow.totalCheckinDays,
+        totalMiningRatePerSecond: rateRow.totalMiningRatePerSecond ?? '0',
       }
     });
   } catch (err) {
@@ -1998,7 +2116,11 @@ router.get('/users/:userId/contracts', authenticateToken, requireAdmin, async (r
          p.product_id = COALESCE(
            mc.product_id,
            (SELECT product_id FROM paid_products_list_config pfb
-            WHERE pfb.hashrate_raw = mc.hashrate LIMIT 1)
+            WHERE pfb.hashrate_raw = mc.hashrate
+               OR (mc.hashrate > 0 AND ABS(pfb.hashrate_raw / mc.hashrate - 1) < 0.01)
+               OR (mc.hashrate > 0 AND ABS(pfb.hashrate_raw / (mc.hashrate * 10) - 1) < 0.01)
+               OR (mc.hashrate > 0 AND ABS(pfb.hashrate_raw * 10 / mc.hashrate - 1) < 0.01)
+            ORDER BY ABS(pfb.hashrate_raw - mc.hashrate) LIMIT 1)
          )
        WHERE mc.user_id = ?
        ORDER BY mc.contract_creation_time DESC`, [userId]

@@ -34,9 +34,7 @@ class BitcoinPriceService {
         price: price,
         updatedAt: this.lastUpdate.toISOString(),
         source: 'manual'
-      }), {
-        EX: 7200
-      }).catch(err => console.error('Redis保存失败:', err));
+      }), 7200).catch(err => console.error('Redis保存失败:', err));
     }
     
     return this.getCurrentPrice();
@@ -358,9 +356,7 @@ class BitcoinPriceService {
             price: price,
             updatedAt: this.lastUpdate.toISOString(),
             source: 'default'
-          }), {
-            EX: 7200
-          }).catch(err => console.error('Redis保存默认价格失败:', err));
+          }), 7200).catch(err => console.error('Redis保存默认价格失败:', err));
         }
         
         return price;
@@ -374,9 +370,7 @@ class BitcoinPriceService {
         await redisClient.set(this.CACHE_KEY, JSON.stringify({
           price: price,
           updatedAt: this.lastUpdate.toISOString()
-        }), {
-          EX: 7200 // 2小时过期
-        });
+        }), 7200);
       }
       
       console.log(`✅ 比特币价格已更新: $${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`);

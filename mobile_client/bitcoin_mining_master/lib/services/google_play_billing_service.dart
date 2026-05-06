@@ -4,6 +4,7 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../constants/app_constants.dart';
+import 'analytics_service.dart';
 
 class GooglePlayBillingService {
   // 单例模式
@@ -149,7 +150,18 @@ class GooglePlayBillingService {
   void _onPurchaseUpdate(List<PurchaseDetails> purchaseDetailsList) {
     for (var purchaseDetails in purchaseDetailsList) {
       print('📦 购买状态更新: ${purchaseDetails.productID} - ${purchaseDetails.status}');
-      
+
+      // 过滤无效事件：productID 或 purchaseID 为空说明是 Google Play 重播的无效存档事件
+      // （例如已取消/已过期的历史订阅被 restorePurchases 触发，数据不完整）
+      // 直接跳过，避免触发 400 错误导致用户看到 "Server verification failed"
+      if (purchaseDetails.productID.isEmpty) {
+        print('⚠️ [GP] 跳过无效事件：productID 为空，可能是已取消的历史订阅重播');
+        if (purchaseDetails.pendingCompletePurchase) {
+          _iap.completePurchase(purchaseDetails);
+        }
+        continue;
+      }
+
       if (purchaseDetails.status == PurchaseStatus.pending) {
         // pending 仅出现在特殊支付方式（需线下付款等）或处理中的过渡状态。
         // 【重要】不调用 onPurchaseUpdate：回调会清空 _loadingTierId，导致后续
@@ -272,6 +284,14 @@ class GooglePlayBillingService {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           print('✅ 购买验证成功，合约已发放');
+          // 上报 Firebase Analytics 购买事件（用于 Revenue 报表）
+          final priceValue = _parsePriceFromProductId(purchase.productID);
+          AnalyticsService.instance.logPurchase(
+            currency: 'USD',
+            value: priceValue,
+            transactionId: purchase.purchaseID ?? purchase.productID,
+            itemName: purchase.productID,
+          );
           final int pts = (data['pointsAwarded'] ?? 0) as int;
           if (pts > 0) {
             print('🎉 Android 购买积分奖励: +$pts 积分');
@@ -336,6 +356,21 @@ class GooglePlayBillingService {
       await _iap.restorePurchases();
     } catch (e) {
       print('❌ 查询订阅异常: $e');
+    }
+  }
+
+  /// 从 Android 产品 ID 中解析价格，如 'p04.99' → 4.99
+  double _parsePriceFromProductId(String productId) {
+    final match = RegExp(r'(\d+\.\d+)$').firstMatch(productId);
+    if (match != null) {
+      return double.tryParse(match.group(1)!) ?? 0.0;
+    }
+    // 兜底：从已加载的商品详情中查找真实价格
+    try {
+      final product = subscriptionProducts.firstWhere((p) => p.id == productId);
+      return double.tryParse(product.rawPrice.toString()) ?? 0.0;
+    } catch (_) {
+      return 0.0;
     }
   }
 

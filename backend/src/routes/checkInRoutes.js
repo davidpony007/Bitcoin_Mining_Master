@@ -100,7 +100,27 @@ router.get('/milestones', authenticate, async (req, res) => {
 
     const result = await CheckInPointsService.getAvailableMilestones(user_id);
 
-    res.json(result);
+    // 兼容旧客户端字段：data.milestones / claimable / bonus_points / days
+    const milestones = (result.availableMilestones || []).map((m) => ({
+      days: m.cumulativeDays,
+      bonus_points: m.points,
+      claimed: m.claimed,
+      claimable: m.canClaim,
+      label: m.label,
+      description: m.description,
+      progress: m.progress,
+      required: m.required,
+    }));
+
+    res.json({
+      success: true,
+      cumulativeDays: result.cumulativeDays,
+      claimedMilestones: result.claimedMilestones,
+      availableMilestones: result.availableMilestones,
+      data: {
+        milestones,
+      },
+    });
 
   } catch (error) {
     console.error('获取签到里程碑失败:', error);
@@ -135,7 +155,11 @@ router.post('/claim-milestone', authenticate, async (req, res) => {
       parseInt(cumulative_days)
     );
 
-    res.json(result);
+    res.json({
+      ...result,
+      bonus_points: result.pointsEarned,
+      cumulative_days: result.cumulativeDays,
+    });
 
   } catch (error) {
     console.error('领取里程碑奖励失败:', error);

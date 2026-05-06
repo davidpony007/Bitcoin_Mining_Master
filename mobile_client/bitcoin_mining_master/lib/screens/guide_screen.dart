@@ -224,7 +224,7 @@ class _GuideScreenState extends State<GuideScreen> {
                           letterSpacing: 0.5,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 10),
                       const Text(
                         'Bitcoin Mining Master — Complete Guide',
                         style: TextStyle(
@@ -232,6 +232,7 @@ class _GuideScreenState extends State<GuideScreen> {
                           fontSize: 13,
                         ),
                       ),
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),

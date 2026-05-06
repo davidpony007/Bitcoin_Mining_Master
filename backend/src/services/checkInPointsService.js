@@ -58,6 +58,8 @@ class CheckInPointsService {
 
       // 3. 每日签到奖励固定为4积分
       const dailyPoints = this.BASE_CHECKIN_POINTS;
+      let milestoneBonus = 0;
+      const milestoneRewards = [];
 
       // 4. 创建签到记录（只记录累计天数）
       await connection.query(
@@ -75,6 +77,67 @@ class CheckInPointsService {
         null
       );
 
+      // 6. 里程碑奖励自动发放（含漏发补发）
+      // 规则：达到累计天数阈值(3/7/15/30)且未领取过，则自动发放一次。
+      // 这样即使历史版本未触发领取，也会在后续签到中补发。
+      const [claimedRows] = await connection.query(
+        `SELECT milestone_type
+         FROM user_check_in
+         WHERE user_id = ?
+           AND milestone_claimed = TRUE
+           AND milestone_type IN ('CUMULATIVE_CHECKIN_3', 'CUMULATIVE_CHECKIN_7', 'CUMULATIVE_CHECKIN_15', 'CUMULATIVE_CHECKIN_30')`,
+        [userId]
+      );
+      const claimedSet = new Set(claimedRows.map((r) => r.milestone_type));
+
+      const milestones = Object.keys(this.CUMULATIVE_REWARDS)
+        .map(Number)
+        .sort((a, b) => a - b);
+
+      for (const milestoneDays of milestones) {
+        if (cumulativeDays < milestoneDays) {
+          continue;
+        }
+
+        const milestoneType = `CUMULATIVE_CHECKIN_${milestoneDays}`;
+        if (claimedSet.has(milestoneType)) {
+          continue;
+        }
+
+        const [markResult] = await connection.query(
+          `UPDATE user_check_in
+           SET milestone_claimed = TRUE,
+               milestone_type = ?
+           WHERE user_id = ?
+             AND cumulative_days = ?
+             AND (milestone_claimed IS NULL OR milestone_claimed = FALSE)
+           LIMIT 1`,
+          [milestoneType, userId, milestoneDays]
+        );
+
+        // 仅在成功标记后发放积分，避免重复发放
+        if ((markResult && markResult.affectedRows) > 0) {
+          const rewardConfig = this.CUMULATIVE_REWARDS[milestoneDays];
+          await PointsService.addPoints(
+            userId,
+            rewardConfig.points,
+            PointsService.POINTS_TYPES[milestoneType] || PointsService.POINTS_TYPES.DAILY_CHECKIN,
+            `Cumulative check-in milestone reward: day ${milestoneDays}`,
+            null
+          );
+
+          milestoneBonus += rewardConfig.points;
+          milestoneRewards.push({
+            cumulativeDays: milestoneDays,
+            points: rewardConfig.points,
+            label: rewardConfig.label,
+            description: rewardConfig.description,
+            milestoneType
+          });
+          claimedSet.add(milestoneType);
+        }
+      }
+
       await connection.commit();
 
       // 7. 更新 Redis 缓存
@@ -82,7 +145,7 @@ class CheckInPointsService {
         await redisClient.setUserCheckInStatus(userId, {
           date: today,
           cumulativeDays,
-          totalPoints: dailyPoints
+          totalPoints: dailyPoints + milestoneBonus
         });
       }
 
@@ -92,12 +155,16 @@ class CheckInPointsService {
         userId,
         checkInDate: today,
         cumulativeDays,
-        pointsAwarded: dailyPoints,
+        pointsAwarded: dailyPoints + milestoneBonus,
+        dailyPoints,
+        milestoneBonus,
+        milestoneRewards,
+        milestoneTriggered: milestoneRewards.length > 0,
         nextMilestone: this.getNextCumulativeMilestone(cumulativeDays),
-        totalRewardForToday: dailyPoints
+        totalRewardForToday: dailyPoints + milestoneBonus
       };
 
-      console.log(`✅ 用户 ${userId} 签到成功，累计${cumulativeDays}天，获得${dailyPoints}积分`);
+      console.log(`✅ 用户 ${userId} 签到成功，累计${cumulativeDays}天，基础${dailyPoints}积分，里程碑奖励${milestoneBonus}积分`);
 
       return result;
 

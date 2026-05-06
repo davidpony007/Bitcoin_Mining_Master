@@ -5,7 +5,7 @@
  */
 
 const cron = require('node-cron');
-const pool = require('../config/database');
+const pool = require('../config/database_native');
 const RealtimeBalanceService = require('../services/realtimeBalanceService');
 
 class BalanceSyncTask {

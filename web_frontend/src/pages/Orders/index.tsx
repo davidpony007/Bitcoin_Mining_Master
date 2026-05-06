@@ -57,6 +57,7 @@ interface PlanStat {
   product_price: string;
   user_cnt: number;
   plan_cnt: number;
+  total_cnt?: number;
 }
 
 interface SubStats {
@@ -224,11 +225,18 @@ const Orders: React.FC = () => {
   const renderSubType = (record: OrderRow) => {
     const sub = Number(record.sub_seq);
     const usr = Number(record.user_seq);
+    const status = (record.order_status || '').toLowerCase();
+
+    // 仅当后端订单状态明确为 renewing 时展示“续订”标签，
+    // 避免异常重复单（状态仍为 active）被误判为续订。
+    if (status === 'renewing')
+      return <Tag color="orange">&#x267B;续订 #{sub > 1 ? sub : 2}</Tag>;
+
     if (sub === 1 && usr === 1)
       return <Tag color="green">&#x1F195;新用户首购</Tag>;
     if (sub === 1)
       return <Tag color="blue">&#x1F504;跨产品首购</Tag>;
-    return <Tag color="orange">&#x267B;续订 #{sub}</Tag>;
+    return <Tag color="default">首购</Tag>;
   };
 
   const baseColumns: ColumnsType<OrderRow> = [
@@ -289,6 +297,7 @@ const Orders: React.FC = () => {
       product_price: p.price,
       activeUsers:    act?.user_cnt  ?? 0,
       activePlans:    act?.plan_cnt  ?? 0,
+      totalOrders:    act?.total_cnt  ?? 0,
       cancelledPlans: can?.plan_cnt  ?? 0,
     };
   });
@@ -298,7 +307,7 @@ const Orders: React.FC = () => {
       render: (v: string, r: any) => <span style={{ fontWeight: 600 }}>{v} <span style={{ color: '#faad14' }}>(${r.product_price})</span></span> },
     { title: '活跃用户数', dataIndex: 'activeUsers', key: 'activeUsers', width: 120, align: 'center' as const,
       render: (v: number) => <span style={{ color: '#52c41a', fontWeight: v > 0 ? 600 : 400 }}>{v}</span> },
-    { title: '活跃订阅数', dataIndex: 'activePlans', key: 'activePlans', width: 120, align: 'center' as const,
+    { title: '历史总计订单数', dataIndex: 'totalOrders', key: 'totalOrders', width: 140, align: 'center' as const,
       render: (v: number) => <span style={{ color: '#1890ff', fontWeight: v > 0 ? 600 : 400 }}>{v}</span> },
     { title: '已结束/取消数', dataIndex: 'cancelledPlans', key: 'cancelledPlans', width: 140, align: 'center' as const,
       render: (v: number) => <span style={{ color: v > 0 ? '#ff4d4f' : '#999' }}>{v}</span> },

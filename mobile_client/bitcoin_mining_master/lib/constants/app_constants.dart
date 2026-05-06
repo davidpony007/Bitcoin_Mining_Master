@@ -89,7 +89,7 @@ class StoreConstants {
 
   /// iOS App Store 数字 ID（上架后从 App Store Connect 获取，e.g. '6743692060'）
   /// 目前为占位符 — 上架时必须替换，否则 iOS 评分链接无法跳转
-  static const String iosAppStoreId = 'YOUR_APP_STORE_ID';
+  static const String iosAppStoreId = '6760924051';
 }
 
 /// AdMob 广告位常量
@@ -103,21 +103,21 @@ class StoreConstants {
 ///      替换为正式 iOS App ID（从 AdMob 后台获取）
 class AdMobConstants {
   /// 切换为 false 即启用正式广告位（上线前必须设为 false）
-  static const bool _isTestMode = true;
+  static const bool _isTestMode = false;
 
   // ── Android ──────────────────────────────────
   static const String _androidTestRewardedId =
       'ca-app-pub-3940256099942544/5224354917';
-  /// 正式 Android 激励广告位 ID（从 AdMob 后台获取后填入）
+  /// 正式 Android 激励广告位 ID
   static const String _androidProdRewardedId =
-      'YOUR_ANDROID_REWARDED_AD_UNIT_ID';
+      'ca-app-pub-1048949483424060/7268543515';
 
   // ── iOS ──────────────────────────────────────
   static const String _iosTestRewardedId =
       'ca-app-pub-3940256099942544/1712485313';
   /// 正式 iOS 激励广告位 ID（从 AdMob 后台获取后填入）
   static const String _iosProdRewardedId =
-      'YOUR_IOS_REWARDED_AD_UNIT_ID';
+      'ca-app-pub-1048949483424060/8059055667';
 
   // ── 平台选择器（由 admob_service.dart 使用） ──
   static String get androidRewardedAdUnitId =>

@@ -46,11 +46,10 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
-        <!-- AdMob App ID - 临时使用测试ID -->
-        <!-- 生产ID备份: ca-app-pub-1048949483424060~9044706379 -->
+        <!-- AdMob App ID - 正式生产ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-1048949483424060~9044706379"/>
         
         <!-- Fix for Firebase Analytics and AdMob conflict -->
         <property

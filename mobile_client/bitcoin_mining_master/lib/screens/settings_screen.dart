@@ -750,6 +750,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       }
     } else if (Platform.isIOS) {
       const appStoreId = StoreConstants.iosAppStoreId;
+      // 占位符保护：App Store ID 上架后才能获取，未填写时友好提示，不跳转无效 URL
+      if (appStoreId == 'YOUR_APP_STORE_ID' || appStoreId.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Rating feature coming soon!'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
       final storeUri = Uri.parse(
           'itms-apps://apps.apple.com/app/id$appStoreId?action=write-review');
       final webUri = Uri.parse(
@@ -2267,7 +2279,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ],
           ),
           content: Text(
-            'Your account is a guest user. To avoid losing profits, you should bind a Google account first. If you do not have a Google account, please register one first!',
+            'If your account is a guest user, to avoid losing profits, you should bind a Google account / Apple account first. If you do not have one, please register first!',
             style: TextStyle(color: AppColors.textSecondary, height: 1.5),
           ),
           actions: [

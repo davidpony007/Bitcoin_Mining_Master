@@ -113,12 +113,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkPendingInviteCelebration();
+      // 延迟 1.5s 再检测：手机从后台唤醒时网络接口需要约 1-2s 才能就绪，
+      // 若立即请求极易因连接错误而静默失败，且此后没有重试入口，导致庆祝弹窗永远不出现。
+      // （冷启动路径已有 1s 延迟，这里与其保持同等保护级别）
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (!mounted) return;
+        _checkPendingInviteCelebration();
+      });
     }
   }
 
-  /// 查询服务端 Invite Friend Reward 合约总数，若多于本地已记录数则弹庆祝弹窗
-  Future<void> _checkPendingInviteCelebration() async {
+  /// 查询服务端累计邀请数，若多于本地已记录数则弹推荐人庆祝弹窗
+  /// [_retry]：是否已经是第一次重试（内部使用，避免无限递归）
+  Future<void> _checkPendingInviteCelebration({bool isRetry = false}) async {
     try {
       final userId = _storageService.getUserId();
       if (userId == null || userId.isEmpty) return;
@@ -133,12 +140,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final seenCount = _storageService.getSeenInviteRewardCount();
 
       if (serverCount > seenCount) {
-        // 先更新本地记录，防止重复弹窗
-        await _storageService.setSeenInviteRewardCount(serverCount);
-        if (mounted) _showReferrerCelebration();
+        // 先检查 mounted 再更新 seenCount 并弹窗。
+        // 旧逻辑先 setSeenInviteRewardCount 再检查 mounted，若 mounted=false 则
+        // seenCount 已更新为最新值但弹窗从未显示，导致下次检测时 serverCount==seenCount
+        // 而永远不再触发庆祝弹窗（race condition bug）。
+        if (mounted) {
+          await _storageService.setSeenInviteRewardCount(serverCount);
+          _showReferrerCelebration();
+        }
       }
     } catch (_) {
-      // 静默失败，不影响主流程
+      // 网络错误时重试一次（3s 后）：手机从后台恢复时网络可能短暂不可用，
+      // 首次检测失败后若不重试，庆祝弹窗将永远不会出现。
+      if (!isRetry) {
+        await Future.delayed(const Duration(seconds: 3));
+        if (mounted) _checkPendingInviteCelebration(isRetry: true);
+      }
     }
   }
 

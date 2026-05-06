@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -313,6 +314,11 @@ $downloadUrl
         sharePositionOrigin: sharePositionOrigin,
       );
       AnalyticsService.instance.logShareReferral(method: 'share');
+      // Android 的 Share 面板顶部有「复制」选项，点击后 shareText 会进入剪贴板历史。
+      // 在分享完成后将剪贴板重置为邀请码，防止用户粘贴时得到整段邀请信息。
+      if (Platform.isAndroid && mounted) {
+        await Clipboard.setData(ClipboardData(text: _invitationCode));
+      }
     } catch (e) {
       debugPrint('Share error: $e');
       if (mounted) {

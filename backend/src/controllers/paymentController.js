@@ -218,6 +218,68 @@ exports.verifyPurchase = async (req, res) => {
         originalTransactionId: originalTxId || transaction_id,
         expiresDateMs: verifyResult.expiresDateMs,
       };
+
+      // ── iOS 同档位活跃合约兜底：originalTxId === transaction_id（全新首次购买）时，
+      // 上方续订分支不会触发（因为没有历史 original_transaction_id 可匹配）。
+      // 此处额外做一次服务端检查：若该用户已有同档位活跃合约，将本次新购视为续订处理，
+      // 防止 StoreKit 沙盒异常 / 退款后重订 / Apple 账号切换等场景创建重复合约。
+      // ⚠️ 仅当 originalTxId === transaction_id（真首次购买）时才需要此检查；
+      //    originalTxId !== transaction_id 的续订场景已由上方逻辑处理。
+      if (!originalTxId || originalTxId === transaction_id) {
+        const existingActiveIosContract = await MiningContract.findOne({
+          where: {
+            user_id,
+            product_id: resolvedBackendProductId,
+            platform: 'ios',
+            is_cancelled: 0,
+            contract_end_time: { [Op.gt]: new Date() },
+          },
+          order: [['id', 'DESC']],
+        });
+        if (existingActiveIosContract) {
+          console.warn(`⚠️ [paymentController] iOS 同档位活跃合约已存在，新购视为续订: user=${user_id} product=${resolvedBackendProductId} existingContractId=${existingActiveIosContract.id} txId=${transaction_id}`);
+          const rawExpiry = verifyResult.expiresDateMs ? new Date(parseInt(verifyResult.expiresDateMs)) : null;
+          const ONE_HOUR_MS = 3600 * 1000;
+          let newExpiry;
+          if (rawExpiry && rawExpiry.getTime() > Date.now() + ONE_HOUR_MS) {
+            newExpiry = rawExpiry.getTime() > existingActiveIosContract.contract_end_time.getTime()
+              ? rawExpiry : existingActiveIosContract.contract_end_time;
+          } else {
+            const tierMonths = productInfo?.duration_months || 1;
+            newExpiry = new Date(existingActiveIosContract.contract_end_time);
+            newExpiry.setMonth(newExpiry.getMonth() + tierMonths);
+          }
+          await MiningContract.update(
+            { contract_end_time: newExpiry, is_renewal: 1, is_cancelled: 0 },
+            { where: { id: existingActiveIosContract.id } }
+          );
+          const existingRenewOrder = await UserOrder.findOne({ where: { payment_gateway_id: transaction_id } });
+          if (!existingRenewOrder) {
+            const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email', 'apple_account'] });
+            await UserOrder.create({
+              user_id,
+              email: renewUser?.email || '',
+              apple_account: renewUser?.apple_account || null,
+              product_id: resolvedBackendProductId,
+              product_name: productInfo?.product_name || store_product_id,
+              product_price: String(productInfo?.product_price || 0),
+              hashrate: productInfo?.hashrate_raw || 0,
+              order_creation_time: new Date(),
+              payment_time: new Date(),
+              currency_type: 'USD',
+              payment_gateway_id: transaction_id,
+              payment_network_id: transaction_id,
+              order_status: 'renewing',
+            });
+          }
+          return res.status(200).json({
+            success: true,
+            message: '订阅续订成功，合约已延期',
+            renewed: true,
+            newExpiry,
+          });
+        }
+      }
     }
     // Android：续订检测 + Google Play Developer API 验证 purchase_token
     if (platform === 'android') {
@@ -347,6 +409,97 @@ exports.verifyPurchase = async (req, res) => {
     // 其余请求触发 SequelizeUniqueConstraintError，直接返回"已处理"，
     // 从而确保每笔 transaction_id 只创建一条合约。
     const originalTxId = iosMeta?.originalTransactionId || purchase_token || transaction_id;
+
+    // ── iOS 硬去重兜底：同一 user + product + original_transaction_id 只保留一条活跃付费合约 ──
+    // 目的：即使上游续订识别分支偶发未命中，也不允许再创建第二条活跃同档位合约。
+    if (platform === 'ios' && originalTxId && originalTxId !== transaction_id) {
+      const chainOrder = await UserOrder.findOne({
+        where: {
+          user_id,
+          product_id: resolvedBackendProductId,
+          payment_network_id: originalTxId,
+        },
+        order: [['id', 'DESC']],
+      });
+
+      if (chainOrder) {
+        // 优先用 original_transaction_id 精确匹配；历史脏数据 original_transaction_id 为空时回退到同档位活跃合约
+        let existingActiveContract = await MiningContract.findOne({
+          where: {
+            user_id,
+            product_id: resolvedBackendProductId,
+            contract_type: 'paid contract',
+            is_cancelled: 0,
+            contract_end_time: { [Op.gt]: new Date() },
+            original_transaction_id: originalTxId,
+          },
+          order: [['id', 'DESC']],
+        });
+
+        if (!existingActiveContract) {
+          existingActiveContract = await MiningContract.findOne({
+            where: {
+              user_id,
+              product_id: resolvedBackendProductId,
+              contract_type: 'paid contract',
+              is_cancelled: 0,
+              contract_end_time: { [Op.gt]: new Date() },
+            },
+            order: [['id', 'DESC']],
+          });
+        }
+
+        if (existingActiveContract) {
+          const ONE_HOUR_MS = 3600 * 1000;
+          let mergedExpiry = new Date(existingActiveContract.contract_end_time);
+          if (expiresDate instanceof Date && !isNaN(expiresDate) && expiresDate.getTime() > Date.now() + ONE_HOUR_MS) {
+            if (expiresDate.getTime() > mergedExpiry.getTime()) {
+              mergedExpiry = expiresDate;
+            }
+          }
+
+          await MiningContract.update(
+            {
+              contract_end_time: mergedExpiry,
+              original_transaction_id: originalTxId,
+              is_renewal: 1,
+              is_cancelled: 0,
+            },
+            { where: { id: existingActiveContract.id } }
+          );
+
+          // 记录续订订单（幂等：同一 transaction_id 只插一次）
+          const existingRenewOrder = await UserOrder.findOne({ where: { payment_gateway_id: transaction_id } });
+          if (!existingRenewOrder) {
+            await UserOrder.create({
+              user_id,
+              email: userEmail,
+              apple_account: userAppleAccount,
+              product_id: resolvedBackendProductId,
+              product_name: productInfo?.product_name || store_product_id,
+              product_price: String(productInfo?.product_price || 0),
+              hashrate: productInfo?.hashrate_raw || 0,
+              order_creation_time: new Date(),
+              payment_time: new Date(),
+              currency_type: 'USD',
+              payment_gateway_id: transaction_id,
+              payment_network_id: originalTxId,
+              order_status: 'renewing',
+            });
+          }
+
+          console.log(`✅ [paymentController] iOS 硬去重命中，按续订处理: user=${user_id} product=${resolvedBackendProductId} origTx=${originalTxId} txId=${transaction_id}`);
+          return res.status(200).json({
+            success: true,
+            message: '订阅续订成功，合约已延期',
+            renewed: true,
+            newExpiry: mergedExpiry,
+            pointsAwarded: 0,
+          });
+        }
+      }
+    }
+
     let newOrder;
     try {
       newOrder = await UserOrder.create({
