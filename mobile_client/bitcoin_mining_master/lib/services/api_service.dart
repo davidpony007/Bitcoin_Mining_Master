@@ -87,6 +87,35 @@ class ApiService {
     _dio.options.baseUrl = baseUrl;
   }
 
+  /// 获取 App 版本配置，用于启动时检查更新
+  Future<Map<String, dynamic>?> getAppConfig({
+    required String platform,
+    required String currentVersion,
+  }) async {
+    try {
+      final response = await _dio.get(
+        ApiConstants.appConfig,
+        queryParameters: {
+          'platform': platform,
+          'current_version': currentVersion,
+        },
+      );
+      final data = response.data;
+      if (data is Map<String, dynamic> &&
+          data['success'] == true &&
+          data['data'] is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(data['data'] as Map);
+      }
+      return null;
+    } on DioException catch (e) {
+      debugPrint('⚠️ [AppConfig] 获取版本配置失败: ${e.message}');
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ [AppConfig] 解析版本配置失败: $e');
+      return null;
+    }
+  }
+
   /// 设备登录/注册 - 对应后端 /api/auth/device-login
   /// 首次打开APP时自动创建账号或登录
   Future<DeviceLoginResponse> deviceLogin({

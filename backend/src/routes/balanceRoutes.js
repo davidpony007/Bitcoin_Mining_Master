@@ -46,7 +46,7 @@ router.get('/realtime/:userId', async (req, res) => {
       `SELECT 
         current_bitcoin_balance, 
         bitcoin_accumulated_amount,
-        last_balance_update_time 
+        last_balance_update_time
       FROM user_status 
       WHERE user_id = ?`,
       [userId]

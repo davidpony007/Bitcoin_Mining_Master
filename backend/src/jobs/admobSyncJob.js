@@ -17,6 +17,7 @@
 
 const cron                = require('node-cron');
 const { google }          = require('googleapis');
+const https               = require('https');
 const pool                = require('../config/database_native');
 const bitcoinPriceService = require('../services/bitcoinPriceService');
 
@@ -142,10 +143,10 @@ async function fetchAdMobData(startDate, endDate, platform) {
 async function upsertAdMobData(dataMap, platform) {
   if (dataMap.size === 0) return;
 
-  const btcPrice = bitcoinPriceService.getCurrentPrice()?.price || 0;
   const conn = await pool.getConnection();
   try {
     for (const [dateStr, { impressions, estimatedEarnings }] of dataMap) {
+      const btcPrice = await fetchHistoricalBtcPrice(dateStr);
       await conn.query(
         `INSERT INTO daily_ad_stats (stat_date, platform, ad_count, ad_revenue, btc_avg_price)
          VALUES (?, ?, ?, ?, ?)
@@ -159,6 +160,69 @@ async function upsertAdMobData(dataMap, platform) {
   } finally {
     conn.release();
   }
+}
+
+/**
+ * 获取指定日期的 BTC 历史价格（USD）
+ * - 今天 / 昨天 → 直接用实时价格服务
+ * - 更早的日期 → 通过 OKX history-candles API 获取当日收盘价
+ *
+ * @param {string} dateStr - 'YYYY-MM-DD'
+ * @returns {Promise<number>}
+ */
+async function fetchHistoricalBtcPrice(dateStr) {
+  const today    = new Date(); today.setUTCHours(0, 0, 0, 0);
+  const target   = new Date(dateStr + 'T00:00:00Z');
+  const diffDays = Math.floor((today - target) / 86400000);
+
+  // 只有今天的价格才用实时服务（当日K线未闭合，历史接口不可靠）
+  // 昨天及更早的日期统一走 OKX history-candles，日线已闭合，数据稳定
+  if (diffDays === 0) {
+    let price = bitcoinPriceService.getCurrentPrice()?.price || 0;
+    if (!price) {
+      // 价格服务尚未刷新，主动拉取一次
+      price = await bitcoinPriceService.updatePrice().catch(() => 0);
+    }
+    return price || 0;
+  }
+
+  // 昨天及更早日期 → OKX /api/v5/market/history-candles
+  // after=当天结束时间戳(ms), bar=1D, limit=1 → 返回当天那根日线
+  const endOfDay = new Date(dateStr + 'T23:59:59Z').getTime();
+
+  return new Promise((resolve) => {
+    const path = `/api/v5/market/history-candles?instId=BTC-USDT&bar=1D&after=${endOfDay + 1}&limit=1`;
+    const options = {
+      hostname: 'www.okx.com',
+      path,
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+    };
+    https.get(options, (res) => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          // data.data[0] = [ts, open, high, low, close, vol, volCcy, volCcyQuote, confirm]
+          const closePrice = parseFloat(data?.data?.[0]?.[4]);
+          if (closePrice > 0) {
+            console.log(`[AdMobSync] ${dateStr} BTC 历史收盘价: $${closePrice}`);
+            resolve(closePrice);
+          } else {
+            console.warn(`[AdMobSync] OKX 无法获取 ${dateStr} 价格，使用实时价格`);
+            resolve(bitcoinPriceService.getCurrentPrice()?.price || 0);
+          }
+        } catch {
+          console.warn(`[AdMobSync] OKX 响应解析失败（${dateStr}），使用实时价格`);
+          resolve(bitcoinPriceService.getCurrentPrice()?.price || 0);
+        }
+      });
+    }).on('error', () => {
+      console.warn(`[AdMobSync] OKX 请求失败（${dateStr}），使用实时价格`);
+      resolve(bitcoinPriceService.getCurrentPrice()?.price || 0);
+    });
+  });
 }
 
 // ─── 主同步入口 ───────────────────────────────────────────────────────────────
@@ -189,8 +253,12 @@ async function syncAdMobData({ startDate, endDate, platform } = {}) {
       console.log(`[AdMobSync] 跳过 Android（未配置 ADMOB_APP_ID_ANDROID）`);
       continue;
     }
-    // iOS 若没配 App ID 则跳过（避免误拉全量数据）
-    if (pf === 'iOS' && !process.env.ADMOB_APP_ID_IOS && !process.env.ADMOB_PUBLISHER_ID) {
+    // iOS 跳过条件：
+    //   1. 配置了 ADMOB_APP_ID_ANDROID 但没有配置 ADMOB_APP_ID_IOS
+    //      → iOS 同步将无 App 过滤器，会拉到与 Android 相同的全量数据，导致 SUM 双计
+    //   2. 两者都没配置时 iOS 作为 fallback（无过滤器拉全量数据），此分支正常运行
+    if (pf === 'iOS' && !process.env.ADMOB_APP_ID_IOS && process.env.ADMOB_APP_ID_ANDROID) {
+      console.log(`[AdMobSync] 跳过 iOS（未配置 ADMOB_APP_ID_IOS，Android 已独立同步，避免重复统计）`);
       continue;
     }
 

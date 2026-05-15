@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:io' show Platform;
 import 'providers/user_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -123,12 +126,14 @@ class _SplashScreenState extends State<SplashScreen>
     with WidgetsBindingObserver {
   final StorageService _storageService = StorageService();
   final ApiService _apiService = ApiService();
+  bool _hasNavigated = false;
+  bool _isBootstrapping = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _checkLoginStatus();
+    _bootstrapApp();
   }
 
   @override
@@ -146,13 +151,122 @@ class _SplashScreenState extends State<SplashScreen>
       PushNotificationService.reportActive();
       // 用户回到前台时重新上报 FCM token（token 可能已刷新）
       PushNotificationService.initialize();
+      if (!_hasNavigated && !_isBootstrapping) {
+        _bootstrapApp(skipDelay: true);
+      }
+    }
+  }
+
+  Future<void> _bootstrapApp({bool skipDelay = false}) async {
+    if (_isBootstrapping) return;
+    _isBootstrapping = true;
+    try {
+      if (!skipDelay) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      final canContinue = await _checkAppUpdate();
+      if (!canContinue || !mounted || _hasNavigated) return;
+
+      await _checkLoginStatus();
+    } finally {
+      _isBootstrapping = false;
+    }
+  }
+
+  Future<bool> _checkAppUpdate() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final config = await _apiService.getAppConfig(
+        platform: Platform.isIOS ? 'ios' : 'android',
+        currentVersion: info.version,
+      );
+      if (config == null || config['has_update'] != true) {
+        return true;
+      }
+
+      final forceUpdate = config['force_update'] == true;
+      final latestVersion = (config['latest_version'] ?? '').toString();
+      final updateMessage = ((config['update_message'] ?? '') as String).trim();
+      final storeUrl = _resolveStoreUrl(config['store_url'] as String?);
+
+      if (!mounted) return false;
+
+      if (forceUpdate) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Update Required'),
+            content: Text(
+              updateMessage.isNotEmpty
+                  ? updateMessage
+                  : 'A newer version ($latestVersion) is required to continue using the app.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => _openStoreUrl(storeUrl),
+                child: const Text('Update Now'),
+              ),
+            ],
+          ),
+        );
+        return false;
+      }
+
+      final shouldContinue = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Update Available'),
+          content: Text(
+            updateMessage.isNotEmpty
+                ? updateMessage
+                : 'Version $latestVersion is available. Update now for the latest fixes and improvements.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Later'),
+            ),
+            TextButton(
+              onPressed: () async {
+                await _openStoreUrl(storeUrl);
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop(true);
+                }
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+
+      return shouldContinue ?? true;
+    } catch (e) {
+      print('⚠️ App version check failed (ignored): $e');
+      return true;
+    }
+  }
+
+  String _resolveStoreUrl(String? backendUrl) {
+    if (backendUrl != null && backendUrl.trim().isNotEmpty) {
+      return backendUrl.trim();
+    }
+    if (Platform.isIOS) {
+      return 'itms-apps://apps.apple.com/app/id${StoreConstants.iosAppStoreId}';
+    }
+    return 'https://play.google.com/store/apps/details?id=${StoreConstants.androidPackageName}';
+  }
+
+  Future<void> _openStoreUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      print('⚠️ Failed to open store url: $url');
     }
   }
 
   /// 检查登录状态，决定显示登录页还是主页
   Future<void> _checkLoginStatus() async {
-    await Future.delayed(const Duration(milliseconds: 300)); // 短暂显示启动画面
-
     // 1. 检查本地是否有用户ID
     final userId = _storageService.getUserId();
 
@@ -198,6 +312,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _navigateToLogin() {
     if (!mounted) return;
+    _hasNavigated = true;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const LoginScreen()),
     );
@@ -205,6 +320,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _navigateToHome() {
     if (!mounted) return;
+    _hasNavigated = true;
     // 用户成功进入主页时上报活跃心跳
     PushNotificationService.reportActive();
     Navigator.of(context).pushReplacement(

@@ -432,13 +432,20 @@ const Users: React.FC = () => {
     loadList(page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder);
   };
 
-  const handleTableChange = (_pagination: any, _filters: any, sorter: any) => {
-    const field = sorter.field || 'user_creation_time';
-    const order: 'ASC' | 'DESC' = sorter.order === 'ascend' ? 'ASC' : 'DESC';
-    setSortField(field);
-    setSortOrder(order);
-    setPage(1);
-    loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, field, order);
+  const handleTableChange = (paginationInfo: any, _filters: any, sorter: any, extra: any) => {
+    if (extra?.action === 'sort') {
+      const currentSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+      const field = currentSorter?.field ?? currentSorter?.columnKey ?? 'user_creation_time';
+      const order: 'ASC' | 'DESC' = currentSorter?.order === 'ascend' ? 'ASC' : 'DESC';
+      setSortField(field);
+      setSortOrder(order);
+      setPage(1);
+      loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, field, order);
+    } else if (extra?.action === 'paginate') {
+      const newPage = paginationInfo.current;
+      setPage(newPage);
+      loadList(newPage, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder);
+    }
   };
 
   const openDetail = async (record: UserRow) => {
@@ -638,6 +645,7 @@ const Users: React.FC = () => {
     },
     {
       title: 'BTC余额实时价值', key: 'btc_value', width: 140,
+      sorter: true, sortOrder: getSO('btc_value'),
       render: (_: any, r: UserRow) => {
         const bal = parseFloat(r.current_bitcoin_balance || '0');
         return btcPrice > 0
@@ -647,10 +655,12 @@ const Users: React.FC = () => {
     },
     {
       title: '累计挖矿', dataIndex: 'bitcoin_accumulated_amount', key: 'bitcoin_accumulated_amount', width: 130,
+      sorter: true, sortOrder: getSO('bitcoin_accumulated_amount'),
       render: (v: string) => <Text style={{ color: '#52c41a' }}>{fmtBtc(v)}</Text>,
     },
     {
       title: '累计提现', dataIndex: 'total_withdrawal_amount', key: 'total_withdrawal_amount', width: 130,
+      sorter: true, sortOrder: getSO('total_withdrawal_amount'),
       render: (v: string) => <Text style={{ color: '#1890ff' }}>{fmtBtc(v)}</Text>,
     },
     {
@@ -676,7 +686,7 @@ const Users: React.FC = () => {
       },
     },
     {
-      title: '最后登录', dataIndex: 'last_login_time', key: 'last_login_time', width: 150,
+      title: '最后活跃时间', dataIndex: 'last_login_time', key: 'last_login_time', width: 150,
       sorter: true, sortOrder: getSO('last_login_time'),
       render: (v: string) => v ? new Date(v).toISOString().slice(0, 19).replace('T', ' ') : '-',
     },
@@ -776,7 +786,7 @@ const Users: React.FC = () => {
               }
             </Descriptions.Item>
             <Descriptions.Item label="禁用原因">{basic.ban_reason || '-'}</Descriptions.Item>
-            <Descriptions.Item label="最后登录">{fmtTime(basic.last_login_time)}</Descriptions.Item>
+            <Descriptions.Item label="最后活跃时间">{fmtTime(basic.last_login_time)}</Descriptions.Item>
             <Descriptions.Item label="注册时间">{fmtTime(basic.user_creation_time)}</Descriptions.Item>
           </Descriptions>
 
@@ -976,6 +986,16 @@ const Users: React.FC = () => {
                         r.source === 'mining_contracts'
                           ? <Tag color={r.platform === 'ios' ? 'blue' : 'green'} style={{ fontSize: 10 }}>{r.platform || '-'}</Tag>
                           : <Tag color="purple" style={{ fontSize: 10 }}>免费</Tag>
+                      ),
+                    },
+                    {
+                      title: '状态', key: 'c_status',
+                      width: cActiveColWidths['c_status'] || 90,
+                      onHeaderCell: () => ({ width: cActiveColWidths['c_status'] || 90, onResize: handleCActiveResize('c_status') }),
+                      render: (_: any, r: ContractItem) => (
+                        r.status === 'cancelled'
+                          ? <Tag color="orange">已取消</Tag>
+                          : <Tag color="green">正常</Tag>
                       ),
                     },
 
@@ -1263,7 +1283,6 @@ const Users: React.FC = () => {
           pagination={{
             total, current: page, pageSize: 20, showSizeChanger: false,
             showQuickJumper: true, showTotal: (t: number) => `共 ${t} 条`,
-            onChange: (p: number) => { setPage(p); loadList(p, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder); },
           }}
         />
       </Card>

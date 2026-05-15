@@ -1152,6 +1152,9 @@ exports.getUserStatus = async (req, res) => {
       });
     }
 
+    // 记录每日活跃（DAU），同一用户同一天只写一次（INSERT IGNORE 保证幂等）
+    recordLoginLog(user_id.trim());
+
     // Find user status
     const userStatus = await UserStatus.findOne({
       where: { user_id: user_id.trim() }

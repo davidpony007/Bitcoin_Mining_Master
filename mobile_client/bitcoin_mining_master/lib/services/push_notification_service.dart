@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:convert';
 import '../constants/app_constants.dart';
 import 'storage_service.dart';
@@ -165,6 +166,11 @@ class PushNotificationService {
       }
 
       final platform = Platform.isIOS ? 'ios' : 'android';
+      String? appVersion;
+      try {
+        final info = await PackageInfo.fromPlatform();
+        appVersion = info.version;
+      } catch (_) {}
 
       final response = await http
           .post(
@@ -177,7 +183,7 @@ class PushNotificationService {
               'user_id': userId,
               'fcm_token': fcmToken,
               'platform': platform,
-              'app_version': '1.0.1',
+              'app_version': appVersion,
             }),
           )
           .timeout(const Duration(seconds: 10));

@@ -9,6 +9,7 @@ const UserInformation = require('../models/userInformation');
 const LevelService = require('./levelService');
 const AdPointsService = require('./adPointsService');
 const MiningConfigService = require('./miningConfigService');
+const redisClient = require('../config/redis');
 const { Op } = require('sequelize');
 
 class AdMiningContractService {
@@ -145,6 +146,10 @@ class AdMiningContractService {
 
       // 6. 记录广告观看（增加积分）
       await AdPointsService.recordAdViewAndReward(userId);
+
+      // 6.5 清除 Redis 挖矿速率缓存，确保下次 /balance/realtime 请求立即重新计算新合约速率
+      // 不清除会导致客户端在60秒内看到 speed=0，误以为广告未激活成功
+      await redisClient.deleteMiningSpeed(userId);
 
       // 7. 重新获取今日统计
       const updatedStats = await AdPointsService.getDailyAdStats(userId);

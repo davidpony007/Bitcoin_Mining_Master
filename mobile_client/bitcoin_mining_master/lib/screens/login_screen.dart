@@ -817,9 +817,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         child: SafeArea(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
+          child: Stack(
+            children: [
+              SingleChildScrollView(
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -894,9 +894,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       
                       // Terms & Privacy
                       _buildTermsText(),
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),
+              // Loading overlay — always on top, doesn't hide buttons
+              if (_isLoading)
+                Container(
+                  color: Colors.black54,
+                  child: const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

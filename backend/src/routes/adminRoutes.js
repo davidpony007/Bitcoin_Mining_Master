@@ -55,10 +55,10 @@ router.get('/dashboard/stats', authenticateToken, requireAdmin, async (req, res)
       "SELECT COUNT(*) AS cnt FROM user_status WHERE DATE(last_login_time) = ?", [yesterday]
     );
     const [[firstSubRevRow]] = await conn.query(
-      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS val FROM user_orders WHERE order_status NOT IN ('renewing', 'refund successful', 'error')"
+      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS val FROM user_orders WHERE order_status NOT IN ('renewing', 'refund successful', 'error')"
     );
     const [[renewalRevRow]] = await conn.query(
-      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS val FROM user_orders WHERE order_status = 'renewing'"
+      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS val FROM user_orders WHERE order_status = 'renewing'"
     );
     const [[todayOrdersRow]] = await conn.query(
       "SELECT COUNT(*) AS cnt FROM user_orders WHERE DATE(order_creation_time) = ?", [today]
@@ -120,7 +120,7 @@ router.get('/dashboard/trend', authenticateToken, requireAdmin, async (req, res)
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
-              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
        FROM user_orders
        WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
          AND order_status NOT IN ('refund successful', 'error')
@@ -179,6 +179,9 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
       mining_rate_per_second: 'mining_rate_per_second',
       current_bitcoin_balance: 'us.current_bitcoin_balance',
       bitcoin_accumulated_amount: 'us.bitcoin_accumulated_amount',
+      total_withdrawal_amount: 'us.total_withdrawal_amount',
+      total_invitation_rebate: 'us.total_invitation_rebate',
+      btc_value: 'us.current_bitcoin_balance',
       last_login_time: 'us.last_login_time',
     };
     const sortByCol = sortWhitelist[req.query.sortBy] || 'ui.user_creation_time';
@@ -799,7 +802,7 @@ router.get('/analytics/trend', authenticateToken, requireAdmin, async (req, res)
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS orders,
-              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
        FROM user_orders WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
          AND order_status NOT IN ('refund successful', 'error')
        GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
@@ -839,7 +842,7 @@ router.get('/analytics/country-rank', authenticateToken, requireAdmin, async (re
     const [rows] = await conn.query(
       `SELECT COALESCE(ui.country_code,'Unknown') AS country,
               COUNT(DISTINCT ui.user_id) AS users,
-              COALESCE(ROUND(SUM(CAST(CONVERT(uo.product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(uo.product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
        FROM user_information ui
        LEFT JOIN user_orders uo ON ui.user_id = uo.user_id
          AND uo.order_status NOT IN ('refund successful', 'error')
@@ -993,7 +996,7 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
       `SELECT DATE(o.order_creation_time) AS d,
               COUNT(*) AS cnt,
               COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))), 0) AS salesAmount,
-              COALESCE(ROUND(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))) * 0.75, 2), 0) AS revenue
+              COALESCE(ROUND(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
        FROM user_orders o
        INNER JOIN (
          SELECT MIN(id) AS first_id
@@ -1083,7 +1086,7 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
         firstSubRevenue:      m.revenue             || 0,
         renewalCount:         m.renewalCount        || 0,
         renewalAmount:        parseFloat((m.renewalAmount        || 0).toFixed(2)),
-        renewalRevenue:       parseFloat(((m.renewalAmount || 0) * 0.75).toFixed(2)),
+        renewalRevenue:       parseFloat(((m.renewalAmount || 0) * 0.85).toFixed(2)),
         adViews:              m.adViews             || 0,
         adRewards:            parseFloat((m.adRewards            || 0).toFixed(10)),
         withdrawals:          m.withdrawals         || 0,
@@ -1196,6 +1199,14 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     const adParams = platform === 'all' ? [startDate, endDate] : [startDate, endDate, platform];
     const [adRows] = await conn.query(adSql, adParams);
 
+    // 5a-fallback. 当 daily_ad_stats 无数据时，从 ad_view_record 补充广告数
+    const [adViewRows] = await conn.query(
+      `SELECT view_date AS d, SUM(view_count) AS total_views
+       FROM ad_view_record
+       WHERE view_date BETWEEN ? AND ?
+       GROUP BY view_date`,
+      [startDate, endDate]);
+
     // 5b. 每日送出BTC数量（按平台过滤，JOIN user_information）
     const [btcSentRows] = await conn.query(
       `SELECT DATE(t.transaction_creation_time) AS d, SUM(t.transaction_amount) AS sent
@@ -1268,14 +1279,15 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     };
 
     // 构建 map
-    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, adMap = {}, btcSentMap = {}, wdDailyMap = {}, retentionMap = {};
-    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; adMap; btcSentMap; wdDailyMap; retentionMap; // prevent unused warning
+    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, adMap = {}, adViewMap = {}, btcSentMap = {}, wdDailyMap = {}, retentionMap = {};
+    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; adMap; adViewMap; btcSentMap; wdDailyMap; retentionMap; // prevent unused warning
     nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
     dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
     ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
     renewOrdRows.forEach(r => { renewOrdMap[toKey(r.d)] = { cnt: parseInt(r.cnt), amount: parseFloat(r.amount) }; });
     cancelRows.forEach(r => { cancelMap[toKey(r.d)] = parseInt(r.cnt); });
     adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
+    adViewRows.forEach(r => { adViewMap[toKey(r.d)] = parseInt(r.total_views || 0); });
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
     wdDailyRows.forEach(r  => { wdDailyMap[toKey(r.d)]  = parseFloat(r.amt  || 0); });
     retentionRows.forEach(r => {
@@ -1305,13 +1317,15 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const ord             = ordMap[d] || {};
       const subOrders       = ord.cnt     || 0;
       const salesAmount     = parseFloat((ord.revenue || 0).toFixed(2));
-      const subRevenue      = parseFloat((salesAmount * 0.75).toFixed(2));
+      const subRevenue      = parseFloat((salesAmount * 0.85).toFixed(2));
       const cancelCount     = (cancelMap[d] || 0) + parseInt(ad.cancel_count || 0);
       const renewOrd        = renewOrdMap[d] || {};
       const renewalCount    = renewOrd.cnt    || 0;
       const renewalAmount   = parseFloat((renewOrd.amount || 0).toFixed(2));
-      const renewalRevenue  = parseFloat((renewalAmount * 0.75).toFixed(2));
-      const adCount         = parseInt(ad.ad_count           || 0);
+      const renewalRevenue  = parseFloat((renewalAmount * 0.85).toFixed(2));
+      // 优先用 daily_ad_stats（AdMob 同步数据），同步失败时降级为 ad_view_record（应用内跟踪）
+      const adCountFromStats = parseInt(ad.ad_count || 0);
+      const adCount         = adCountFromStats > 0 ? adCountFromStats : (adViewMap[d] || 0);
       const adRevenue       = parseFloat(ad.ad_revenue       || 0);
       const btcAvgPrice     = parseFloat(ad.btc_avg_price    || 0) || BTC_PRICE;
       const btcSentAmount      = btcSentMap[d] || 0;
@@ -1919,6 +1933,20 @@ const PaidProduct = require('../models/paidProductList');
 const PaidProductService = require('../services/paidProductService');
 
 /**
+ * GET /api/admin/products
+ * 获取全部付费产品列表
+ */
+router.get('/products', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const products = await PaidProduct.findAll({ order: [['sort_order', 'ASC'], ['id', 'ASC']] });
+    res.json({ success: true, data: products });
+  } catch (err) {
+    console.error('❌ 获取产品列表失败:', err);
+    res.status(500).json({ success: false, message: '服务器错误', error: err.message });
+  }
+});
+
+/**
  * PUT /api/admin/paid-products/:id
  * 更新付费产品字段（display_name, description, ios_product_id, android_product_id,
  *                    hashrate_raw, duration_days, sort_order, is_active）
@@ -1966,7 +1994,7 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
               ui.register_ip, ui.country_code, ui.country_name_cn, ui.country_multiplier,
               ui.miner_level_multiplier, ui.user_level, ui.user_points, ui.total_ad_views,
               ui.\`system\`, ui.acquisition_channel, ui.user_creation_time,
-              ui.is_banned, ui.banned_at, ui.ban_reason,
+              ui.is_banned, ui.banned_at, ui.ban_reason, ui.app_version,
               us.user_status, us.last_login_time,
               us.current_bitcoin_balance, us.bitcoin_accumulated_amount,
               us.total_invitation_rebate, us.total_withdrawal_amount
@@ -2009,7 +2037,7 @@ router.get('/users/:userId/detail', authenticateToken, requireAdmin, async (req,
     // 5. 合约摘要（同时统计 mining_contracts 和 free_contract_records）
     const [[contractStats]] = await conn.query(
       `SELECT COUNT(*) AS total_contracts,
-              SUM(CASE WHEN end_time > NOW() AND is_cancelled = 0 THEN 1 ELSE 0 END) AS active_contracts,
+              SUM(CASE WHEN end_time > NOW() AND is_cancelled = 0 AND is_paid = 1 THEN 1 ELSE 0 END) AS active_contracts,
               SUM(CASE WHEN is_paid = 1 THEN 1 ELSE 0 END) AS paid_contracts,
               SUM(CASE WHEN is_paid = 0 THEN 1 ELSE 0 END) AS free_contracts,
               SUM(CASE WHEN (end_time <= NOW() OR is_cancelled = 1) AND is_paid = 1 THEN 1 ELSE 0 END) AS expired_contracts
@@ -2165,7 +2193,11 @@ router.get('/users/:userId/contracts', authenticateToken, requireAdmin, async (r
         is_renewal: row.is_renewal,
         order_id: row.order_id || null,
       };
-      if (row.is_cancelled) {
+      if (row.is_cancelled && row.remaining_seconds > 0) {
+        // 已取消自动续期，但合约仍在有效期内 → 归入运行中，标记 cancelled
+        active.push({ ...item, status: 'cancelled' });
+      } else if (row.is_cancelled) {
+        // 已取消且已过期
         expired.push({ ...item, status: 'cancelled' });
       } else if (!row.contract_end_time) {
         inactive.push({ ...item, status: 'inactive' });

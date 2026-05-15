@@ -112,6 +112,9 @@ class CheckInMiningContractService {
         console.error(`⚠️ 设置签到加成Redis缓存失败(不影响合约): ${redisErr.message}`);
       }
 
+      // 4.5 清除 Redis 挖矿速率缓存，确保下次 /balance/realtime 请求立即重新计算新合约速率
+      await redisClient.deleteMiningSpeed(userId);
+
       // 5. 计算当前的速度信息（仅用于返回给前端显示）
       const speedInfo = await LevelService.calculateMiningSpeed(userId);
       const finalHashrate = speedInfo.finalSpeedWithoutBonus * 1.36;  // 用于显示

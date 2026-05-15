@@ -164,9 +164,9 @@ exports.verifyPurchase = async (req, res) => {
           );
           let contractUpdated = updatedRows > 0;
           if (!contractUpdated) {
-            // 回退：按 (user_id, product_id) 查找合约，处理 original_transaction_id=null 的历史数据
+            // 回退：按 (user_id) 查找最新活跃付费合约，处理 product_id/original_transaction_id=null 的历史数据
             const fallbackContract = await MiningContract.findOne({
-              where: { user_id, product_id: resolvedBackendProductId, contract_type: 'paid contract' },
+              where: { user_id, contract_type: 'paid contract', is_cancelled: 0 },
               order: [['id', 'DESC']],
             });
             if (fallbackContract) {
@@ -183,6 +183,41 @@ exports.verifyPurchase = async (req, res) => {
           if (contractUpdated) {
             console.log(`✅ [paymentController] 续订合约到期时间已更新: user=${user_id} newExpiry=${newExpiry}`);
             const renewUser = await UserInformation.findOne({ where: { user_id }, attributes: ['email', 'apple_account'] });
+            // ── 幂等性：同一账期防止重复建单 ──────────────────────────────────────────
+            // Apple 一个账期可能产生多个 transactionId（introductory offer 转正、账单确认等），
+            // 它们 expires_date_ms 完全相同。客户端重新上报任意一个都会走到这里。
+            // 检查是否已有一笔同账期（相同到期时间 ±5min）的续订订单存在，有则跳过建单。
+            const FIVE_MIN_MS = 5 * 60 * 1000;
+            const duplicatePeriodOrder = await UserOrder.findOne({
+              where: {
+                payment_network_id: originalTxId,
+                order_creation_time: {
+                  [Op.gte]: new Date(newExpiry.getTime() - 35 * 24 * 3600 * 1000), // 最近 35 天
+                },
+              },
+              order: [['id', 'DESC']],
+            });
+            const duplicateContract = await MiningContract.findOne({
+              where: { user_id, contract_type: 'paid contract' },
+              order: [['id', 'DESC']],
+            });
+            const contractEndTime = duplicateContract?.contract_end_time
+              ? new Date(duplicateContract.contract_end_time)
+              : null;
+            const isAlreadyThisPeriod =
+              duplicatePeriodOrder ||
+              (contractEndTime &&
+                rawExpiry &&
+                Math.abs(contractEndTime.getTime() - rawExpiry.getTime()) < FIVE_MIN_MS);
+            if (isAlreadyThisPeriod) {
+              console.log(`ℹ️ [paymentController] 跳过重复建单（同账期已记录）: user=${user_id} txId=${transaction_id} originalTxId=${originalTxId} newExpiry=${newExpiry.toISOString()}`);
+              return res.status(200).json({
+                success: true,
+                message: '订阅已处于最新状态',
+                renewed: true,
+                newExpiry,
+              });
+            }
             await UserOrder.create({
               user_id,
               email: renewUser?.email || '',
@@ -287,6 +322,40 @@ exports.verifyPurchase = async (req, res) => {
         return res.status(400).json({ success: false, message: '缺少 purchase_token' });
       }
 
+      // ── Android 优先验票；未配置时降级为幂等保护模式 ──
+      // 线上若暂未完成 Google Service Account 配置，不能直接拒绝所有支付。
+      // 但必须保证幂等，防止重复上报导致合约时长叠加。
+      const packageName = process.env.ANDROID_PACKAGE_NAME;
+      let playResult = null;
+      let verifiedExpiry = null;
+      const canVerifyAndroid = !!(googlePlayVerifyService.isInitialized && packageName);
+
+      if (canVerifyAndroid) {
+        playResult = await googlePlayVerifyService.verifySubscription(
+          packageName,
+          store_product_id,
+          purchase_token,
+        );
+        if (!playResult.success) {
+          console.warn(`❌ [paymentController] Android 购买验证失败: ${playResult.error} (user=${user_id} product=${store_product_id})`);
+          return res.status(400).json({ success: false, message: `Google Play 验证失败: ${playResult.error}` });
+        }
+
+        // 服务端订单号与客户端上报不一致时拒绝，防止客户端篡改 transaction_id。
+        if (playResult.orderId && transaction_id !== playResult.orderId) {
+          console.warn(`❌ [paymentController] Android orderId 不匹配: user=${user_id} clientTx=${transaction_id} serverTx=${playResult.orderId}`);
+          return res.status(400).json({ success: false, message: '订单号校验失败，请刷新后重试' });
+        }
+
+        verifiedExpiry = playResult.expiryTimeMillis
+          ? new Date(parseInt(playResult.expiryTimeMillis, 10))
+          : null;
+
+        console.log(`✅ [paymentController] Android 购买验证通过: orderId=${playResult.orderId} expiry=${verifiedExpiry?.toISOString?.() || 'N/A'}`);
+      } else {
+        console.warn('⚠️ [paymentController] Android 验票服务未就绪，启用无验票幂等保护模式');
+      }
+
       // ── Android 续订检测：查找同用户同档位的活跃合约 ──
       // Google Play 每次续订都产生新 purchaseToken，但 productId 不变。
       // 若用户已有该档位的活跃合约，视为续订：延长到期时间，记录续订订单，不创建新合约。
@@ -319,11 +388,56 @@ exports.verifyPurchase = async (req, res) => {
           });
         }
 
-        // 计算新到期时间（从当前到期时间 + 1 个计费周期）
-        const tierMonths = productInfo?.duration_months || 1;
-        const currentExpiry = new Date(existingActiveAndroidContract.contract_end_time);
-        const newExpiry = new Date(currentExpiry);
-        newExpiry.setMonth(newExpiry.getMonth() + tierMonths);
+        // 账期幂等：Google 返回的到期时间若未推进（或仅有秒级抖动），不再重复延期。
+        const ONE_MIN_MS = 60 * 1000;
+        const currentExpiryMs = new Date(existingActiveAndroidContract.contract_end_time).getTime();
+        if (verifiedExpiry && verifiedExpiry.getTime() <= currentExpiryMs + ONE_MIN_MS) {
+          console.log(`ℹ️ [paymentController] Android 跳过重复续订（账期未推进）: user=${user_id} txId=${transaction_id} currentExpiry=${existingActiveAndroidContract.contract_end_time.toISOString?.() || existingActiveAndroidContract.contract_end_time} verifiedExpiry=${verifiedExpiry.toISOString()}`);
+          return res.status(200).json({
+            success: true,
+            message: '订阅已处于最新状态',
+            renewed: true,
+            newExpiry: existingActiveAndroidContract.contract_end_time,
+            pointsAwarded: 0,
+          });
+        }
+
+        // 优先使用 Google 返回的真实到期时间，避免按本地月份累加导致重复叠加。
+        // 无验票模式下以 now + tierMonths 为基准，避免同一分钟重复请求基于 currentExpiry 级联叠加。
+        let newExpiry;
+        if (verifiedExpiry && verifiedExpiry.getTime() > Date.now()) {
+          newExpiry = verifiedExpiry;
+        } else {
+          const THREE_DAYS_MS = 3 * 24 * 3600 * 1000;
+          if (currentExpiryMs > Date.now() + THREE_DAYS_MS) {
+            console.log(`ℹ️ [paymentController] Android 跳过无验票续订（未到续费窗口）: user=${user_id} txId=${transaction_id} currentExpiry=${existingActiveAndroidContract.contract_end_time.toISOString?.() || existingActiveAndroidContract.contract_end_time}`);
+            return res.status(200).json({
+              success: true,
+              message: '订阅已处于有效期内',
+              renewed: true,
+              newExpiry: existingActiveAndroidContract.contract_end_time,
+              pointsAwarded: 0,
+            });
+          }
+
+          const tierMonths = productInfo?.duration_months || 1;
+          newExpiry = new Date();
+          newExpiry.setMonth(newExpiry.getMonth() + tierMonths);
+
+          // 账期未推进则忽略，防止重复上报造成时长累计。
+          if (newExpiry.getTime() <= currentExpiryMs + ONE_MIN_MS) {
+            console.log(`ℹ️ [paymentController] Android 跳过重复续订（无验票账期未推进）: user=${user_id} txId=${transaction_id}`);
+            return res.status(200).json({
+              success: true,
+              message: '订阅已处于最新状态',
+              renewed: true,
+              newExpiry: existingActiveAndroidContract.contract_end_time,
+              pointsAwarded: 0,
+            });
+          }
+
+          console.warn(`⚠️ [paymentController] Android 未取得有效 expiryTimeMillis，回退按 now+档位月数延期: user=${user_id} fallbackExpiry=${newExpiry.toISOString()}`);
+        }
         console.log(`🔄 [paymentController] Android 同档位续订: user=${user_id} product=${resolvedBackendProductId} purchaseToken=${purchase_token?.substring(0, 30)} newExpiry=${newExpiry.toISOString()}`);
         await MiningContract.update(
           { contract_end_time: newExpiry, original_transaction_id: purchase_token, is_renewal: 1, is_cancelled: 0 },
@@ -351,26 +465,6 @@ exports.verifyPurchase = async (req, res) => {
           newExpiry,
           pointsAwarded: 0,
         });
-      }
-      if (!googlePlayVerifyService.isInitialized) {
-        // 服务账号密鑰尚未配置，暂时保持兼容性（存档备查）
-        console.warn('⚠️ [paymentController] Google Play 验证服务未初始化，请配置 google-service-account.json，当前设为存档模式');
-      } else {
-        const packageName = process.env.ANDROID_PACKAGE_NAME;
-        if (!packageName) {
-          console.warn('⚠️ [paymentController] ANDROID_PACKAGE_NAME 未配置，跳过 Google Play 验证');
-        } else {
-          const playResult = await googlePlayVerifyService.verifySubscription(
-            packageName,
-            store_product_id,
-            purchase_token,
-          );
-          if (!playResult.success) {
-            console.warn(`❌ [paymentController] Android 购买验证失败: ${playResult.error} (user=${user_id} product=${store_product_id})`);
-            return res.status(400).json({ success: false, message: `Google Play 验证失败: ${playResult.error}` });
-          }
-          console.log(`✅ [paymentController] Android 购买验证通过: orderId=${playResult.orderId}`);
-        }
       }
     }
 
@@ -437,10 +531,10 @@ exports.verifyPurchase = async (req, res) => {
         });
 
         if (!existingActiveContract) {
+          // 历史数据 product_id 可能为 NULL，不用 product_id 过滤以确保能命中
           existingActiveContract = await MiningContract.findOne({
             where: {
               user_id,
-              product_id: resolvedBackendProductId,
               contract_type: 'paid contract',
               is_cancelled: 0,
               contract_end_time: { [Op.gt]: new Date() },
