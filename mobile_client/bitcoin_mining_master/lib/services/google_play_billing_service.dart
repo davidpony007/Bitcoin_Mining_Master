@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../constants/app_constants.dart';
 import 'analytics_service.dart';
+import 'solar_engine_service.dart';
 
 class GooglePlayBillingService {
   // 单例模式
@@ -260,6 +261,7 @@ class GooglePlayBillingService {
       if (purchase is GooglePlayPurchaseDetails) {
         purchaseToken = purchase.billingClientPurchase.purchaseToken;
       }
+      final txId = purchase.purchaseID;
 
       // 发送到后端验证
       final url = '${ApiConstants.baseUrl}${ApiConstants.paymentVerify}';
@@ -275,7 +277,8 @@ class GooglePlayBillingService {
           'user_id': userId,
           'platform': 'android',
           'store_product_id': purchase.productID,
-          'transaction_id': purchase.purchaseID,
+          // transaction_id 可能在少数 restored 场景为空，后端会回退使用 Google 返回的 orderId
+          'transaction_id': (txId != null && txId.isNotEmpty) ? txId : null,
           'purchase_token': purchaseToken,
         }),
       ).timeout(const Duration(seconds: 50));
@@ -291,6 +294,16 @@ class GooglePlayBillingService {
             value: priceValue,
             transactionId: purchase.purchaseID ?? purchase.productID,
             itemName: purchase.productID,
+          );
+          // SolarEngine 归因：上报 Android 内购事件
+          SolarEngineService.instance.trackPurchase(
+            productId: purchase.productID,
+            amount: priceValue,
+            currency: 'USD',
+            payType: 'googleplay',
+            payStatus: 1,
+            orderId: purchase.purchaseID,
+            productName: purchase.productID,
           );
           final int pts = (data['pointsAwarded'] ?? 0) as int;
           if (pts > 0) {
@@ -315,10 +328,23 @@ class GooglePlayBillingService {
         if (purchase.pendingCompletePurchase) {
           _iap.completePurchase(purchase);
         }
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        // JWT 过期/身份校验失败：不要关闭交易，避免"已扣款但合约未创建"
+        print('⚠️ 鉴权失败 ${response.statusCode}，保留交易待用户重新登录后自动重试');
+        onPurchaseUpdate?.call(false, 'Login expired. Please sign in again, then reopen the app to recover your purchase.');
+        if (txId != null) _processedTransactionIds.remove(txId);
+      } else if (response.statusCode >= 500) {
+        // 5xx 服务器错误（502 Bad Gateway / 503 / 500）：属于临时性故障，
+        // 不能关闭交易——让 Google Play 在下次 app 启动时重播此购买以便自动重试。
+        // 同时从去重集合中移除，允许本会话内重试。
+        print('❌ 服务器临时错误 ${response.statusCode}，保持交易未完成以便 Google Play 重播');
+        onPurchaseUpdate?.call(false, 'Server temporarily unavailable. Please reopen the app to retry.');
+        if (txId != null) _processedTransactionIds.remove(txId);
       } else {
-        print('❌ 服务器验证失败: ${response.statusCode}');
+        // 4xx 客户端错误（400/403/404 等）：属于永久性失败（如无效产品ID、身份校验失败），
+        // 关闭交易避免 Google Play 无限重播同一笔无效购买。
+        print('❌ 服务器验证失败（客户端错误 ${response.statusCode}），关闭交易');
         onPurchaseUpdate?.call(false, 'Server verification failed. Please contact support.');
-        // 服务端返回错误，关闭交易
         if (purchase.pendingCompletePurchase) {
           _iap.completePurchase(purchase);
         }

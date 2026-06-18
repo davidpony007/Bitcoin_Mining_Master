@@ -12,6 +12,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Pangle (ByteDance) SDK Maven 仓库
+        maven { url = uri("https://artifact.bytedance.com/repository/pangle/") }
+        // Mintegral SDK Maven 仓库
+        maven { url = uri("https://dl-maven-android.mintegral.com/repository/mbridge_android_sdk_oversea") }
     }
 }
 

@@ -44,6 +44,12 @@ const UserInformation = sequelize.define('user_information', {
     defaultValue: null,
     comment: 'Apple账号邮箱（仅首次授权时可获取，可能为空）'
   },
+  apple_app_account_token: {
+    type: DataTypes.STRING(36),
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Apple AppAccount Token（UUID v4，由 user_id FNV1a 衍生），用于 SUBSCRIBED/INITIAL_BUY 通知反查用户'
+  },
   nickname: {
     type: DataTypes.STRING(50),
     allowNull: true,

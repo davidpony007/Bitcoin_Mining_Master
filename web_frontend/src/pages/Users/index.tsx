@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import dayjs from 'dayjs';
 import {
   Card, Table, Button, Input, Space, Tag, Row, Col, Statistic, Select,
   message, Modal, Popconfirm, Drawer, Tabs, Descriptions, InputNumber,
-  Form, Typography, Badge, Divider, Tooltip, Empty, Spin,
+  Form, Typography, Badge, Divider, Tooltip, Empty, Spin, DatePicker,
 } from 'antd';
 import {
   SearchOutlined, UserOutlined, TeamOutlined, RiseOutlined,
@@ -105,7 +107,7 @@ interface ContractItem {
   created_at: string;
   end_time: string | null;
   remaining_seconds: number | null;
-  status: 'active' | 'inactive' | 'expired' | 'cancelled';
+  status: 'active' | 'inactive' | 'expired' | 'cancelled' | 'refunded';
   is_cancelled?: number;
   is_renewal?: number;
   order_id?: string | null;
@@ -311,6 +313,9 @@ const Users: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
   const [countryFilter, setCountryFilter] = useState<string>('');
   const [levelFilter, setLevelFilter] = useState<string>('');
+  const [regDateRange, setRegDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  const [regStartDate, setRegStartDate] = useState<string>('');
+  const [regEndDate, setRegEndDate] = useState<string>('');
   const [countries, setCountries] = useState<{ country_code: string; country_name_cn: string | null }[]>([]);
 
   const [detailOpen, setDetailOpen] = useState(false);
@@ -412,11 +417,15 @@ const Users: React.FC = () => {
         status: st || undefined, system: sys || undefined, acquisition: acq || undefined,
         country: ctry || undefined, level: lvl || undefined,
         sortBy: sf || undefined, sortOrder: so || undefined,
+        regStartDate: regStartDate || undefined,
+        regEndDate: regEndDate || undefined,
       });
       if (res?.success) { setList(res.data.list); setTotal(res.data.total); }
     } catch { message.error('加载用户列表失败'); }
     finally { setLoading(false); }
-  }, [page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder, searchField]);
+  }, [page, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder, searchField, regStartDate, regEndDate]);
+
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     usersApi.stats().then(res => { if (res?.success) setStats(res.data); });
@@ -424,6 +433,14 @@ const Users: React.FC = () => {
     usersApi.countries().then((res: any) => { if (res?.success) setCountries(res.data || []); });
     loadList(1, '', '');
   }, []);
+
+  // 从订单管理跳转过来时，自动打开指定用户的详情
+  useEffect(() => {
+    const uid = searchParams.get('uid');
+    if (!uid) return;
+    setSearchParams({}, { replace: true }); // 清除URL参数，避免刷新重复触发
+    openDetail({ user_id: uid } as any);
+  }, [searchParams]);
 
   const handleSearch = () => { setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, levelFilter, sortField, sortOrder, searchField); };
 
@@ -973,7 +990,7 @@ const Users: React.FC = () => {
                       width: cActiveColWidths['c_remain'] || 130,
                       onHeaderCell: () => ({ width: cActiveColWidths['c_remain'] || 130, onResize: handleCActiveResize('c_remain') }),
                       render: (_: any, r: ContractItem) => {
-                        if (!r.remaining_seconds) return '-';
+                        if (r.is_cancelled || !r.remaining_seconds) return '-';
                         const secs = Math.max(0, r.remaining_seconds - tickCount);
                         return <Text style={{ color: '#52c41a', fontWeight: 600, fontFamily: 'monospace' }}>{fmtCountdown(secs)}</Text>;
                       },
@@ -993,7 +1010,9 @@ const Users: React.FC = () => {
                       width: cActiveColWidths['c_status'] || 90,
                       onHeaderCell: () => ({ width: cActiveColWidths['c_status'] || 90, onResize: handleCActiveResize('c_status') }),
                       render: (_: any, r: ContractItem) => (
-                        r.status === 'cancelled'
+                        r.status === 'refunded'
+                          ? <Tag color="purple">已退款</Tag>
+                          : r.status === 'cancelled'
                           ? <Tag color="orange">已取消</Tag>
                           : <Tag color="green">正常</Tag>
                       ),
@@ -1100,7 +1119,9 @@ const Users: React.FC = () => {
                       width: cExpiredColWidths['ce_status'] || 80,
                       onHeaderCell: () => ({ width: cExpiredColWidths['ce_status'] || 80, onResize: handleCExpiredResize('ce_status') }),
                       render: (_: any, r: ContractItem) => (
-                        r.status === 'cancelled'
+                        r.status === 'refunded'
+                          ? <Tag color="purple">已退款</Tag>
+                          : r.status === 'cancelled'
                           ? <Tag color="red">已取消</Tag>
                           : r.mining_status === 'completed'
                             ? <Tag color="default">已完成</Tag>
@@ -1199,9 +1220,11 @@ const Users: React.FC = () => {
           { title: '本周新增', value: stats.newThisWeek ?? 0, prefix: <RiseOutlined />, suffix: '人', color: '#722ed1' },
           { title: 'iOS 用户', value: stats.iosCount ?? 0, suffix: '人', color: '#1890ff' },
           { title: 'Android 用户', value: stats.androidCount ?? 0, suffix: '人', color: '#52c41a' },
-          { title: '邀请用户', value: stats.invitedCount ?? 0, suffix: '人', color: '#722ed1' },
+          { title: '被邀请的用户数', value: stats.invitedCount ?? 0, suffix: '人', color: '#722ed1' },
           { title: '自然用户', value: stats.organicCount ?? 0, suffix: '人', color: '#13c2c2' },
+          { title: '投放新增', value: stats.promotionCount ?? 0, suffix: '人', color: '#eb2f96' },
           { title: '付费用户', value: stats.paidCount ?? 0, suffix: '人', color: '#faad14' },
+          { title: '已封禁', value: stats.bannedCount ?? 0, suffix: '人', color: '#ff4d4f' },
         ].map((item, i) => (
           <Col xs={12} sm={8} lg={6} xl={4} key={i}>
             <Card size="small" style={{ textAlign: 'center' }}>
@@ -1248,7 +1271,7 @@ const Users: React.FC = () => {
             <Option value="active within 3 days">近3天活跃</Option>
             <Option value="no login within 7 days">7天未登录</Option>
             <Option value="normal">正常</Option>
-            <Option value="disabled">已禁用</Option>
+            <Option value="banned">已禁用</Option>
           </Select>
           <Select placeholder="国家" style={{ width: 140 }} value={countryFilter || undefined} allowClear showSearch optionFilterProp="children"
             onChange={(v: string) => { setCountryFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, v || '', levelFilter, sortField, sortOrder); }}>
@@ -1258,6 +1281,17 @@ const Users: React.FC = () => {
             onChange={(v: string) => { setLevelFilter(v || ''); setPage(1); loadList(1, search, status, systemFilter, acquisitionFilter, countryFilter, v || '', sortField, sortOrder); }}>
             {[1,2,3,4,5,6,7,8,9,10].map(l => <Option key={l} value={String(l)}>Lv.{l}</Option>)}
           </Select>
+          <DatePicker.RangePicker
+            value={regDateRange}
+            placeholder={['注册开始日期', '注册结束日期']}
+            style={{ width: 260 }}
+            allowClear
+            onChange={(dates) => {
+              setRegDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null);
+              setRegStartDate(dates?.[0]?.format('YYYY-MM-DD') ?? '');
+              setRegEndDate(dates?.[1]?.format('YYYY-MM-DD') ?? '');
+            }}
+          />
           <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>搜索</Button>
           <Button icon={<ReloadOutlined />} onClick={handleRefresh} loading={loading} title="刷新数据">刷新</Button>
           {selectedRowKeys.length > 0 && (

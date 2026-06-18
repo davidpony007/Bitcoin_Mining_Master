@@ -59,7 +59,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       const SettingsScreen(),
     ];
     // 预加载广告
-    AdMobService().loadRewardedAd();
+    // 使用 addPostFrameCallback 确保 StorageService 已持久化 userId，
+    // 避免登录完成后微小时序差导致 SSV user_id 为空（全局已知 Bug 修复）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final uid = _storageService.getUserId();
+      if (uid != null && uid.isNotEmpty) {
+        AdMobService().ensureLoadedForUser(uid);
+      } else {
+        AdMobService().loadRewardedAd();
+      }
+    });
 
     // 登录后补传 FCM token（initialize() 在用户未登录时可能跳过了上报）
     PushNotificationService.reUploadToken();
@@ -113,13 +122,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // 延迟 1.5s 再检测：手机从后台唤醒时网络接口需要约 1-2s 才能就绪，
-      // 若立即请求极易因连接错误而静默失败，且此后没有重试入口，导致庆祝弹窗永远不出现。
-      // （冷启动路径已有 1s 延迟，这里与其保持同等保护级别）
+      // 延迟 1.5s 再检测：手机从后台唤醒时网络接口需要约 1-2s 才能就绪
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (!mounted) return;
         _checkPendingInviteCelebration();
       });
+
+      // 广告后台预热：App 从后台恢复时若广告未就绪则立即静默重新加载，
+      // 确保用户回到 App 后第一次点击广告无需等待
+      final uid = _storageService.getUserId();
+      if (uid != null && uid.isNotEmpty) {
+        AdMobService().ensureLoadedForUser(uid);
+      } else {
+        AdMobService().backgroundWarmUp();
+      }
     }
   }
 

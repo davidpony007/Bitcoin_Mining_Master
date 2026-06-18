@@ -1,7 +1,7 @@
 name: bitcoin_mining_master
 description: "Bitcoin Mining Master - Flutter版本"
 publish_to: 'none'
-version: 1.0.3+27
+version: 1.0.6+31
 
 environment:
   sdk: ^3.10.0
@@ -26,7 +26,7 @@ dependencies:
   webview_flutter: ^4.4.2
   google_sign_in: ^6.2.1
   sign_in_with_apple: ^6.1.2
-  google_mobile_ads: ^5.1.0
+  google_mobile_ads: ^7.0.0
   connectivity_plus: ^6.1.2
   advertising_id: ^2.7.1  # Google Advertising ID (GAID) for Android
   app_tracking_transparency: ^2.0.6+1  # iOS ATT 权限 + IDFA
@@ -36,6 +36,7 @@ dependencies:
   firebase_core: ^3.9.0          # Firebase 核心库
   firebase_messaging: ^15.2.2    # FCM 推送通知
   firebase_analytics: ^11.3.3    # Firebase Analytics 事件埋点
+  se_flutter_sdk_us: ^1.5.8      # SolarEngine 归因监测 SDK（国际版）
 
 dev_dependencies:
   flutter_test:

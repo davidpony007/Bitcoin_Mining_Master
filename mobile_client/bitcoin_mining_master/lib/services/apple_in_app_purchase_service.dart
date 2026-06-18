@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../constants/app_constants.dart';
 import 'analytics_service.dart';
+import 'solar_engine_service.dart';
 
 /// iOS App Store 内购服务
 /// 镜像 GooglePlayBillingService，使用统一的 in_app_purchase 插件处理 StoreKit
@@ -123,6 +123,31 @@ class AppleInAppPurchaseService {
     }
   }
 
+  /// 从 [userId] 衍生确定性 UUID v4（FNV-1a 32-bit × 4）
+  /// 算法与后端 deriveAppleAccountToken.js 完全一致，两端必须保持同步。
+  /// 用于 SKPayment.applicationUsername，Apple 将其回传为 appAccountToken。
+  static String _deriveAccountToken(String userId) {
+    const ns = 'btcmining:';
+    final input = '$ns$userId';
+    var h0 = 0x6c62272e;
+    var h1 = 0x07bb0142;
+    var h2 = 0x62b82175;
+    var h3 = 0x6295c58d;
+    for (final c in input.codeUnits) {
+      h0 = (((h0 ^ c) & 0xFFFFFFFF) * 0x01000193) & 0xFFFFFFFF;
+      h1 = (((h1 ^ c) & 0xFFFFFFFF) * 0x01000193) & 0xFFFFFFFF;
+      h2 = (((h2 ^ c) & 0xFFFFFFFF) * 0x01000193) & 0xFFFFFFFF;
+      h3 = (((h3 ^ c) & 0xFFFFFFFF) * 0x01000193) & 0xFFFFFFFF;
+    }
+    // UUID v4: version = 0100 in time_hi bits 15-12
+    h1 = (h1 & 0xFFFF0FFF) | 0x00004000;
+    // RFC4122 variant: 10xx in clock_seq bits 15-14
+    h2 = (h2 & 0x3FFFFFFF) | 0x80000000;
+    String hex(int n, int len) => n.toRadixString(16).padLeft(len, '0').substring(0, len);
+    return '${hex(h0, 8)}-${hex(h1 >> 16, 4)}-${hex(h1 & 0xFFFF, 4)}'
+        '-${hex(h2 >> 16, 4)}-${hex(h2 & 0xFFFF, 4)}${hex(h3, 8)}';
+  }
+
   /// 获取指定商品详情
   ProductDetails? getProduct(String productId) {
     try {
@@ -166,7 +191,16 @@ class AppleInAppPurchaseService {
       print('🛒 发起 iOS 购买: ${product.id} - ${product.price}');
       // 记录用户主动发起的产品 ID，用于 _verifyAndDeliver 竞态条件保护
       _activeUserProductId = productId;
-      final purchaseParam = PurchaseParam(productDetails: product);
+      // applicationUserName 传入由 user_id 衍生的确定性 UUID v4
+      // Apple 会将其存储为 signedTransactionInfo.appAccountToken，
+      // 后端 SUBSCRIBED/INITIAL_BUY 通知处理器据此自动关联用户身份
+      final appAccountToken = userId != null && userId!.isNotEmpty
+          ? _deriveAccountToken(userId!)
+          : null;
+      final purchaseParam = PurchaseParam(
+        productDetails: product,
+        applicationUserName: appAccountToken,
+      );
       // 非消耗型或非自动续期订阅使用 buyNonConsumable
       await _iap.buyNonConsumable(purchaseParam: purchaseParam);
     } catch (e) {
@@ -360,21 +394,12 @@ class AppleInAppPurchaseService {
               ? purchase.verificationData.serverVerificationData
               : purchase.verificationData.localVerificationData;
 
-      // ⚠️ 沙盒环境下 App Receipt 会持续累积所有续订历史，体积可超 10MB，
-      // 触发 Nginx 413 Request Entity Too Large。
-      // Apple 验证只需要能找到当前 transaction_id 的 receipt 片段即可；
-      // 对于超大 receipt，截断到 4MB 上限（base64 字符数 < 5,500,000）以防止网络错误。
-      const int receiptSizeLimit = 5500000; // ~4MB base64
-      if (receiptData.length > receiptSizeLimit) {
-        print('⚠️ [IAP] App Receipt 过大 (${receiptData.length} chars)，截断至 $receiptSizeLimit chars 发送');
-        receiptData = receiptData.substring(0, receiptSizeLimit);
-      } else {
-        print('📦 [IAP] App Receipt 大小: ${receiptData.length} chars');
-      }
+      // Apple 需要完整的 App Receipt 才能验证，截断 base64 数据会导致 Apple 返回
+      // 状态码 21002（malformed receipt-data）。Nginx 已配置 client_max_body_size 50M，
+      // 无需在客户端限制 receipt 大小。
+      print('📦 [IAP] App Receipt 大小: ${receiptData.length} chars');
 
-      final transactionId =
-          purchase.purchaseID ??
-          purchase.verificationData.serverVerificationData;
+        final transactionId = purchase.purchaseID;
 
       final url =
           '${ApiConstants.baseUrl}${ApiConstants.paymentVerify}';
@@ -391,7 +416,8 @@ class AppleInAppPurchaseService {
           'user_id': userId,
           'platform': 'ios',
           'store_product_id': purchase.productID,
-          'transaction_id': transactionId,
+          // transaction_id 在少数 restored 场景可能为空，后端会从 receipt 推导
+          'transaction_id': (transactionId != null && transactionId.isNotEmpty) ? transactionId : null,
           'verification_data': receiptData, // base64 app receipt
         }),
       ).timeout(const Duration(seconds: 60)); // Apple API 双重验证最多需~20s，给60s足够余量
@@ -410,6 +436,16 @@ class AppleInAppPurchaseService {
             transactionId: purchase.purchaseID ?? purchase.productID,
             itemName: purchase.productID,
           );
+          // SolarEngine 归因：上报 iOS 内购事件
+          SolarEngineService.instance.trackPurchase(
+            productId: purchase.productID,
+            amount: priceValue,
+            currency: 'USD',
+            payType: 'applepay',
+            payStatus: 1,
+            orderId: purchase.purchaseID,
+            productName: purchase.productID,
+          );
           if (isUserInitiated) {
             final int pts = (data['pointsAwarded'] ?? 0) as int;
             if (pts > 0) {
@@ -420,14 +456,21 @@ class AppleInAppPurchaseService {
             // renewed=true 表示后端只是延期了已有合约，并非激活新合约。
             // 场景：用户主动点击「已订阅的同一 Plan」的 Subscribe → Apple 弹出"你已订阅此项目"
             //       → 用户点"好" → StoreKit 回播同一产品的现有订阅交易 → backend 返回 renewed=true。
+            // Restore 场景：用户点击 Restore 按钮 → StoreKit 回播已有订阅 → backend 返回 renewed=true。
             // 此时必须调用 onPurchaseUpdate 让 UI 停止转圈；
             // 不显示"购买成功"，而是告知用户订阅仍有效（不关闭页面）。
             final bool isRenewal = data['renewed'] == true;
             if (isRenewal) {
-              print('ℹ️ [IAP] 续订交易：合约已延期（不显示"购买成功"）: ${purchase.productID}');
+              print('ℹ️ [IAP] 续订/确认交易：合约已延期/确认（不显示"购买成功"）: ${purchase.productID}');
               if (isUserInitiated) {
-                // 必须回调让 UI 清除转圈，否则 _loadingTierId 永不清除 → 永久转圈
-                onPurchaseUpdate?.call(false, 'Your subscription is already active.');
+                if (isFromUserRestore) {
+                  // ★ Restore 模式：找到活跃订阅 → 视为恢复成功，通知 UI
+                  // 必须传 true，否则 _restoreFoundAny 永不为 true → 超时显示"No subscriptions found"
+                  onPurchaseUpdate?.call(true, 'Your subscription has been confirmed and the contract is active.');
+                } else {
+                  // 正常购买模式：必须回调让 UI 清除转圈，否则 _loadingTierId 永不清除 → 永久转圈
+                  onPurchaseUpdate?.call(false, 'Your subscription is already active.');
+                }
               }
             } else {
               onPurchaseUpdate?.call(
@@ -463,17 +506,36 @@ class AppleInAppPurchaseService {
         if (purchase.pendingCompletePurchase) {
           _iap.completePurchase(purchase);
         }
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        print('⚠️ iOS 鉴权失败: ${response.statusCode} (产品: ${purchase.productID}, 用户主动: $isUserInitiated)');
+        if (isUserInitiated) {
+          onPurchaseUpdate?.call(
+            false,
+            'Login expired. Please sign in again, then reopen the app to recover your purchase.',
+          );
+        }
+        // 鉴权失败不关闭交易，避免"扣款成功但合约未创建"
+        final txId = purchase.purchaseID;
+        if (txId != null) _processedTransactionIds.remove(txId);
       } else {
         print('❌ iOS 服务器验证失败: ${response.statusCode} (产品: ${purchase.productID}, 用户主动: $isUserInitiated)');
         if (isUserInitiated) {
           onPurchaseUpdate?.call(
             false,
-            'Server verification failed. Please contact support.',
+            response.statusCode >= 500
+                ? 'Server error. Your purchase is safe — it will be recovered automatically when the service is restored.'
+                : 'Server verification failed. Please contact support.',
           );
         }
-        // 服务端返回错误，关闭交易（通知用户联系客服）
-        if (purchase.pendingCompletePurchase) {
+        // 5xx 服务端故障（如 502/503 停机）：保留 StoreKit 交易，下次 App 启动时自动重试
+        // 4xx 服务端明确拒绝（400/401/403）：永久关闭交易
+        if (response.statusCode < 500 && purchase.pendingCompletePurchase) {
           _iap.completePurchase(purchase);
+        }
+        // 5xx 时移除去重记录，允许本会话内重试
+        if (response.statusCode >= 500) {
+          final txId = purchase.purchaseID;
+          if (txId != null) _processedTransactionIds.remove(txId);
         }
       }
     } catch (e) {

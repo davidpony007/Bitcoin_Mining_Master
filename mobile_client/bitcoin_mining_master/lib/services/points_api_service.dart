@@ -158,11 +158,12 @@ class PointsApiService {
     }
   }
 
-  /// 获取签到状态 GET /api/checkin/status
+  /// 获取签到状态 GET /api/check-in/status（无需JWT认证，使用 user_id 查询参数）
   Future<CheckInStatus> getCheckInStatus() async {
     try {
       final userId = await _getUserId();
-      final response = await _dio.get('/checkin/status', queryParameters: {
+      // 使用不需要 JWT 的 /check-in/status 端点，避免无 token 时回退到空数据
+      final response = await _dio.get('/check-in/status', queryParameters: {
         'user_id': userId,
       });
       if (response.data['success'] == true) {

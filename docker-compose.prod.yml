@@ -19,7 +19,12 @@ services:
       - ./backup:/backup  # 备份目录
     networks:
       - bitcoin_network
-    command: --default-authentication-plugin=mysql_native_password --max-connections=500 --default-time-zone=+00:00
+    command: --default-authentication-plugin=mysql_native_password --max-connections=500 --default-time-zone=+00:00 --binlog-expire-logs-seconds=86400 --max-binlog-size=268435456
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
       interval: 30s
@@ -45,9 +50,7 @@ services:
 
   # Node.js 后端服务（生产）
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: bitcoin-docker-backend
     container_name: bitcoin_backend_prod
     restart: always
     environment:
@@ -64,10 +67,32 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       APPLE_IAP_SHARED_SECRET: ${APPLE_IAP_SHARED_SECRET}
+      # AdMob Reporting API（OAuth2）
+      ADMOB_PUBLISHER_ID: ${ADMOB_PUBLISHER_ID}
+      ADMOB_OAUTH_CLIENT_ID: ${ADMOB_OAUTH_CLIENT_ID}
+      ADMOB_OAUTH_CLIENT_SECRET: ${ADMOB_OAUTH_CLIENT_SECRET}
+      ADMOB_OAUTH_REFRESH_TOKEN: ${ADMOB_OAUTH_REFRESH_TOKEN}
+      ADMOB_APP_ID_ANDROID: ${ADMOB_APP_ID_ANDROID}
+      ADMOB_APP_ID_IOS: ${ADMOB_APP_ID_IOS}
+      # Mintegral Reporting API
+      MINTEGRAL_SKEY: ${MINTEGRAL_SKEY}
+      MINTEGRAL_PKEY: ${MINTEGRAL_PKEY}
       # Firebase FCM 推送通知（从 Firebase Console → 项目设置 → 服务账号 → 生成新私钥 获取 JSON，压缩为单行填入 .env）
       FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-bitcoin-mining-master-24993}
+      # Android Google Play 内购验证
+      ANDROID_PACKAGE_NAME: ${ANDROID_PACKAGE_NAME:-com.cloudminingtool.bitcoin_mining_app}
+      # 管理员账号
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # Apple App Store Server API（用于验证 iOS 交易真实性）
+      APPLE_APP_STORE_API_KEY_ID: ${APPLE_APP_STORE_API_KEY_ID}
+      APPLE_APP_STORE_ISSUER_ID: ${APPLE_APP_STORE_ISSUER_ID}
+      APPLE_APP_STORE_PRIVATE_KEY: ${APPLE_APP_STORE_PRIVATE_KEY}
+      APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID}
       LOG_LEVEL: info
+    volumes:
+      - /root/secrets/google-service-account.json:/app/src/config/google-service-account.json:ro
     depends_on:
       mysql:
         condition: service_healthy
@@ -140,7 +165,8 @@ services:
 
 networks:
   bitcoin_network:
-    driver: bridge
+    name: bitcoin-docker_bitcoin_network
+    external: true
 
 volumes:
   mysql_data:

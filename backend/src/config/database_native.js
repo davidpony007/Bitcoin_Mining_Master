@@ -20,8 +20,8 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'bitcoin_mining_master',
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  connectionLimit: 30,       // 从 15 提升到 30，支持更多并发用户
+  queueLimit: 100,           // 从 30 提升到 100，减少 Queue limit reached 错误
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
   connectTimeout: 30000, // 连接超时30秒

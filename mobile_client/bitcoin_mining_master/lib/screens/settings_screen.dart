@@ -45,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   
   // 评价奖励领取状态
   bool _hasClaimedRatingPoints = false;
+  bool _isClaimingRating = false; // 防止双击重复提交
 
   // 账户禁用状态
   bool _isBanned = false;
@@ -571,17 +572,24 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   /// 调用后端API领取10积分奖励（仅限一次）
   Future<void> _claimRatingPoints() async {
-    if (_hasClaimedRatingPoints) return;
+    if (_hasClaimedRatingPoints || _isClaimingRating) return;
     final userId = _storageService.getUserId();
     if (userId == null || userId.isEmpty) return;
+    if (mounted) setState(() => _isClaimingRating = true);
     try {
+      // 必须携带 JWT Token，否则后端 authenticate 中间件会返回 401
+      final token = _storageService.getAuthToken() ?? '';
       final response = await http.post(
         Uri.parse('${ApiConstants.baseUrl}/points/claim-app-rating'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+        },
         body: json.encode({
           'user_id': userId,
         }),
       ).timeout(const Duration(seconds: 30));
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
@@ -598,9 +606,39 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             );
           }
         }
+      } else if (response.statusCode == 400) {
+        // 服务端幂等保护：已领取过，同步本地状态避免下次重复请求
+        await _storageService.setRatingRewardClaimed(userId);
+        if (mounted) {
+          setState(() {
+            _hasClaimedRatingPoints = true;
+          });
+        }
+      } else {
+        // 其他错误（401 token过期、500服务器错误等），提示用户稍后重试
+        print('❌ 评价积分领取失败: HTTP ${response.statusCode} ${response.body}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to claim points. Please try again later.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
+      // 网络超时或连接失败，提示用户稍后重试（本地不标记已领取，下次仍可重试）
       print('❌ 评价积分领取失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Network error. Please try rating again to claim your points.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isClaimingRating = false);
     }
   }
 
@@ -732,20 +770,30 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     } else {
       uri = Uri.parse('https://play.google.com/store/account/subscriptions');
     }
-    if (await canLaunchUrl(uri)) {
+    // 不用 canLaunchUrl：itms-apps:// 在 iOS 上需要 LSApplicationQueriesSchemes，
+    // 但即便声明了，部分版本仍可能误判。直接 launchUrl + try/catch 更可靠。
+    try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // 跳转失败（极少数情况），静默忽略
     }
   }
 
   Future<void> _openStoreReview() async {
     if (Platform.isAndroid) {
       const packageName = StoreConstants.androidPackageName;
+      // 使用 externalNonBrowserApplication 排除浏览器类 app 出现在选择器中
+      // 用 try/catch 替代 canLaunchUrl，避免 Android 11+ 包可见性误判
       final marketUri = Uri.parse('market://details?id=$packageName');
       final webUri = Uri.parse(
-          'https://play.google.com/store/apps/details?id=$packageName');
-      if (await canLaunchUrl(marketUri)) {
-        await launchUrl(marketUri);
-      } else {
+          'https://play.google.com/store/apps/details?id=$packageName&reviewId=0');
+      try {
+        final launched = await launchUrl(
+          marketUri,
+          mode: LaunchMode.externalNonBrowserApplication,
+        );
+        if (!launched) throw Exception('market:// launch returned false');
+      } catch (_) {
         await launchUrl(webUri, mode: LaunchMode.externalApplication);
       }
     } else if (Platform.isIOS) {

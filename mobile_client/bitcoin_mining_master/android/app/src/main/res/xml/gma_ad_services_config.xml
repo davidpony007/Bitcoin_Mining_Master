@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ad-services-config>
+    <attribution>
+        <enrollment-checks enabled="true" />
+    </attribution>
+    <topics>
+        <enrollment-checks enabled="true" />
+    </topics>
+    <custom-audiences>
+        <enrollment-checks enabled="true" />
+    </custom-audiences>
+</ad-services-config>

@@ -1,9 +1,10 @@
+// v2 - mintegral api removed
 import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Select, Table, Space, Tabs, Button, DatePicker,
-         Typography } from 'antd';
+         Typography, message, Segmented, Modal, Form, InputNumber, Divider } from 'antd';
 import {
   UserOutlined, DollarOutlined, LineChartOutlined, FireOutlined,
-  BarChartOutlined, DatabaseOutlined, SearchOutlined, ExportOutlined,
+  BarChartOutlined, DatabaseOutlined, SearchOutlined, ExportOutlined, EditOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import type { ColumnsType } from 'antd/es/table';
@@ -77,6 +78,9 @@ interface DailyRow {
   arppu: number;
   cancelCount: number;
   cancelRate: string;
+  refundCount: number;
+  refundAmount: number;
+  invalidCount: number;
   renewalCount: number;
   renewalAmount: number;
   renewalRevenue: number;
@@ -221,37 +225,129 @@ const TrendTab: React.FC = () => {
 const DailySummaryTab: React.FC = () => {
   const [data, setData] = useState<DailyRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [cacheLoading, setCacheLoading] = useState(false);
   const [summary, setSummary] = useState<BtcSummary | null>(null);
   const utcToday = new Date().toISOString().slice(0, 10);
-  const [startDate, setStartDate] = useState<dayjs.Dayjs>(dayjs(utcToday).subtract(7, 'day'));
-  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(dayjs(utcToday));
+  const defaultEndDate = dayjs(utcToday);
+  const [startDate, setStartDate] = useState<dayjs.Dayjs>(defaultEndDate.subtract(7, 'day'));
+  const [endDate, setEndDate]     = useState<dayjs.Dayjs>(defaultEndDate);
   const [platform, setPlatform]   = useState('all');
   const [selectedRows, setSelectedRows] = useState<DailyRow[]>([]);
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
+  const [entryModalOpen, setEntryModalOpen] = useState(false);
+  const [entryForm] = Form.useForm();
+  const [entrySaving, setEntrySaving] = useState(false);
   const handleColResize = (key: string) => (_e: React.SyntheticEvent<Element>, { size }: ResizeCallbackData) => {
     setColWidths(prev => ({ ...prev, [key]: size.width }));
   };
 
-  const fetchData = async () => {
+  const fetchData = async (override?: { startDate?: dayjs.Dayjs; endDate?: dayjs.Dayjs; platform?: string }) => {
     setLoading(true);
     try {
+      const queryStartDate = override?.startDate || startDate;
+      const queryEndDate = override?.endDate || endDate;
+      const queryPlatform = override?.platform !== undefined ? override.platform : platform;
       const res: any = await dataCenterApi.dailyReport(
-        startDate.format('YYYY-MM-DD'), endDate.format('YYYY-MM-DD'), platform);
+        queryStartDate.format('YYYY-MM-DD'), queryEndDate.format('YYYY-MM-DD'), queryPlatform);
       setData(res?.data || []);
       setSummary(res?.summary || null);
     } catch {}
     setLoading(false);
   };
 
+  const cacheRecentStats = async () => {
+    // 拉取包含今天在内的近七天
+    const end = dayjs(utcToday);
+    const start = end.subtract(6, 'day');
+    setCacheLoading(true);
+    let admobOk = false;
+    try {
+      await dataCenterApi.admobSync({
+        startDate: start.format('YYYY-MM-DD'),
+        endDate: end.format('YYYY-MM-DD'),
+        ...(platform === 'all' ? {} : { platform: platform as 'Android' | 'iOS' }),
+      });
+      admobOk = true;
+    } catch (err: any) {
+      const respData = err?.response?.data;
+      if (respData?.code === 'ADMOB_AUTH_EXPIRED') {
+        message.warning('AdMob OAuth 凭证已过期，广告数据未更新，请联系管理员重新授权');
+      } else {
+        message.warning(`AdMob 同步失败：${respData?.message || err?.message || '未知错误'}`);
+      }
+    }
+    try {
+      // 同步完成后，沿用用户当前选择的日期区间刷新展示，不改变视图日期
+      await fetchData();
+      if (admobOk) {
+        message.success('近七天 AdMob 广告数据已拉取并刷新');
+      } else {
+        message.info('数据已刷新（AdMob 广告数据未更新）');
+      }
+    } catch (fetchErr: any) {
+      message.error('数据刷新失败');
+    } finally {
+      setCacheLoading(false);
+    }
+  };
+
   useEffect(() => { fetchData(); }, []);
 
+  const openEntryModal = () => {
+    entryForm.setFieldsValue({
+      statDate: endDate,
+      android_googleSpend: undefined,
+      android_applovinSpend: undefined,
+      android_mintegralSpend: undefined,
+      android_adNewUsers: undefined,
+      ios_googleSpend: undefined,
+      ios_applovinSpend: undefined,
+      ios_mintegralSpend: undefined,
+      ios_adNewUsers: undefined,
+    });
+    setEntryModalOpen(true);
+  };
+
+  const saveEntry = async () => {
+    try {
+      const values = await entryForm.validateFields();
+      const dateStr = values.statDate?.format('YYYY-MM-DD');
+      if (!dateStr) { message.error('请选择日期'); return; }
+      setEntrySaving(true);
+      await Promise.all([
+        dataCenterApi.addAdSpend({
+          statDate: dateStr, platform: 'Android',
+          googleSpend:    values.android_googleSpend    ?? 0,
+          applovinSpend:  values.android_applovinSpend  ?? 0,
+          mintegralSpend: values.android_mintegralSpend ?? 0,
+          adNewUsers:     values.android_adNewUsers     ?? 0,
+        }),
+        dataCenterApi.addAdSpend({
+          statDate: dateStr, platform: 'iOS',
+          googleSpend:    values.ios_googleSpend    ?? 0,
+          applovinSpend:  values.ios_applovinSpend  ?? 0,
+          mintegralSpend: values.ios_mintegralSpend ?? 0,
+          adNewUsers:     values.ios_adNewUsers     ?? 0,
+        }),
+      ]);
+      message.success(`${dateStr} 数据录入成功`);
+      setEntryModalOpen(false);
+      fetchData();
+    } catch (err: any) {
+      if (err?.errorFields) return; // form validation
+      message.error(`录入失败：${err?.response?.data?.message || err?.message || '未知错误'}`);
+    } finally {
+      setEntrySaving(false);
+    }
+  };
+
   const exportCSV = () => {
-    const headers = ['日期','总消耗','Google','Axon','Mintegral','投放新增','邀请新增','自然量新增','总新增','次留数','次留率','DAU','CPA','投放CPA','首次订阅单数','首次订阅成本','首次订阅率','首次订阅金额','首次订阅实际收入','首次订阅用户平均订阅金额','取消订阅数','取消订阅率','续期数','续期金额','续期收入','广告数','人均广告数','ecpm','广告收入','总收入','送出BTC数量','送出价值','送币时单价','提现BTC数量','提现价值','成本(实际)','利润(送币后)','利润(提现后)','ROI(送币后)','ROI(提现后)'];
+    const headers = ['日期','总消耗','Google','Axon','Mintegral','投放新增','邀请新增','自然量新增','总新增','次留数','次留率','DAU','CPA','投放CPA','首次订阅单数','首次订阅成本','首次订阅率','首次订阅金额','首次订阅实际收入','首次订阅用户平均订阅金额','取消订阅数','取消订阅率','已退款订单数','已退款金额合计','无效订单数','续期数','续期金额','续期收入','广告数','人均广告数','ecpm','广告收入','总收入','送出BTC数量','送出价值','送币时单价','提现BTC数量','提现价值','成本(实际)','利润(送币后)','利润(提现后)','ROI(送币后)','ROI(提现后)'];
     const rows = (selectedRows.length ? selectedRows : data).map(r =>
       [r.date,r.totalSpend,r.googleSpend,r.applovinSpend,r.mintegralSpend,
        r.adNewUsers,r.newUsersM1,r.newUsersM2,r.totalNewUsers,
        r.retentionRate,r.retentionRatePct,r.dau,r.cpa,r.adCpa,r.subOrders,r.subCost,r.subRate,
-       r.salesAmount,r.subRevenue,r.arppu,r.cancelCount,r.cancelRate,r.renewalCount,r.renewalAmount,
+       r.salesAmount,r.subRevenue,r.arppu,r.cancelCount,r.cancelRate,r.refundCount,r.refundAmount,r.invalidCount,r.renewalCount,r.renewalAmount,
        r.renewalRevenue,r.adCount,r.adPerUser,r.ecpm,r.adRevenue,r.totalRevenue,
        r.btcSentAmount,r.btcSentValue,r.btcAvgPrice,
        r.withdrawalBtcAmount,r.withdrawalBtcValue,r.actualCost,r.profitSent,r.profitWithdraw,r.roi,r.roiWithdraw
@@ -289,6 +385,9 @@ const DailySummaryTab: React.FC = () => {
     { title: '首次订阅用户平均订阅金额',    dataIndex: 'arppu',              key: 'arppu',              width: 160, render: fmtN },
     { title: '取消订阅数',               dataIndex: 'cancelCount',        key: 'cancelCount',        width: 90 },
     { title: '取消订阅率',               dataIndex: 'cancelRate',         key: 'cancelRate',         width: 90 },
+    { title: '已退款订单数',              dataIndex: 'refundCount',        key: 'refundCount',        width: 100 },
+    { title: '已退款金额合计',            dataIndex: 'refundAmount',       key: 'refundAmount',       width: 115, render: fmtN },
+    { title: '无效订单数',               dataIndex: 'invalidCount',       key: 'invalidCount',       width: 90 },
     { title: '续期数',                   dataIndex: 'renewalCount',       key: 'renewalCount',       width: 70 },
     { title: '续期金额',                 dataIndex: 'renewalAmount',      key: 'renewalAmount',      width: 80,  render: fmtN },
     { title: '续期收入',                 dataIndex: 'renewalRevenue',     key: 'renewalRevenue',     width: 80,  render: fmtN },
@@ -359,21 +458,81 @@ const DailySummaryTab: React.FC = () => {
           <span>搜索：</span>
           <DatePicker value={startDate} onChange={d => d && setStartDate(d)} format="YYYYMMDD" style={{ width: 120 }} />
           <DatePicker value={endDate}   onChange={d => d && setEndDate(d)}   format="YYYY-MM-DD" style={{ width: 130 }} />
-          <span>类型：</span>
-          <Select value={platform} onChange={setPlatform} style={{ width: 110 }}>
-            <Option value="all">全部</Option>
-            <Option value="Android">Android</Option>
-            <Option value="iOS">iOS</Option>
-          </Select>
-          <Button type="primary" icon={<SearchOutlined />} onClick={fetchData} />
+          <Segmented
+            value={platform}
+            onChange={(v) => { setPlatform(v as string); fetchData({ platform: v as string }); }}
+            options={[
+              { label: '全部', value: 'all' },
+              { label: 'Android', value: 'Android' },
+              { label: 'iOS', value: 'iOS' },
+            ]}
+          />
+          <Button type="primary" icon={<SearchOutlined />} onClick={() => fetchData()} />
         </Space>
       </Card>
 
       {/* 操作按钮 */}
       <Space style={{ marginBottom: 10 }}>
-        <Button onClick={fetchData}>缓存统计数据</Button>
+        <Button onClick={cacheRecentStats} loading={cacheLoading}>缓存统计数据</Button>
+        <Button icon={<EditOutlined />} onClick={openEntryModal}>数据录入</Button>
         <Button type="primary" icon={<ExportOutlined />} onClick={exportCSV}>导出数据</Button>
       </Space>
+
+      {/* 数据录入 Modal */}
+      <Modal
+        title="数据录入"
+        open={entryModalOpen}
+        onCancel={() => setEntryModalOpen(false)}
+        onOk={saveEntry}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={entrySaving}
+        width={620}
+        destroyOnClose
+      >
+        <Form form={entryForm} layout="vertical" style={{ marginTop: 8 }}>
+          <Form.Item name="statDate" label="日期" rules={[{ required: true, message: '请选择日期' }]}>
+            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+          </Form.Item>
+
+          <Row gutter={32}>
+            <Col span={12}>
+              <Divider orientation="left" style={{ marginTop: 0, fontWeight: 600, color: '#1677ff' }}>Android</Divider>
+              <Form.Item name="android_googleSpend" label="Google 消耗">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" addonBefore="$" />
+              </Form.Item>
+              <Form.Item name="android_applovinSpend" label="Axon 消耗">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" addonBefore="$" />
+              </Form.Item>
+              <Form.Item name="android_mintegralSpend" label="Mintegral 消耗">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" addonBefore="$" />
+              </Form.Item>
+              <Form.Item name="android_adNewUsers" label="投放新增">
+                <InputNumber min={0} precision={0} style={{ width: '100%' }} placeholder="0" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Divider orientation="left" style={{ marginTop: 0, fontWeight: 600, color: '#52c41a' }}>iOS</Divider>
+              <Form.Item name="ios_googleSpend" label="Google 消耗">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" addonBefore="$" />
+              </Form.Item>
+              <Form.Item name="ios_applovinSpend" label="Axon 消耗">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" addonBefore="$" />
+              </Form.Item>
+              <Form.Item name="ios_mintegralSpend" label="Mintegral 消耗">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} placeholder="0.00" addonBefore="$" />
+              </Form.Item>
+              <Form.Item name="ios_adNewUsers" label="投放新增">
+                <InputNumber min={0} precision={0} style={{ width: '100%' }} placeholder="0" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <div style={{ color: '#888', fontSize: 12, marginTop: -8 }}>
+            全部视图 = Android + iOS 合计，留空则保持原值为 0
+          </div>
+        </Form>
+      </Modal>
 
       {/* 表格 */}
       <Table

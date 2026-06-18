@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:app_tracking_transparency/app_tracking_transparency.dart';
+import 'solar_engine_service.dart';
 
 /// 设备信息服务 - 获取GAID和设备地区信息
 /// 注意：当前版本暂时禁用了GAID功能（Flutter SDK限制）
@@ -93,6 +94,19 @@ class DeviceInfoService {
     return result;
   }
 
+  /// 仅请求 ATT 权限弹窗（不收集 IDFA/IDFV），适合在 SplashScreen 等早期阶段调用。
+  /// 确保弹窗在任何导航和追踪数据采集之前出现（App Store 审核要求）。
+  /// 若用户已处理过 ATT，则立即返回当前状态，不重复弹窗。
+  static Future<void> requestATTPermission() async {
+    if (kIsWeb || !Platform.isIOS) return;
+    try {
+      final status = await AppTrackingTransparency.requestTrackingAuthorization();
+      print('📱 [ATT] 早期权限请求完成，状态: ${status.index}');
+    } catch (e) {
+      print('⚠️ [ATT] 早期权限请求失败: $e');
+    }
+  }
+
   /// 获取 iOS 广告追踪信息：IDFV + 请求 ATT 权限 + IDFA
   ///
   /// 调用时会触发 iOS 系统 ATT 弹窗（若用户已处理则直接返回当前状态）
@@ -112,6 +126,8 @@ class DeviceInfoService {
       // 2. 请求 ATT（首次显示系统弹窗，已处理过则直接返回）
       final status = await AppTrackingTransparency.requestTrackingAuthorization();
       final attStatusInt = status.index;
+      // 通知 SolarEngine ATT 授权状态，使其能及时上报带 IDFA 的 Install 事件
+      SolarEngineService.instance.requestATT();
 
       // 3. IDFA — 仅 authorized 时有效
       String? idfa;

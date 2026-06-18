@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 安装生产依赖
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # 复制源码
 COPY . .
@@ -18,11 +18,14 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# 创建非root用户
-RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+# 创建非root用户（固定 UID/GID，确保容器内写权限一致）
+RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nodejs
 
 # 从builder复制
 COPY --from=builder --chown=nodejs:nodejs /app .
+
+# 兜底修正目录权限，避免运行时创建 logs 失败
+RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app
 
 # 切换到非root用户
 USER nodejs

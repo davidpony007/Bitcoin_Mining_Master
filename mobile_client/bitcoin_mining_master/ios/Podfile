@@ -32,6 +32,14 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # AdMob Mediation Adapters
+  pod 'GoogleMobileAdsMediationUnity'
+  pod 'GoogleMobileAdsMediationPangle'
+  pod 'GoogleMobileAdsMediationAppLovin'
+  # pod 'GoogleMobileAdsMediationFacebook'  # temporarily disabled: FBAudienceNetwork CDN blocked, requires manual update
+  pod 'GoogleMobileAdsMediationMintegral'
+
   target 'RunnerTests' do
     inherit! :search_paths
   end

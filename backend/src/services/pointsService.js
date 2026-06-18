@@ -83,7 +83,7 @@ class PointsService {
    * 增加用户积分（核心方法）
    * 使用user_information表存储积分，points_transaction表记录历史
    */
-  static async addPoints(userId, points, pointsType, description = '', relatedUserId = null) {
+  static async addPoints(userId, points, pointsType, description = '', relatedUserId = null, options = {}) {
     const connection = await pool.getConnection();
 
     try {
@@ -97,6 +97,19 @@ class PointsService {
 
       if (userRows.length === 0) {
         throw new Error('用户不存在');
+      }
+
+      // 1.5. 可选：一次性奖励唯一性检查（在 FOR UPDATE 锁内执行，防止竞态条件重复领取）
+      // 调用方通过 options.uniquenessCheck = { query, params, errorCode } 传入
+      if (options.uniquenessCheck) {
+        const { query, params, errorCode } = options.uniquenessCheck;
+        const [dupRows] = await connection.query(query, params);
+        if (dupRows.length > 0) {
+          await connection.rollback();
+          const err = new Error('Already claimed');
+          err.code = errorCode || 'ALREADY_CLAIMED';
+          throw err;
+        }
       }
 
       let currentLevel = userRows[0].user_level || 1;

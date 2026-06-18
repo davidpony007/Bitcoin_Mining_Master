@@ -99,10 +99,11 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: 'logs/combined.log' })
   ]
 });
-// 开发环境下输出到控制台
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({ format: winston.format.simple() }));
-}
+// 开发环境：输出 info 及以上；生产环境：仅输出 error（方便 docker logs 看崩溃原因）
+logger.add(new winston.transports.Console({
+  format: winston.format.simple(),
+  level: process.env.NODE_ENV !== 'production' ? 'info' : 'error'
+}));
 
 // 初始化 Express 应用
 const app = express();
@@ -126,7 +127,11 @@ app.set('trust proxy', 1); // 信任第一层代理
 
 // 注册通用中间件
 app.use(globalLimiter);  // 全局限流：每IP每15分钟200次
-app.use(timeout('55s')); // 请求超时 55 秒（payment验证需调用Apple API两次，从国内到Apple服务器网络延迟可达20s+/次，需充分余量；nginx proxy_read_timeout=60s）
+app.use((req, res, next) => {
+  // sync-status 需逐笔调用 Apple/Google API，耗时可达数分钟，排除在全局超时之外
+  if (req.path === '/api/admin/orders/sync-status') return next();
+  timeout('330s')(req, res, next); // 请求超时 330 秒（覆盖 AdMob/Mintegral 手动同步长轮询场景，并与网关超时保持一致）
+});
 app.use(bodyParser.json({ limit: '1mb' })); // 全局限制 1MB，防止大载荷 DoS
 app.use('/api/payment', bodyParser.json({ limit: '50mb' })); // IAP 收据最大可达 10MB+，仅支付路由放开至 50MB
 app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } })); // 记录 HTTP 请求日志到 winston
@@ -200,35 +205,46 @@ const { startAllScheduledTasks } = require('./jobs/scheduledTasks');
 const BalanceSyncTask = require('./jobs/balanceSyncTask');
 const { startNotificationCronJobs } = require('./jobs/notificationCronJob');
 const ReferralRebateTask = require('./jobs/referralRebateTask');
+const subscriptionCheckJob = require('./jobs/subscriptionCheckJob');
 
-// 初始化游戏机制相关配置
+// 初始化游戏机制相关配置（含重试，避免启动时 DB/网络短暂不可用导致进程退出）
 async function initGameMechanics() {
-  try {
-    logger.info('开始初始化游戏机制...');
-    
-    // 初始化 Redis 连接
-    await redisClient.connect();
-    logger.info('✓ Redis 连接成功');
-    
-    // 初始化等级配置
-    await LevelService.initLevelConfig();
-    logger.info('✓ 等级配置加载成功');
-    
-    // 不需要初始化旧的CheckInService配置（使用新的CheckInPointsService，无需预加载配置）
-    // CheckInService.initRewardConfig() 已废弃
-    
-    // 初始化国家挖矿配置
-    const configs = await CountryMiningService.getAllConfigs({ activeOnly: true });
-    logger.info(`✓ 国家挖矿配置加载成功，共 ${configs.length} 个国家`);
-    
-    // 启动比特币价格自动更新（每小时更新一次）
-    bitcoinPriceService.startAutoUpdate();
-    logger.info('✓ 比特币价格自动更新已启动');
-    
-    logger.info('游戏机制初始化完成！');
-  } catch (error) {
-    logger.error('游戏机制初始化失败:', error);
-    throw error;
+  const MAX_RETRIES = 10;
+  const RETRY_DELAY_MS = 5000;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      logger.info(`开始初始化游戏机制（第 ${attempt} 次尝试）...`);
+
+      // 初始化 Redis 连接
+      await redisClient.connect();
+      logger.info('✓ Redis 连接成功');
+
+      // 初始化等级配置
+      await LevelService.initLevelConfig();
+      logger.info('✓ 等级配置加载成功');
+
+      // 不需要初始化旧的CheckInService配置（使用新的CheckInPointsService，无需预加载配置）
+      // CheckInService.initRewardConfig() 已废弃
+
+      // 初始化国家挖矿配置
+      const configs = await CountryMiningService.getAllConfigs({ activeOnly: true });
+      logger.info(`✓ 国家挖矿配置加载成功，共 ${configs.length} 个国家`);
+
+      // 启动比特币价格自动更新（每小时更新一次）
+      bitcoinPriceService.startAutoUpdate();
+      logger.info('✓ 比特币价格自动更新已启动');
+
+      logger.info('游戏机制初始化完成！');
+      return; // 成功，退出重试循环
+    } catch (error) {
+      if (attempt === MAX_RETRIES) {
+        logger.error(`游戏机制初始化失败，已重试 ${MAX_RETRIES} 次，放弃:`, error);
+        throw error;
+      }
+      logger.warn(`游戏机制初始化失败（第 ${attempt} 次），${RETRY_DELAY_MS / 1000}s 后重试: ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+    }
   }
 }
 
@@ -276,6 +292,10 @@ async function initGameMechanics() {
       // 启动推送通知定时任务（合约到期、签到提醒、沉默召回）
       startNotificationCronJobs();
       logger.info('✓ 推送通知定时任务已启动');
+
+      // 启动订阅状态兜底检查（处理漏掉的 EXPIRED/CANCELED 通知）
+      subscriptionCheckJob.start();
+      logger.info('✓ 订阅状态检查任务已启动');
     
     // 旧调度器已废弃
     logger.info('旧调度器已暂时禁用,等待数据库连接稳定后启用');

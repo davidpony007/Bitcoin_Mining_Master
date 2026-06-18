@@ -236,9 +236,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       // 开始加载广告
       await _adMobService.loadRewardedAd();
       
-      // 等待广告加载完成（最多10秒）
+      // 等待广告加载完成（最多80秒，覆盖 4 次指数退避重试）
+      // isLoadFailed=true 时提前退出，无需等到超时
       final startTime = DateTime.now();
-      while (!_adMobService.isAdReady && DateTime.now().difference(startTime).inSeconds < 10) {
+      while (!_adMobService.isAdReady &&
+             !_adMobService.isLoadFailed &&
+             DateTime.now().difference(startTime).inSeconds < 80) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
 
@@ -246,8 +249,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('❌ Ad not available. Please check your network connection and try again later.'),
-              backgroundColor: Colors.red,
+              content: Text('😔 No ads available in your region right now. Please try again later.'),
+              backgroundColor: Colors.orange,
               duration: Duration(seconds: 4),
             ),
           );
@@ -259,13 +262,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     // 播放广告
     try {
       final earnedReward = await _adMobService.showRewardedAd();
-      
+
       if (!mounted) return;
 
       if (earnedReward) {
         // 用户看完广告，发放奖励
         final success = await _extendContract();
-        
+
         if (!mounted) return;
 
         if (success) {
@@ -409,9 +412,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       // 开始加载广告
       await _adMobService.loadRewardedAd();
       
-      // 等待广告加载完成（最多10秒）
+      // 等待广告加载完成（最多80秒，覆盖 4 次指数退避重试）
+      // isLoadFailed=true 时提前退出，无需等到超时
       final startTime = DateTime.now();
-      while (!_adMobService.isAdReady && DateTime.now().difference(startTime).inSeconds < 10) {
+      while (!_adMobService.isAdReady &&
+             !_adMobService.isLoadFailed &&
+             DateTime.now().difference(startTime).inSeconds < 80) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
 
@@ -421,8 +427,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (!_adMobService.isAdReady) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Ad not available. Please check your network connection and try again later.'),
-            backgroundColor: Colors.red,
+            content: Text('😔 No ads available in your region right now. Please try again later.'),
+            backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
           ),
         );
@@ -681,14 +687,30 @@ class _DashboardScreenState extends State<DashboardScreen>
       final response = await _apiService.getMyContracts(userId);
       final data = response['data'];
 
-      // 📌 只读取adReward合约来更新电池（不包含dailyCheckIn）
-      if (data != null && data['adReward'] != null) {
-        final isActive = data['adReward']['isActive'] == true;
-        final remainingSeconds =
-            (data['adReward']['remainingSeconds'] ?? 0) as num;
+      // 📌 读取合约状态更新电池：dailyCheckIn 和 adReward 都可激活电池
+      if (data != null) {
+        // 获取 dailyCheckIn 状态
+        final dailyIsActive = data['dailyCheckIn'] != null &&
+                              data['dailyCheckIn']['isActive'] == true;
+        final dailyRemaining = dailyIsActive
+            ? (data['dailyCheckIn']['remainingSeconds'] ?? 0) as num
+            : 0;
+
+        // 获取 adReward 状态
+        final adIsActive = data['adReward'] != null &&
+                           data['adReward']['isActive'] == true;
+        final adRemaining = adIsActive
+            ? (data['adReward']['remainingSeconds'] ?? 0) as num
+            : 0;
+
+        // 取两者中较大的剩余时间用于电池显示
+        final isActive = dailyIsActive || adIsActive;
+        final remainingSeconds = dailyRemaining > adRemaining
+            ? dailyRemaining
+            : adRemaining;
 
         print(
-          '📊 Dashboard: 合约状态 - isActive: $isActive, remainingSeconds: $remainingSeconds',
+          '📊 Dashboard: 合约状态 - daily=$dailyIsActive(${dailyRemaining}s), ad=$adIsActive(${adRemaining}s)',
         );
 
         if (mounted) {

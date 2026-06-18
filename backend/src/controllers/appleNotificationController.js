@@ -21,8 +21,10 @@
 
 const crypto = require('crypto');
 const axios = require('axios');
-const { UserOrder } = require('../models');
+const { UserOrder, UserInformation, UserStatus } = require('../models');
 const paidContractService = require('../services/paidContractService');
+const refundReclaimService = require('../services/refundReclaimService');
+const { deriveAppleAccountToken } = require('../utils/deriveAppleAccountToken');
 
 const SHARED_SECRET = process.env.APPLE_IAP_SHARED_SECRET || '';
 
@@ -37,6 +39,17 @@ const PRODUCT_MAP = {
 // Apple Root CA - G3 证书 SHA-256 指纹（固定根证书，防止伪造证书链）
 // 来源: https://www.apple.com/certificateauthority/
 const APPLE_ROOT_CA_G3_FP = '63343abfb89a6a03ebb57e9b3f5fa7be7c4f5c756f3017b3a8c488c3653e9179';
+
+async function isAccountRestricted(userId) {
+  if (!userId) return false;
+
+  const [info, status] = await Promise.all([
+    UserInformation.findOne({ where: { user_id: userId }, attributes: ['is_banned'] }),
+    UserStatus.findOne({ where: { user_id: userId }, attributes: ['user_status'] }),
+  ]);
+
+  return !!(info?.is_banned || ['disabled', 'deleted'].includes(status?.user_status));
+}
 
 /**
  * 将 JWS ES256 原始签名（r||s 各 32 字节，共 64 字节）转换为 ASN.1 DER 格式
@@ -202,9 +215,13 @@ exports.handleNotification = async (req, res) => {
           }
           const order = await UserOrder.findOne({ where: { payment_network_id: original_transaction_id } });
           if (order) {
+            if (await isAccountRestricted(order.user_id)) {
+              console.warn(`⛔ [AppleNotif V2] 受限账户续订事件被忽略: user=${order.user_id} original_tx=${original_transaction_id}`);
+              return;
+            }
             const { MiningContract } = require('../models');
             const [renewUpdated] = await MiningContract.update(
-              { contract_end_time: newExpiry, is_cancelled: 0 },
+              { contract_end_time: newExpiry, is_renewal: 1, is_cancelled: 0 },
               { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
             );
             if (renewUpdated === 0) {
@@ -215,7 +232,7 @@ exports.handleNotification = async (req, res) => {
               });
               if (fallbackC) {
                 await MiningContract.update(
-                  { contract_end_time: newExpiry, is_cancelled: 0, original_transaction_id },
+                  { contract_end_time: newExpiry, is_renewal: 1, is_cancelled: 0, original_transaction_id },
                   { where: { id: fallbackC.id } }
                 );
                 console.log(`🔧 [AppleNotif V2] DID_RENEW 回退修复合约(id=${fallbackC.id}): original_transaction_id已补全`);
@@ -241,6 +258,10 @@ exports.handleNotification = async (req, res) => {
                   payment_network_id: original_transaction_id,
                   order_status: 'renewing',
                 });
+              }
+              // 将原订单标记为已续订（无论本次是否新建，确保原订单状态正确）
+              if (['active', 'renewing'].includes(order.order_status)) {
+                await order.update({ order_status: 'renewed' });
               }
             }
             console.log(`✅ [AppleNotif V2] 续订延期: origTx=${original_transaction_id} newExpiry=${newExpiry.toISOString()}`);
@@ -332,6 +353,162 @@ exports.handleNotification = async (req, res) => {
         console.log(`✅ [AppleNotif V2] 用户恢复自动续费，合约重新激活: original_tx=${original_transaction_id}`);
         return;
       }
+      // SUBSCRIBED/INITIAL_BUY → 全新首次订阅（客户端收据上报失败时的服务端兜底入口）
+      // appAccountToken 由 Flutter 端通过 PurchaseParam.applicationUserName 传入的 UUID
+      // （由 _deriveAccountToken(userId) 衍生），Apple 在 signedTransactionInfo 中回传
+      if (notification_type === 'SUBSCRIBED' && subtype === 'INITIAL_BUY') {
+        const appAccountToken = txInfo?.appAccountToken;
+        const purchaseDate = txInfo?.purchaseDate ? new Date(txInfo.purchaseDate) : new Date();
+        const initExpiresDate = txInfo?.expiresDate ? new Date(txInfo.expiresDate) : null;
+
+        // 幂等：同一 original_transaction_id 只处理一次
+        const initExisting = await UserOrder.findOne({ where: { payment_gateway_id: original_transaction_id } });
+        if (initExisting) {
+          console.log(`ℹ️ [AppleNotif V2] INITIAL_BUY 已处理，跳过: original_tx=${original_transaction_id}`);
+          return;
+        }
+
+        if (!appAccountToken) {
+          // 客户端未传 applicationUserName（旧版 App 或 UUID 未配置）→ 记录详细日志供人工处理
+          console.warn(
+            `⚠️ [AppleNotif V2] INITIAL_BUY 无法自动处理（appAccountToken=null，需升级 App 至支持 applicationUserName 版本）:\n` +
+            `  original_tx=${original_transaction_id}  product=${product_id}\n` +
+            `  purchaseDate=${purchaseDate.toISOString()}  expiresDate=${initExpiresDate?.toISOString() ?? 'n/a'}\n` +
+            `  请人工查证付款用户，并在 DB 中补建 user_orders + mining_contracts 记录`
+          );
+          await savePendingNotification({
+            notification_type: `${notification_type}/${subtype}`,
+            original_transaction_id,
+            product_id,
+            purchase_date: purchaseDate,
+            expires_date: initExpiresDate,
+            app_account_token: null,
+            reason: 'appAccountToken_missing',
+          });
+          return;
+        }
+
+        // 通过 appAccountToken 在 user_information 中反查用户
+        let initUser = await UserInformation.findOne({
+          where: { apple_app_account_token: appAccountToken },
+          attributes: ['user_id', 'email', 'apple_account'],
+        });
+
+        // 字段未写入时的备选方案：对所有无 token 记录的用户批量补全并重试查询
+        if (!initUser) {
+          const { deriveAppleAccountToken } = require('../utils/deriveAppleAccountToken');
+          const pool = require('../config/database_native');
+          // 批量计算并写入所有尚未填入 token 的用户（内存内进行，避免重复 DB 读写）
+          try {
+            const [missing] = await pool.execute(
+              "SELECT user_id FROM user_information WHERE apple_app_account_token IS NULL OR apple_app_account_token = '' LIMIT 5000"
+            );
+            if (missing.length > 0) {
+              // 在内存中匹配：找到哪个 user_id 衡生的 token 与 appAccountToken 相等
+              const matched = missing.find(r => deriveAppleAccountToken(r.user_id) === appAccountToken);
+              if (matched) {
+                // 写入 DB 并重新查询
+                await pool.execute(
+                  'UPDATE user_information SET apple_app_account_token = ? WHERE user_id = ?',
+                  [appAccountToken, matched.user_id]
+                );
+                console.log(`🔧 [AppleNotif V2] INITIAL_BUY 补写 apple_app_account_token: user=${matched.user_id}`);
+                initUser = await UserInformation.findOne({
+                  where: { user_id: matched.user_id },
+                  attributes: ['user_id', 'email', 'apple_account'],
+                });
+              }
+            }
+          } catch (lookupErr) {
+            console.warn(`⚠️ [AppleNotif V2] INITIAL_BUY 备选补全查找失败: ${lookupErr.message}`);
+          }
+        }
+
+        if (!initUser) {
+          console.warn(
+            `⚠️ [AppleNotif V2] INITIAL_BUY 未找到 appAccountToken 对应用户: token=${appAccountToken}\n` +
+            `  original_tx=${original_transaction_id}  product=${product_id}\n` +
+            `  purchaseDate=${purchaseDate.toISOString()} | 请人工补建订单和合约`
+          );
+          await savePendingNotification({
+            notification_type: `${notification_type}/${subtype}`,
+            original_transaction_id,
+            product_id,
+            purchase_date: purchaseDate,
+            expires_date: initExpiresDate,
+            app_account_token: appAccountToken,
+            reason: 'user_not_found',
+          });
+          return;
+        }
+
+        if (await isAccountRestricted(initUser.user_id)) {
+          console.warn(`⛔ [AppleNotif V2] 受限账户 INITIAL_BUY 被忽略: user=${initUser.user_id} original_tx=${original_transaction_id}`);
+          return;
+        }
+
+        const initBackendProductId = PRODUCT_MAP[product_id];
+        if (!initBackendProductId) {
+          console.warn(`⚠️ [AppleNotif V2] INITIAL_BUY 未知产品: product=${product_id} original_tx=${original_transaction_id}`);
+          return;
+        }
+
+        const PaidProductService = require('../services/paidProductService');
+        const initProductInfo = await PaidProductService.getProductInfo(initBackendProductId);
+
+        // 沙盒保护：expiresDate ≤ now+1h 时回退到自然月，防止沙盒超短周期污染
+        const ONE_HOUR_MS = 3600 * 1000;
+        let safeInitExpires = initExpiresDate;
+        if (initExpiresDate && initExpiresDate.getTime() <= Date.now() + ONE_HOUR_MS) {
+          safeInitExpires = null;
+          console.warn(`⚠️ [AppleNotif V2] INITIAL_BUY expiresDate 不可靠，回退自然月: ${initExpiresDate.toISOString()}`);
+        }
+
+        try {
+          await UserOrder.create({
+            user_id: initUser.user_id,
+            email: initUser.email || '',
+            apple_account: initUser.apple_account || null,
+            product_id: initBackendProductId,
+            product_name: initProductInfo?.product_name || product_id,
+            product_price: String(initProductInfo?.product_price || 0),
+            hashrate: initProductInfo?.hashrate_raw || 0,
+            order_creation_time: purchaseDate,
+            payment_time: purchaseDate,
+            currency_type: 'USD',
+            payment_gateway_id: original_transaction_id,
+            payment_network_id: original_transaction_id,
+            order_status: 'active',
+          });
+        } catch (initDupErr) {
+          if (initDupErr.name === 'SequelizeUniqueConstraintError') {
+            console.log(`ℹ️ [AppleNotif V2] INITIAL_BUY 并发重复被 UNIQUE 约束拦截: original_tx=${original_transaction_id}`);
+            return;
+          }
+          throw initDupErr;
+        }
+
+        await paidContractService.createPaidContract(
+          initUser.user_id,
+          initBackendProductId,
+          original_transaction_id,
+          safeInitExpires,
+          'ios',
+          original_transaction_id,
+        );
+
+        // 发放首次订阅积分（幂等，失败不阻断主流程）
+        try {
+          const SubscriptionPointsService = require('../services/subscriptionPointsService');
+          await SubscriptionPointsService.awardSubscriptionPoints(initUser.user_id, initBackendProductId);
+        } catch (pointsErr) {
+          console.warn(`⚠️ [AppleNotif V2] INITIAL_BUY 积分发放失败（不影响主流程）: ${pointsErr.message}`);
+        }
+
+        console.log(`✅ [AppleNotif V2] INITIAL_BUY 订单和合约已自动创建: user=${initUser.user_id} product=${product_id} original_tx=${original_transaction_id} expires=${safeInitExpires?.toISOString() ?? '(自然月)'}`);
+        return;
+      }
+
       // SUBSCRIBED/RESUBSCRIBE → 用户重新订阅（到期后全新购买同一产品），恢复合约活跃状态并更新到期时间
       if (notification_type === 'SUBSCRIBED' && subtype === 'RESUBSCRIBE') {
         const { MiningContract } = require('../models');
@@ -395,6 +572,10 @@ exports.handleNotification = async (req, res) => {
     notification_type = req.body.notification_type;
 
     // 校验 shared secret，防止伪造请求
+    if (!SHARED_SECRET) {
+      console.error('❌ [AppleNotif V1] APPLE_IAP_SHARED_SECRET 未配置，拒绝处理 V1 通知');
+      return;
+    }
     if (SHARED_SECRET && password !== SHARED_SECRET) {
       console.warn(`⚠️ [AppleNotif V1] shared secret 不匹配，忽略 (received=${password.substring(0, 8)}... expected_prefix=${SHARED_SECRET.substring(0, 8)}...)`);
       return;
@@ -457,10 +638,14 @@ exports.handleNotification = async (req, res) => {
             where: { payment_network_id: original_transaction_id },
           });
           if (order) {
+            if (await isAccountRestricted(order.user_id)) {
+              console.warn(`⛔ [AppleNotif V1] 受限账户续订事件被忽略: user=${order.user_id} original_tx=${original_transaction_id}`);
+              break;
+            }
             const { MiningContract } = require('../models');
             // 精准更新：只延期与该 original_transaction_id 对应的合约
             await MiningContract.update(
-              { contract_end_time: effectiveExpiry },
+              { contract_end_time: effectiveExpiry, is_renewal: 1, is_cancelled: 0 },
               { where: { user_id: order.user_id, original_transaction_id, contract_type: 'paid contract' } }
             );
             // 避免重复记录同一 transaction_id
@@ -570,9 +755,22 @@ async function markContractRefunded(originalTransactionId) {
         { replacements: [originalTransactionId] }
       );
       await UserOrder.update(
-        { order_status: 'refund successful' },
+        { order_status: 'refund successful', refunded_at: new Date() },
         { where: { payment_network_id: originalTransactionId } }
       );
+
+      try {
+        const reclaimResult = await refundReclaimService.reclaimForOriginalTransactionId(
+          originalTransactionId,
+          'apple_refund_event'
+        );
+        console.log(
+          `✅ [AppleNotif] 退款追回完成: original_tx=${originalTransactionId} contracts=${reclaimResult.contractCount || 0} btc=${reclaimResult.deductedBtcTotal || 0} points=${reclaimResult.deductedPointsTotal || 0}`
+        );
+      } catch (reclaimErr) {
+        console.error(`❌ [AppleNotif] 退款追回失败: original_tx=${originalTransactionId} error=${reclaimErr.message}`);
+      }
+
       console.log(`💸 [AppleNotif] 退款合约已强制终止挖矿: original_tx=${originalTransactionId} (rows=${rows})`);
     } else {
       console.log(`ℹ️ [AppleNotif] 退款通知但未找到有效合约（已取消或不存在）: original_tx=${originalTransactionId}`);
@@ -679,3 +877,46 @@ exports.cancelContractManually = async (req, res) => {
     return res.status(500).json({ success: false, message: '服务器内部错误' });
   }
 };
+
+/**
+ * 保存无法自动处理的 Apple 通知到 pending_apple_notifications 表（管理员可查）
+ * 表不存在时自动建表，失败不影响主流程。
+ */
+async function savePendingNotification({ notification_type, original_transaction_id, product_id, purchase_date, expires_date, app_account_token, reason }) {
+  try {
+    const pool = require('../config/database_native');
+    // 自动建表（幂等）
+    await pool.execute(`
+      CREATE TABLE IF NOT EXISTS pending_apple_notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        notification_type VARCHAR(80),
+        original_transaction_id VARCHAR(120),
+        product_id VARCHAR(80),
+        purchase_date DATETIME,
+        expires_date DATETIME,
+        app_account_token VARCHAR(200),
+        reason VARCHAR(80),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        resolved TINYINT(1) DEFAULT 0,
+        retry_count INT DEFAULT 0
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+    await pool.execute(
+      `INSERT IGNORE INTO pending_apple_notifications
+        (notification_type, original_transaction_id, product_id, purchase_date, expires_date, app_account_token, reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        notification_type,
+        original_transaction_id,
+        product_id,
+        purchase_date || null,
+        expires_date || null,
+        app_account_token || null,
+        reason,
+      ]
+    );
+    console.log(`📋 [AppleNotif] 已保存待处理通知: origTx=${original_transaction_id} reason=${reason}`);
+  } catch (e) {
+    console.warn(`⚠️ [AppleNotif] savePendingNotification 失败（不影响主流程）: ${e.message}`);
+  }
+}

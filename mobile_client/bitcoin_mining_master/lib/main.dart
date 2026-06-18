@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'providers/user_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -13,10 +14,15 @@ import 'services/admob_service.dart';
 import 'services/api_service.dart';
 import 'services/push_notification_service.dart';
 import 'services/analytics_service.dart';
+import 'services/solar_engine_service.dart';
+import 'services/device_info_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ① SolarEngine 预初始化（必须最先调用，在任何数据采集之前）
+  SolarEngineService.preInitialize();
 
   // 本地存储（SplashScreen 立即需要）
   try {
@@ -34,6 +40,9 @@ void main() async {
       debugPrint('⚠️ Firebase 初始化失败/超时: $e');
     }
   }
+
+  // ② SolarEngine 正式初始化（Firebase 之后调用）
+  SolarEngineService.instance.initialize().catchError((_) {});
 
   runApp(const MyApp());
 
@@ -163,6 +172,12 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       if (!skipDelay) {
         await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      // iOS：在任何导航和追踪数据采集之前请求 ATT 权限弹窗
+      // 仅初次启动触发（skipDelay=false），resume 时跳过（requestTrackingAuthorization 本身幂等）
+      if (!skipDelay && !kIsWeb && Platform.isIOS) {
+        await DeviceInfoService.requestATTPermission();
       }
 
       final canContinue = await _checkAppUpdate();

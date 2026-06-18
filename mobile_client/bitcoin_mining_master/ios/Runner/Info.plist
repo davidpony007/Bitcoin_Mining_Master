@@ -100,6 +100,14 @@
 	</array>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>We use your advertising ID to provide personalized offers and improve your mining experience.</string>
+	<!-- SolarEngine SKAdNetwork 归因回调端点（必须配置，否则iOS归因数据无法回传） -->
+	<key>NSAdvertisingAttributionReportEndpoint</key>
+	<string>https://detailroi.com</string>
+	<!-- url_launcher: canLaunchUrl 检测需要预先声明目标 scheme -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>itms-apps</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -175,8 +175,11 @@ class GooglePlayVerifyService {
           orderId: sub.orderId,
           expiryTimeMillis: sub.expiryTimeMillis,
           autoRenewing: sub.autoRenewing,
+          priceAmountMicros: sub.priceAmountMicros || '0',
           // RTDN webhook 用此字段关联用户（需客户端购买时设置 applicationUserName = userId）
           obfuscatedExternalAccountId: sub.obfuscatedExternalAccountId || null,
+          // 非空表示此 token 是对旧 token 的替换（升级/切换档位），不应创建新合约
+          linkedPurchaseToken: sub.linkedPurchaseToken || null,
         };
       }
 
@@ -256,6 +259,90 @@ class GooglePlayVerifyService {
       }
       console.error('❌ 确认订阅失败:', error.message);
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 获取订阅详情（V2 API）
+   * 使用 purchases.subscriptionsv2.get，返回 obfuscatedExternalAccountId（userId）
+   * 专供 RTDN webhook 使用：通过 purchaseToken 反查用户
+   *
+   * @param {string} packageName - 应用包名
+   * @param {string} purchaseToken - 购买 token
+   * @returns {Object} subscriptionsv2 原始响应 data
+   */
+  async getSubscriptionV2Details(packageName, purchaseToken) {
+    if (!this.isInitialized) {
+      throw new Error('Google Play 验证服务未初始化');
+    }
+    const result = await this.androidPublisher.purchases.subscriptionsv2.get({
+      packageName,
+      token: purchaseToken,
+    });
+    return result.data;
+  }
+
+  /**
+   * 获取已撤销（退款/欺诈）的购买列表 — Voided Purchases API
+   * 用于批量发现已退款的 Android 订单
+   *
+   * @param {number} startTimeMs  - 查询起始时间（毫秒时间戳），null 时取 API 默认（过去 30 天）
+   * @param {number} maxResults   - 最多返回条数，最大 1000
+   * @returns {{ success: boolean, purchases?: Array, error?: string }}
+   */
+  async getVoidedPurchases(startTimeMs = null, maxResults = 500) {
+    if (!this.isInitialized) {
+      return { success: false, error: 'Google Play验证服务未初始化' };
+    }
+    const packageName = process.env.ANDROID_PACKAGE_NAME || 'com.cloudminingtool.bitcoin_mining_app';
+    if (!packageName) {
+      return { success: false, error: '未配置 ANDROID_PACKAGE_NAME' };
+    }
+    try {
+      const params = { packageName, maxResults };
+      if (startTimeMs) params.startTime = String(startTimeMs);
+
+      const result = await this.androidPublisher.purchases.voidedpurchases.list(params);
+      const purchases = result.data.voidedPurchases || [];
+      console.log(`📦 Voided Purchases: 查到 ${purchases.length} 条已撤销购买`);
+      return { success: true, purchases };
+    } catch (error) {
+      console.error('❌ Voided Purchases 查询失败:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * 检查单条 Android 订阅的取消状态
+   * 仅返回核心字段，不做状态更新
+   *
+   * @param {string} subscriptionId  - Google Play 订阅产品 ID（如 p04.99）
+   * @param {string} purchaseToken   - 购买 token（user_orders.payment_network_id）
+   * @returns {{ autoRenewing: boolean, cancelReason: number|null,
+   *             expiryTimeMillis: string|null, paymentState: number|null,
+   *             notFound?: boolean } | null}  null = API 调用失败
+   */
+  async checkSubscriptionCancelled(subscriptionId, purchaseToken) {
+    const packageName = process.env.ANDROID_PACKAGE_NAME || 'com.cloudminingtool.bitcoin_mining_app';
+    if (!packageName || !this.isInitialized) return null;
+    try {
+      const result = await this.androidPublisher.purchases.subscriptions.get({
+        packageName,
+        subscriptionId,
+        token: purchaseToken,
+      });
+      const sub = result.data;
+      return {
+        autoRenewing:       sub.autoRenewing,
+        cancelReason:       sub.cancelReason      ?? null,  // 0=user,1=billing,2=system
+        expiryTimeMillis:   sub.expiryTimeMillis  ?? null,
+        paymentState:       sub.paymentState      ?? null,
+        priceAmountMicros:  sub.priceAmountMicros ?? null,
+      };
+    } catch (error) {
+      if (error.code === 404) return { notFound: true };
+      console.error(`❌ 订阅状态查询失败 [${subscriptionId}/${purchaseToken?.substring(0, 20)}]:`, error.message);
+      return null;
     }
   }
 

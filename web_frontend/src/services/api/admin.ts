@@ -17,7 +17,7 @@ export const dashboardApi = {
 
 export const usersApi = {
   /** 分页用户列表 */
-  list: (params: { page?: number; limit?: number; search?: string; searchField?: string; status?: string; system?: string; acquisition?: string; country?: string; level?: string; sortBy?: string; sortOrder?: string }) =>
+  list: (params: { page?: number; limit?: number; search?: string; searchField?: string; status?: string; system?: string; acquisition?: string; country?: string; level?: string; sortBy?: string; sortOrder?: string; regStartDate?: string; regEndDate?: string }) =>
     request.get('/admin/users/list', { params }),
   /** 用户统计概要 */
   stats: () => request.get('/admin/users/stats'),
@@ -52,7 +52,7 @@ export const usersApi = {
 
 export const ordersApi = {
   /** 分页订单列表 */
-  list: (params: { page?: number; limit?: number; uid?: string; search?: string; status?: string; platform?: string; startDate?: string; endDate?: string; orderType?: string; productName?: string; country?: string }) =>
+  list: (params: { page?: number; limit?: number; uid?: string; search?: string; status?: string; platform?: string; startDate?: string; endDate?: string; orderType?: string; productName?: string; country?: string; sortBy?: string; sortOrder?: string }) =>
     request.get('/admin/orders/list', { params }),
   /** 订单统计概要 */
   stats: () => request.get('/admin/orders/stats'),
@@ -64,6 +64,14 @@ export const ordersApi = {
   bulkDelete: (ids: number[]) => request.post('/admin/orders/bulk-delete', { ids }),
   /** 手动新增订单 */
   add: (data: any) => request.post('/admin/orders/add', data),
+  /** 通过 Google Play / App Store API 同步订单状态 */
+  syncStatus: (params?: { platform?: 'all' | 'android' | 'ios'; daysBack?: number }) =>
+    request.post('/admin/orders/sync-status', params || {}, { timeout: 300000 }),
+  /** 导出指定时间范围内的全部订单数据 */
+  export: (params: { search?: string; status?: string; platform?: string; startDate?: string; endDate?: string; orderType?: string; productName?: string; country?: string }) =>
+    request.get('/admin/orders/export', { params }),
+  /** 批量将订单标记为无效（order_status=error，实付金额=0） */
+  bulkMarkInvalid: (ids: number[]) => request.post('/admin/orders/bulk-mark-invalid', { ids }),
 };
 
 // ─── Mining ───────────────────────────────────────────────────────────────────
@@ -110,9 +118,9 @@ export const geographyApi = {
 
 export const analyticsApi = {
   /** 多维趋势数据 */
-  trend: (days = 30) => request.get('/admin/analytics/trend', { params: { days } }),
+  trend: (days = 30) => request.get('/admin/analytics/trend', { params: { days }, timeout: 60000 }),
   /** 国家排名 */
-  countryRank: () => request.get('/admin/analytics/country-rank'),
+  countryRank: () => request.get('/admin/analytics/country-rank', { timeout: 60000 }),
 };
 
 // ─── Ads ──────────────────────────────────────────────────────────────────────
@@ -135,6 +143,12 @@ export const dataCenterApi = {
   /** 完整每日业务报表 */
   dailyReport: (startDate: string, endDate: string, platform = 'Android') =>
     request.get('/admin/datacenter/daily-report', { params: { startDate, endDate, platform } }),
+  /** 从 AdMob API 同步指定日期范围广告展示/收入 */
+  admobSync: (data: { startDate: string; endDate: string; platform?: 'Android' | 'iOS' }) =>
+    request.post('/admin/datacenter/admob-sync', data, { timeout: 300000 }),
+  /** 从 OKX 更新指定日期范围内所有行的 btc_avg_price */
+  btcPriceSync: (data: { startDate: string; endDate: string }) =>
+    request.post('/admin/datacenter/btc-price-sync', data, { timeout: 60000 }),
   /** 添加广告消耗 */
   addAdSpend: (data: any) => request.post('/admin/datacenter/ad-spend', data),
   /** 添加广告数据（M1/M2/M3 等） */

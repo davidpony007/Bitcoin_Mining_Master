@@ -25,27 +25,31 @@ const bitcoinPriceService = require('../services/bitcoinPriceService');
 
 const ADMOB_SCOPES = ['https://www.googleapis.com/auth/admob.readonly'];
 const { OAuth2Client } = require('google-auth-library');
+const ADMOB_TZ_OFFSET_HOURS = 8;
+const ADMOB_TZ_OFFSET_MS = ADMOB_TZ_OFFSET_HOURS * 60 * 60 * 1000;
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
 /**
- * 将 Date 转换为 AdMob API 所需的 { year, month, day } 对象（UTC）
+ * 将 Date 转换为 AdMob API 所需的 { year, month, day } 对象（UTC+8）
  */
 function toAdMobDate(d) {
+  const tzDate = new Date(d.getTime() + ADMOB_TZ_OFFSET_MS);
   return {
-    year:  d.getUTCFullYear(),
-    month: d.getUTCMonth() + 1,
-    day:   d.getUTCDate(),
+    year:  tzDate.getUTCFullYear(),
+    month: tzDate.getUTCMonth() + 1,
+    day:   tzDate.getUTCDate(),
   };
 }
 
 /**
- * 将 Date 转换为 YYYY-MM-DD 字符串（UTC）
+ * 将 Date 转换为 YYYY-MM-DD 字符串（UTC+8）
  */
 function toDateStr(d) {
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const dy = String(d.getUTCDate()).padStart(2, '0');
+  const tzDate = new Date(d.getTime() + ADMOB_TZ_OFFSET_MS);
+  const y = tzDate.getUTCFullYear();
+  const m = String(tzDate.getUTCMonth() + 1).padStart(2, '0');
+  const dy = String(tzDate.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${dy}`;
 }
 
@@ -55,8 +59,8 @@ function toDateStr(d) {
  * 从 AdMob 拉取指定日期范围的数据，按 DATE 聚合，
  * 返回 Map<dateStr, { impressions, estimatedEarnings }>
  *
- * @param {Date} startDate - 起始日期（含，UTC 00:00）
- * @param {Date} endDate   - 结束日期（含，UTC 00:00）
+ * @param {Date} startDate - 起始日期（含，UTC+8 00:00）
+ * @param {Date} endDate   - 结束日期（含，UTC+8 00:00）
  * @param {string} [platform] - 过滤平台 'Android' | 'iOS'（不传则两端合并）
  */
 async function fetchAdMobData(startDate, endDate, platform) {
@@ -99,7 +103,14 @@ async function fetchAdMobData(startDate, endDate, platform) {
     },
   };
 
-  const response = await admob.accounts.networkReport.generate({
+  // 使用 mediationReport（而非 networkReport），以获取包含所有中介合作伙伴
+  // （Pangle、AppLovin、Unity、Mintegral 等）在内的完整估算收入。
+  // networkReport.ESTIMATED_EARNINGS 仅含 AdMob 自有网络收入，会低估 2-4%。
+  // mediationReport.ESTIMATED_EARNINGS 不含 AD_SOURCE 维度时自动汇总所有来源，
+  // 与 AdMob 控制台"估算收入"口径一致。
+  // 注意：mediationReport 返回的 ESTIMATED_EARNINGS 字段名为 decimal_value（字符串
+  //       形式的微单位），而 networkReport 使用 microsValue（整数）。
+  const response = await admob.accounts.mediationReport.generate({
     parent: `accounts/${publisherId}`,
     requestBody: body,
   });
@@ -119,9 +130,14 @@ async function fetchAdMobData(startDate, endDate, platform) {
 
     const dateStr = `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}`;
 
-    const impressions       = parseInt(metricValues.IMPRESSIONS?.integerValue       || '0', 10);
+    const impressions = parseInt(metricValues.IMPRESSIONS?.integerValue || '0', 10);
     // ESTIMATED_EARNINGS 单位是 micros（百万分之一美元）
-    const earningsMicros    = parseInt(metricValues.ESTIMATED_EARNINGS?.microsValue || '0', 10);
+    // mediationReport 使用 decimal_value（字符串），networkReport 使用 microsValue（整数）
+    const earningsMicros = parseFloat(
+      metricValues.ESTIMATED_EARNINGS?.microsValue ??
+      metricValues.ESTIMATED_EARNINGS?.decimal_value ??
+      '0'
+    );
     const estimatedEarnings = parseFloat((earningsMicros / 1_000_000).toFixed(4));
 
     const existing = result.get(dateStr) || { impressions: 0, estimatedEarnings: 0 };
@@ -163,8 +179,45 @@ async function upsertAdMobData(dataMap, platform) {
 }
 
 /**
+ * 更新指定日期范围内 daily_ad_stats 所有行的 btc_avg_price
+ * 从 OKX history-candles 独立拉取，不依赖 AdMob 数据是否存在
+ *
+ * @param {Date} startDate
+ * @param {Date} endDate
+ */
+async function updateBtcPricesForRange(startDate, endDate) {
+  const startStr = toDateStr(startDate);
+  const endStr   = toDateStr(endDate);
+
+  const conn = await pool.getConnection();
+  try {
+    const [rows] = await conn.query(
+      `SELECT DISTINCT stat_date FROM daily_ad_stats WHERE stat_date BETWEEN ? AND ? ORDER BY stat_date`,
+      [startStr, endStr]
+    );
+
+    for (const row of rows) {
+      const dateStr = (row.stat_date instanceof Date)
+        ? row.stat_date.toISOString().slice(0, 10)
+        : String(row.stat_date).slice(0, 10);
+
+      const price = await fetchHistoricalBtcPrice(dateStr);
+      if (price > 0) {
+        await conn.query(
+          `UPDATE daily_ad_stats SET btc_avg_price = ? WHERE stat_date = ?`,
+          [price, dateStr]
+        );
+        console.log(`[BtcPrice] ${dateStr} → $${price}`);
+      }
+    }
+    console.log(`[BtcPrice] 完成 ${rows.length} 个日期的价格更新`);
+  } finally {
+    conn.release();
+  }
+}
+
+/**
  * 获取指定日期的 BTC 历史价格（USD）
- * - 今天 / 昨天 → 直接用实时价格服务
  * - 更早的日期 → 通过 OKX history-candles API 获取当日收盘价
  *
  * @param {string} dateStr - 'YYYY-MM-DD'
@@ -231,15 +284,16 @@ async function fetchHistoricalBtcPrice(dateStr) {
  * 同步指定日期范围（默认昨天）
  *
  * @param {Object} [options]
- * @param {Date}   [options.startDate] - 默认昨天 UTC
- * @param {Date}   [options.endDate]   - 默认昨天 UTC
+ * @param {Date}   [options.startDate] - 默认昨天 UTC+8
+ * @param {Date}   [options.endDate]   - 默认昨天 UTC+8
  * @param {string} [options.platform]  - 'Android' | 'iOS' | undefined（两端分别同步）
  * @returns {Promise<{success: boolean, message: string, dates: number}>}
  */
 async function syncAdMobData({ startDate, endDate, platform } = {}) {
-  const yesterday = new Date();
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  yesterday.setUTCHours(0, 0, 0, 0);
+  const nowTz = new Date(Date.now() + ADMOB_TZ_OFFSET_MS);
+  nowTz.setUTCHours(0, 0, 0, 0);
+  nowTz.setUTCDate(nowTz.getUTCDate() - 1);
+  const yesterday = new Date(nowTz.getTime() - ADMOB_TZ_OFFSET_MS);
 
   const start = startDate || yesterday;
   const end   = endDate   || yesterday;
@@ -270,6 +324,10 @@ async function syncAdMobData({ startDate, endDate, platform } = {}) {
     console.log(`[AdMobSync] ${pf} 写入 ${dataMap.size} 条记录`);
     totalDates += dataMap.size;
   }
+
+  // AdMob 写入完成后，统一更新日期范围内所有行的 btc_avg_price
+  // （包含手动录入行、AdMob 无数据的日期）
+  await updateBtcPricesForRange(start, end);
 
   return {
     success: true,
@@ -311,4 +369,5 @@ function startAdMobSyncJob() {
 module.exports = {
   startAdMobSyncJob,
   syncAdMobData,
+  updateBtcPricesForRange,
 };

@@ -34,7 +34,7 @@ class SubscriptionService {
    * @returns {{ userId: string|null, expiryTimeMillis: string|null }}
    */
   async _resolveUserFromToken(subscriptionId, purchaseToken) {
-    const packageName = process.env.ANDROID_PACKAGE_NAME;
+    const packageName = process.env.ANDROID_PACKAGE_NAME || 'com.cloudminingtool.bitcoin_mining_app';
     if (!packageName || !googlePlayVerifyService.isInitialized) {
       return { userId: null, expiryTimeMillis: null };
     }
@@ -125,6 +125,64 @@ class SubscriptionService {
       );
 
       console.log(`✅ [RTDN] 续订成功: user=${contract.user_id} product=${backendProductId} newExpiry=${newExpiry.toISOString()}`);
+
+      // 创建 user_orders 续订记录（幂等：payment_network_id = purchaseToken 已存在则跳过）
+      try {
+        const [[existingOrd]] = await sequelize.query(
+          `SELECT id FROM user_orders WHERE user_id = ? AND payment_network_id = ? AND order_status IN ('renewing','renewed') LIMIT 1`,
+          { replacements: [contract.user_id, purchaseToken] }
+        );
+        if (!existingOrd) {
+          const [[productRow]] = await sequelize.query(
+            `SELECT product_price, product_name FROM paid_products_list_config WHERE product_id = ? LIMIT 1`,
+            { replacements: [backendProductId] }
+          );
+          const [[userRow]] = await sequelize.query(
+            `SELECT email FROM user_information WHERE user_id = ? LIMIT 1`,
+            { replacements: [contract.user_id] }
+          );
+
+          // 找到当前 active/renewing 的原订单，续订成功后将其标记为 renewed
+          const [[prevOrder]] = await sequelize.query(
+            `SELECT id FROM user_orders
+             WHERE user_id = ? AND product_id = ? AND order_status IN ('active', 'renewing')
+             ORDER BY id DESC LIMIT 1`,
+            { replacements: [contract.user_id, backendProductId] }
+          );
+
+          await sequelize.query(
+            `INSERT IGNORE INTO user_orders
+               (user_id, email, product_id, product_name, product_price, order_creation_time, payment_time,
+                currency_type, payment_gateway_id, payment_network_id, order_status)
+             VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 'USD', ?, ?, 'renewing')`,
+            { replacements: [
+                contract.user_id,
+                userRow?.email ?? '',
+                backendProductId,
+                productRow?.product_name ?? backendProductId,
+                String(productRow?.product_price ?? '0.00'),
+                purchaseToken,
+                subscriptionId,
+            ] }
+          );
+
+          // 将原订单标记为已过期（续订成功）
+          if (prevOrder) {
+            await sequelize.query(
+              `UPDATE user_orders SET order_status = 'renewed' WHERE id = ?`,
+              { replacements: [prevOrder.id] }
+            );
+            console.log(`✅ [RTDN] 原订单已标记为 renewed: orderId=${prevOrder.id}`);
+          }
+
+          console.log(`✅ [RTDN] 续订订单已记录: user=${contract.user_id} product=${backendProductId} price=${productRow?.product_price}`);
+        } else {
+          console.log(`ℹ️ [RTDN] 续订订单已存在，跳过重复创建: user=${contract.user_id} orderId=${existingOrd.id}`);
+        }
+      } catch (orderErr) {
+        console.warn(`⚠️ [RTDN] 续订记录订单失败 (非致命): ${orderErr.message}`);
+      }
+
       return { success: true };
 
     } catch (error) {
@@ -310,14 +368,46 @@ class SubscriptionService {
    */
   async checkGracePeriodExpiry() {
     try {
+      const [expiredContracts] = await sequelize.query(
+        `SELECT user_id, product_id, original_transaction_id
+           FROM mining_contracts
+          WHERE contract_type = 'paid contract'
+            AND is_cancelled = 0
+            AND contract_end_time < NOW()`
+      );
+
       const [result] = await sequelize.query(
         `UPDATE mining_contracts
          SET is_cancelled = 1, cancelled_at = NOW()
          WHERE contract_type = 'paid contract'
            AND is_cancelled = 0
-           AND contract_end_time < NOW()`,
+           AND contract_end_time < NOW()`
       );
       const affected = result?.affectedRows ?? 0;
+
+      for (const contract of expiredContracts) {
+        if (contract.original_transaction_id) {
+          await sequelize.query(
+            `UPDATE user_orders
+                SET order_status = 'complete'
+              WHERE payment_network_id = ?
+                AND order_status IN ('active', 'renewing')`,
+            { replacements: [contract.original_transaction_id] }
+          );
+          continue;
+        }
+
+        await sequelize.query(
+          `UPDATE user_orders
+              SET order_status = 'complete'
+            WHERE user_id = ?
+              AND product_id = ?
+              AND order_status IN ('active', 'renewing')
+              AND payment_time <= NOW()`,
+          { replacements: [contract.user_id, contract.product_id] }
+        );
+      }
+
       if (affected > 0) {
         console.log(`[SubscriptionService] checkGracePeriodExpiry: 已标记 ${affected} 个过期付费合约为取消`);
       }

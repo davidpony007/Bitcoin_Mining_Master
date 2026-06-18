@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../constants/app_constants.dart';
 import '../services/user_repository.dart';
 import '../services/storage_service.dart';
@@ -28,6 +29,8 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
   String? _lastErrorMessage;
   bool _hasCheckedInToday = false; // 今日是否已签到
   bool _isAdReady = false; // 广告是否准备好
+  bool _loadFailed = false; // 所有自动重试耗尽后的最终加载失败状态
+  int _autoRetryAttempt = 0; // 当前自动重试轮次（供 UI 显示进度）
 
   /// 获取设备 locale 中的国家代码（方案B：最贴近 AdMob 归因国家）
   String _getDeviceCountryCode() {
@@ -66,6 +69,9 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
   @override
   void dispose() {
     // 清理广告资源
+    _adMobService.onAdLoaded = null;
+    _adMobService.onAdFailedToLoad = null;
+    _adMobService.onAdRetrying = null;
     super.dispose();
   }
   
@@ -87,10 +93,30 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     setState(() {
       _isLoadingAd = true;
       _isAdReady = false;
+      _loadFailed = false;
+      _autoRetryAttempt = 0;
     });
 
     print('🔧 设置广告回调...');
+    // 超时时间需覆盖 3 次自动重试（指数退避延迟 5+10+20=35s + 每次网络请求时间，共约 65s）
+    Timer? loadTimeout;
+    loadTimeout = Timer(const Duration(seconds: 65), () {
+      if (!mounted) return;
+      print('⏱️ 广告加载超时');
+      _adMobService.resetLoadingState();
+      _adMobService.onAdLoaded = null;
+      _adMobService.onAdFailedToLoad = null;
+      _adMobService.onAdRetrying = null;
+      setState(() {
+        _isLoadingAd = false;
+        _isAdReady = false;
+        _loadFailed = true;
+        _lastErrorMessage = 'Ad loading timeout';
+      });
+    });
+
     _adMobService.onAdLoaded = () async {
+      loadTimeout?.cancel();
       print('✅ onAdLoaded 回调被触发');
       if (mounted) {
         setState(() {
@@ -98,30 +124,30 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
           _isLoadingAd = false;
         });
         print('✅ 广告加载完成，自动播放');
-        // 广告加载完成后自动播放
         await _playAd();
       }
     };
 
+    // 自动重试进度回调：通知 UI 当前在第几次重试
+    _adMobService.onAdRetrying = (int retryNum, int maxRetries) {
+      if (mounted) {
+        setState(() { _autoRetryAttempt = retryNum; });
+      }
+    };
+
     _adMobService.onAdFailedToLoad = (String error) {
-      print('❌ onAdFailedToLoad 回调被触发: $error');
-      // 重置AdMobService的加载状态
-      _adMobService.resetLoadingState();
+      loadTimeout?.cancel();
+      print('❌ onAdFailedToLoad 回调被触发（所有重试已耗尽）: $error');
+      _adMobService.onAdLoaded = null;
+      _adMobService.onAdFailedToLoad = null;
+      _adMobService.onAdRetrying = null;
       if (mounted) {
         setState(() {
           _isLoadingAd = false;
           _isAdReady = false;
-          _lastErrorMessage = 'Ad loading failed: $error';
+          _loadFailed = true;
+          _lastErrorMessage = error;
         });
-        print('❌ 广告加载失败: $error');
-        // 广告加载失败，返回上一页
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Ad loading failed, please try again later'),
-            backgroundColor: Colors.red,
-          ),
-        );
       }
     };
 
@@ -465,8 +491,13 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
           return false;
         }
       } else {
-        _lastErrorMessage = 'Server error (${response.statusCode})';
-        print('❌ 延长合约失败 (${response.statusCode}): ${response.body}');
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          _lastErrorMessage = 'Session expired, please log in again';
+          print('❌ 延长合约失败 (${response.statusCode}): token无效或已过期，需重新登录');
+        } else {
+          _lastErrorMessage = 'Server error (${response.statusCode})';
+          print('❌ 延长合约失败 (${response.statusCode}): ${response.body}');
+        }
         return false;
       }
     } catch (e) {
@@ -637,6 +668,107 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
     }
   }
 
+  /// 手动重试加载广告（用户在失败界面点击 Retry 时触发）
+  void _retryLoadAd() {
+    _adMobService.resetLoadingState();
+    _loadAndPlayAd();
+  }
+
+  /// 广告加载中 UI（含自动重试进度提示）
+  Widget _buildLoadingBody() {
+    final String message = _autoRetryAttempt > 0
+        ? 'Retrying... ($_autoRetryAttempt/${AdMobService.adMaxRetries})'
+        : 'Looking for an available ad...';
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF9800)),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            message,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          const SizedBox(height: 40),
+          TextButton(
+            onPressed: () {
+              _adMobService.resetLoadingState();
+              _adMobService.onAdLoaded = null;
+              _adMobService.onAdFailedToLoad = null;
+              _adMobService.onAdRetrying = null;
+              Navigator.of(context).pop();
+            },
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 广告加载彻底失败 UI（提供手动重试和取消入口）
+  Widget _buildFailureBody() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.signal_wifi_off_rounded,
+              color: Color(0xFFFF9800),
+              size: 56,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'No ads available right now',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'AdMob could not fill an ad at this moment.\nPlease try again in a few seconds.',
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 36),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _retryLoadAd,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF9800),
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Retry',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showMessage(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -654,28 +786,50 @@ class _AdRewardScreenState extends State<AdRewardScreen> {
   Widget build(BuildContext context) {
     print('🖼️ AdRewardScreen build 被调用 - _adWatched: $_adWatched, _isLoadingAd: $_isLoadingAd, _isAdReady: $_isAdReady');
     
-    // 不显示加载界面，直接在后台加载并播放广告
-    // 只有看完广告后才显示Succeed Dialog
-    if (!_adWatched) {
-      // 广告加载和播放期间，显示一个简单的黑色页面（不显示加载动画）
-      // 这样给AdMob提供一个有效的surface来显示广告
+    if (_adWatched) {
+      // 看完广告后显示奖励确认对话框
+      print('✅ 显示奖励确认对话框');
+      return Scaffold(
+        backgroundColor: Colors.black.withOpacity(0.5),
+        body: _buildSucceedDialog(),
+      );
+    }
+
+    // 最终加载失败：显示重试/取消 UI
+    if (_loadFailed) {
       return WillPopScope(
-        onWillPop: () async {
-          print('⚠️ 用户尝试返回，但广告未看完，阻止返回');
-          return false;
-        },
+        onWillPop: () async => true,
         child: Scaffold(
-          backgroundColor: const Color(0xFF1A1A1A), // 深色背景，接近Dashboard颜色
-          body: Container(), // 空容器，提供有效的渲染surface
+          backgroundColor: const Color(0xFF1A1A1A),
+          body: _buildFailureBody(),
         ),
       );
     }
-    
-    // 看完广告后显示奖励确认对话框
-    print('✅ 显示奖励确认对话框');
-    return Scaffold(
-      backgroundColor: Colors.black.withOpacity(0.5),
-      body: _buildSucceedDialog(),
+
+    // 加载中（含自动重试进度）：显示 spinner
+    if (_isLoadingAd) {
+      return WillPopScope(
+        onWillPop: () async {
+          _adMobService.resetLoadingState();
+          _adMobService.onAdLoaded = null;
+          _adMobService.onAdFailedToLoad = null;
+          _adMobService.onAdRetrying = null;
+          return true;
+        },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF1A1A1A),
+          body: _buildLoadingBody(),
+        ),
+      );
+    }
+
+    // 广告正在全屏播放：保持空白 surface，禁止返回
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: const Scaffold(
+        backgroundColor: Color(0xFF1A1A1A),
+        body: SizedBox.expand(),
+      ),
     );
   }
   

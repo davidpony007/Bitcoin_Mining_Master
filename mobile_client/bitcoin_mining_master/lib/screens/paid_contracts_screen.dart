@@ -229,8 +229,21 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
         if (success) {
           _restoreFoundAny = true;
           _restoreTimer?.cancel();
+          _appleService.cancelRestore(); // 清理服务层 _isUserRestoring 标志
           setState(() => _isRestoring = false);
           _showPurchaseResult(true, 'Subscription restored! Your contract is now active.');
+        } else {
+          final lowerMsg = message.toLowerCase();
+          // 对明确失败（鉴权过期/网络异常/服务端错误）立即结束 Restore，避免 60 秒后误报"无订阅"
+          if (lowerMsg.contains('login expired') ||
+              lowerMsg.contains('please log in') ||
+              lowerMsg.contains('network') ||
+              lowerMsg.contains('server')) {
+            _restoreTimer?.cancel();
+            _appleService.cancelRestore();
+            setState(() => _isRestoring = false);
+            _showPurchaseResult(false, message);
+          }
         }
         // 失败时保持 _isRestoring=true，等待后续事件或超时
         return;
@@ -264,19 +277,28 @@ class _PaidContractsScreenState extends State<PaidContractsScreen> {
   }
 
   void _startRestore() {
+    // 每次 Restore 前刷新一次登录上下文，避免 token 过期导致"已扣费但恢复失败"
+    _appleService.userId = StorageService().getUserId();
+    _appleService.authToken = StorageService().getAuthToken();
+
+    if ((_appleService.userId ?? '').isEmpty || (_appleService.authToken ?? '').isEmpty) {
+      _showPurchaseResult(false, 'Login expired. Please sign in again, then retry Restore.');
+      return;
+    }
+
     setState(() {
       _isRestoring = true;
       _restoreFoundAny = false;
     });
     _appleService.restorePurchases();
-    // 10 秒超时：若无任何已购订阅，StoreKit 不会回调，此处兜底提示用户
+    // 60 秒超时：Apple 收据验证 + 后端处理最长可达 60s，若无任何已购订阅则兜底提示用户
     _restoreTimer?.cancel();
-    _restoreTimer = Timer(const Duration(seconds: 10), () {
+    _restoreTimer = Timer(const Duration(seconds: 60), () {
       if (!mounted) return;
       _appleService.cancelRestore(); // 清理服务层 _isUserRestoring 标志
       setState(() => _isRestoring = false);
       if (!_restoreFoundAny) {
-        _showPurchaseResult(false, 'No active subscriptions found to restore.');
+        _showPurchaseResult(false, 'No active subscriptions found to restore, or restore request timed out.');
       }
     });
   }

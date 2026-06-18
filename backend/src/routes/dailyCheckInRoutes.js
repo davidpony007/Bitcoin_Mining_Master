@@ -18,13 +18,15 @@ router.get('/status', async (req, res) => {
       });
     }
 
-    // 检查今日是否已签到
-    const alreadyCheckedIn = await CheckInPointsService.hasCheckedInToday(userId);
+    // 返回完整签到状态（含累计天数），复用 CheckInPointsService.getCheckInStatus
+    const status = await CheckInPointsService.getCheckInStatus(userId);
 
     res.status(200).json({
       success: true,
       data: {
-        alreadyCheckedIn: alreadyCheckedIn,
+        ...status,
+        // 兼容旧字段名
+        alreadyCheckedIn: status.hasCheckedInToday,
         userId: userId
       }
     });

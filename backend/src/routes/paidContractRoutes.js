@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const PaidContractService = require('../services/paidContractService');
 const PaidProductService = require('../services/paidProductService');
+const authenticateToken = require('../middleware/auth');
 
 /**
  * GET /api/paid-contracts/products
@@ -33,9 +34,10 @@ router.get('/products', async (req, res) => {
 /**
  * POST /api/paid-contracts/create
  * 创建付费合约（支付完成后调用）
+ * 需要 JWT 鉴权，且 JWT 用户必须与 body.user_id 匹配
  * 请求体: { user_id: "用户ID", product_id: "p0499", order_id: "订单ID" }
  */
-router.post('/create', async (req, res) => {
+router.post('/create', authenticateToken, async (req, res) => {
   try {
     const { user_id, product_id, order_id } = req.body;
 
@@ -44,6 +46,12 @@ router.post('/create', async (req, res) => {
         success: false,
         message: '用户ID和产品ID不能为空'
       });
+    }
+
+    // 防止用户 A 的 Token 为用户 B 创建合约
+    const jwtUserId = req.user?.userId || req.user?.user_id;
+    if (jwtUserId && String(jwtUserId) !== String(user_id)) {
+      return res.status(403).json({ success: false, message: '身份验证失败' });
     }
 
     const result = await PaidContractService.createPaidContract(

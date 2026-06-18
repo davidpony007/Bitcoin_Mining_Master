@@ -15,6 +15,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const axios = require('axios');
 const geoip = require('geoip-lite');
+const { deriveAppleAccountToken } = require('../utils/deriveAppleAccountToken');
 
 /**
  * 记录用户当天登录日志（DAU 统计用）
@@ -273,7 +274,9 @@ exports.deviceLogin = async (req, res) => {
           system: detectedSystem,
           idfa: idfa || null,
           att_status: (att_status != null) ? att_status : null,
-          acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer)
+          acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer),
+          // iOS 设备登录：提前写入 apple_app_account_token，确保 Apple 服务端通知到达时能反查到用户
+          apple_app_account_token: detectedSystem === 'iOS' ? deriveAppleAccountToken(user_id) : null,
       }
     });
 
@@ -433,6 +436,10 @@ exports.deviceLogin = async (req, res) => {
           if (!user.system) updateData.system = detectedSystemNow;
           if (idfa && idfa.trim() !== '') updateData.idfa = idfa.trim();
           if (att_status != null) updateData.att_status = att_status;
+          // iOS 设备登录：确保 apple_app_account_token 已写入（用于 Apple 服务端通知反查用户）
+          if (detectedSystemNow === 'iOS' && !user.apple_app_account_token) {
+            updateData.apple_app_account_token = deriveAppleAccountToken(user.user_id);
+          }
           
           if (Object.keys(updateData).length > 0) {
             await UserInformation.update(
@@ -449,6 +456,10 @@ exports.deviceLogin = async (req, res) => {
           if (!user.system) versionData.system = detectedSystemNow;
           if (idfa && idfa.trim() !== '') versionData.idfa = idfa.trim();
           if (att_status != null) versionData.att_status = att_status;
+          // iOS 设备登录：确保 apple_app_account_token 已写入
+          if (detectedSystemNow === 'iOS' && !user.apple_app_account_token) {
+            versionData.apple_app_account_token = deriveAppleAccountToken(user.user_id);
+          }
           if (Object.keys(versionData).length > 0) {
             await UserInformation.update(versionData, { where: { user_id: user.user_id } });
           }
@@ -1990,6 +2001,10 @@ exports.appleLoginOrCreate = async (req, res) => {
       if (!user.system) updateData.system = 'iOS';
       if (app_version) updateData.app_version = app_version;
       if (app_build_number != null) updateData.app_build_number = app_build_number;
+      // Apple 登录：确保 apple_app_account_token 已写入（用于 SUBSCRIBED/INITIAL_BUY 通知反查用户）
+      if (!user.apple_app_account_token) {
+        updateData.apple_app_account_token = deriveAppleAccountToken(user.user_id);
+      }
 
       if (Object.keys(updateData).length > 0) await user.update(updateData);
 
@@ -2040,10 +2055,11 @@ exports.appleLoginOrCreate = async (req, res) => {
         app_version: app_version || null,
         app_build_number: app_build_number || null,
         acquisition_channel: determineAcquisitionChannel(referrer_invitation_code, install_referrer),
+        // Apple 账号令牌：提前写入，确保 Apple 服务端 INITIAL_BUY 通知到达时能自动关联用户
+        apple_app_account_token: deriveAppleAccountToken(user_id),
       });
       isNewUser = true;
       console.log(`   ✅ Apple 新用户创建成功: ${user.user_id}`);
-
       try {
         await UserStatus.create({
           user_id: user.user_id,

@@ -14,6 +14,7 @@ import '../services/network_service.dart';
 import '../services/device_info_service.dart';
 import '../services/native_device_id_service.dart';
 import '../services/analytics_service.dart';
+import '../services/solar_engine_service.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -726,6 +727,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     // 埋点：登录成功
     AnalyticsService.instance.logLogin(method: loginMethod);
+    // SolarEngine 归因：设置账号 ID + 上报登录/注册事件
+    SolarEngineService.instance.login(userId ?? '');
+    if (isNewUser) {
+      SolarEngineService.instance.trackRegister(loginType: loginMethod);
+    }
+    SolarEngineService.instance.trackLogin(loginType: loginMethod);
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const HomeScreen()),
     );

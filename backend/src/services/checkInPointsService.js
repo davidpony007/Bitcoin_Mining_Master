@@ -34,13 +34,27 @@ class CheckInPointsService {
 
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-      // 1. 检查今日是否已签到
-      const [existingRows] = await connection.query(
-        'SELECT id FROM user_check_in WHERE user_id = ? AND check_in_date = ?',
-        [userId, today]
+      // 1. 计算累计签到天数（不要求连续）
+      const [totalCheckInsRows] = await connection.query(
+        'SELECT COUNT(*) as total FROM user_check_in WHERE user_id = ?',
+        [userId]
+      );
+      const cumulativeDays = (totalCheckInsRows[0].total || 0) + 1; // 加上今天
+
+      // 2. 每日签到奖励固定为4积分
+      const dailyPoints = this.BASE_CHECKIN_POINTS;
+      let milestoneBonus = 0;
+      const milestoneRewards = [];
+
+      // 3. 原子性插入签到记录（INSERT IGNORE + 唯一索引防并发竞态）
+      //    如果今日已有记录（重复请求/客户端重试），INSERT IGNORE 静默跳过，affectedRows=0
+      const [insertResult] = await connection.query(
+        `INSERT IGNORE INTO user_check_in (user_id, check_in_date, points_earned, cumulative_days)
+         VALUES (?, ?, ?, ?)`,
+        [userId, today, dailyPoints, cumulativeDays]
       );
 
-      if (existingRows.length > 0) {
+      if (insertResult.affectedRows === 0) {
         await connection.rollback();
         return {
           success: false,
@@ -49,37 +63,7 @@ class CheckInPointsService {
         };
       }
 
-      // 2. 计算累计签到天数（不要求连续）
-      const [totalCheckInsRows] = await connection.query(
-        'SELECT COUNT(*) as total FROM user_check_in WHERE user_id = ?',
-        [userId]
-      );
-      const cumulativeDays = (totalCheckInsRows[0].total || 0) + 1; // 加上今天
-
-      // 3. 每日签到奖励固定为4积分
-      const dailyPoints = this.BASE_CHECKIN_POINTS;
-      let milestoneBonus = 0;
-      const milestoneRewards = [];
-
-      // 4. 创建签到记录（只记录累计天数）
-      await connection.query(
-        `INSERT INTO user_check_in (user_id, check_in_date, points_earned, cumulative_days)
-         VALUES (?, ?, ?, ?)`,
-        [userId, today, dailyPoints, cumulativeDays]
-      );
-
-      // 5. 增加每日签到积分
-      await PointsService.addPoints(
-        userId,
-        dailyPoints,
-        PointsService.POINTS_TYPES.DAILY_CHECKIN,
-        `Daily Check-in Reward (Day ${cumulativeDays})`,
-        null
-      );
-
-      // 6. 里程碑奖励自动发放（含漏发补发）
-      // 规则：达到累计天数阈值(3/7/15/30)且未领取过，则自动发放一次。
-      // 这样即使历史版本未触发领取，也会在后续签到中补发。
+      // 4. 里程碑奖励标记（在同一事务内标记，防止重复领取）
       const [claimedRows] = await connection.query(
         `SELECT milestone_type
          FROM user_check_in
@@ -94,15 +78,13 @@ class CheckInPointsService {
         .map(Number)
         .sort((a, b) => a - b);
 
+      // 收集本次触发的里程碑（只标记 DB，积分在 commit 后发放）
+      const triggeredMilestones = [];
       for (const milestoneDays of milestones) {
-        if (cumulativeDays < milestoneDays) {
-          continue;
-        }
+        if (cumulativeDays < milestoneDays) continue;
 
         const milestoneType = `CUMULATIVE_CHECKIN_${milestoneDays}`;
-        if (claimedSet.has(milestoneType)) {
-          continue;
-        }
+        if (claimedSet.has(milestoneType)) continue;
 
         const [markResult] = await connection.query(
           `UPDATE user_check_in
@@ -115,32 +97,48 @@ class CheckInPointsService {
           [milestoneType, userId, milestoneDays]
         );
 
-        // 仅在成功标记后发放积分，避免重复发放
         if ((markResult && markResult.affectedRows) > 0) {
-          const rewardConfig = this.CUMULATIVE_REWARDS[milestoneDays];
-          await PointsService.addPoints(
-            userId,
-            rewardConfig.points,
-            PointsService.POINTS_TYPES[milestoneType] || PointsService.POINTS_TYPES.DAILY_CHECKIN,
-            `Cumulative check-in milestone reward: day ${milestoneDays}`,
-            null
-          );
-
-          milestoneBonus += rewardConfig.points;
-          milestoneRewards.push({
-            cumulativeDays: milestoneDays,
-            points: rewardConfig.points,
-            label: rewardConfig.label,
-            description: rewardConfig.description,
-            milestoneType
-          });
+          triggeredMilestones.push({ milestoneDays, milestoneType });
           claimedSet.add(milestoneType);
         }
       }
 
+      // 5. 先提交签到记录和里程碑标记，再发放积分
+      //    这样即使后续 addPoints 调用意外重复，重试请求也会因
+      //    user_check_in 已存在而提前返回，彻底杜绝双倍积分问题。
       await connection.commit();
 
-      // 7. 更新 Redis 缓存
+      // 6. 发放每日签到积分（事务已提交，此步骤幂等）
+      await PointsService.addPoints(
+        userId,
+        dailyPoints,
+        PointsService.POINTS_TYPES.DAILY_CHECKIN,
+        `Daily Check-in Reward (Day ${cumulativeDays})`,
+        null
+      );
+
+      // 7. 发放里程碑积分
+      for (const { milestoneDays, milestoneType } of triggeredMilestones) {
+        const rewardConfig = this.CUMULATIVE_REWARDS[milestoneDays];
+        await PointsService.addPoints(
+          userId,
+          rewardConfig.points,
+          PointsService.POINTS_TYPES[milestoneType] || PointsService.POINTS_TYPES.DAILY_CHECKIN,
+          `Cumulative check-in milestone reward: day ${milestoneDays}`,
+          null
+        );
+
+        milestoneBonus += rewardConfig.points;
+        milestoneRewards.push({
+          cumulativeDays: milestoneDays,
+          points: rewardConfig.points,
+          label: rewardConfig.label,
+          description: rewardConfig.description,
+          milestoneType
+        });
+      }
+
+      // 8. 更新 Redis 缓存
       if (redisClient.isReady()) {
         await redisClient.setUserCheckInStatus(userId, {
           date: today,
@@ -169,7 +167,8 @@ class CheckInPointsService {
       return result;
 
     } catch (error) {
-      await connection.rollback();
+      // 如果事务尚未提交，尝试回滚；若已提交则忽略 rollback 错误
+      try { await connection.rollback(); } catch (_) { /* already committed */ }
       console.error('签到失败:', error);
       throw error;
     } finally {

@@ -14,7 +14,7 @@ const subscriptionConfig = require('../config/subscriptionConfig');
 const authenticateToken = require('../middleware/auth');
 
 // 应用包名（需要与Android项目中的applicationId一致）
-const PACKAGE_NAME = 'com.cloudminingtool.bitcoin_mining_master'; // 使用你的实际包名
+const PACKAGE_NAME = 'com.cloudminingtool.bitcoin_mining_app'; // 实际包名
 
 /**
  * POST /api/payment/verify

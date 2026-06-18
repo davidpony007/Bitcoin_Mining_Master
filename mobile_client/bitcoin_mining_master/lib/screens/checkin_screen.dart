@@ -185,9 +185,12 @@ class _CheckInScreenState extends State<CheckInScreen>
       // 开始加载广告
       await _adMobService.loadRewardedAd();
       
-      // 等待广告加载完成（最多10秒）
+      // 等待广告加载完成（最多80秒，覆盖 4 次指数退避重试）
+      // isLoadFailed=true 时提前退出，无需等到超时
       final startTime = DateTime.now();
-      while (!_adMobService.isAdReady && DateTime.now().difference(startTime).inSeconds < 10) {
+      while (!_adMobService.isAdReady &&
+             !_adMobService.isLoadFailed &&
+             DateTime.now().difference(startTime).inSeconds < 80) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
 
@@ -197,8 +200,8 @@ class _CheckInScreenState extends State<CheckInScreen>
       if (!_adMobService.isAdReady) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Ad not available. Please check your network connection and try again later.'),
-            backgroundColor: Colors.red,
+            content: Text('😔 No ads available in your region right now. Please try again later.'),
+            backgroundColor: Colors.orange,
             duration: Duration(seconds: 4),
           ),
         );

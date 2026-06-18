@@ -252,6 +252,7 @@ class ContractRewardService {
         FROM mining_contracts
         WHERE user_id = ?
           AND contract_type = 'paid contract'
+          AND is_cancelled = 0
           AND contract_end_time > ?
       `, [userId, startTime]);
 

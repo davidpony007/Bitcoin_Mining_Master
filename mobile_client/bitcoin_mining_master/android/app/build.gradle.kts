@@ -55,6 +55,13 @@ android {
         release {
             // 使用Release签名配置
             signingConfig = signingConfigs.getByName("release")
+            // 开启混淆和资源压缩（SolarEngine SDK 要求配置 ProGuard）
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
@@ -68,4 +75,12 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     // Firebase Analytics
     implementation("com.google.firebase:firebase-analytics-ktx")
+
+    // AdMob Mediation Adapters
+    // Unity: 4.16.6.0 requires GMA 24.9.0 (matches google_mobile_ads 7.0.0) and satisfies bidding requirement (>=4.16.0.1)
+    implementation("com.google.ads.mediation:unity:4.16.6.0")
+    implementation("com.google.ads.mediation:pangle:6.4.0.6.0")
+    implementation("com.google.ads.mediation:applovin:13.1.0.0")
+    implementation("com.google.ads.mediation:facebook:6.18.0.0")
+    implementation("com.google.ads.mediation:mintegral:16.9.61.0")
 }

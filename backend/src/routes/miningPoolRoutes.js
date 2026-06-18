@@ -7,6 +7,7 @@ const router = express.Router();
 const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const { Op } = require('sequelize');
 const PointsService = require('../services/pointsService'); // 📌 导入积分服务
+const AdPointsService = require('../services/adPointsService'); // 广告观看积分服务
 const MiningConfigService = require('../services/miningConfigService'); // 基础挖矿速率配置
 const authenticateToken = require('../middleware/auth'); // JWT 鉴权中间件
 
@@ -138,19 +139,14 @@ router.post('/use-battery', authenticateToken, async (req, res) => {
  */
 router.get('/battery-count/:userId', authenticateToken, async (req, res) => {
   try {
-    const { userId } = req.params;
+    // 安全：始终以 JWT 中的 user_id 为准
+    const userId = req.user?.user_id || req.user?.userId;
 
     if (!userId) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: 'User ID is required'
+        message: 'Unauthorized'
       });
-    }
-
-    // JWT 用户身份校验
-    const jwtUserId = req.user?.userId || req.user?.user_id;
-    if (jwtUserId && String(jwtUserId) !== String(userId)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     // 从积分系统查询用户真实电池数量（user_information.user_points）
@@ -189,20 +185,17 @@ router.post('/extend-contract', authenticateToken, async (req, res) => {
   let connection;
   
   try {
-    const { user_id, hours = 1 } = req.body;
+    const { hours = 1 } = req.body;
     const deviceCountry = req.body.device_country || null; // 方案B：Flutter设备locale国家
 
+    // 安全：始终以 JWT 中的 user_id 为准，忽略 body 中的 user_id
+    // 防止客户端伪造他人 user_id，同时解决 token/userId 缓存不一致导致的 403 问题
+    const user_id = req.user?.user_id || req.user?.userId;
     if (!user_id) {
-      return res.status(400).json({
+      return res.status(401).json({
         success: false,
-        message: 'User ID is required'
+        message: 'Unauthorized'
       });
-    }
-
-    // JWT 用户身份校验
-    const jwtUserId = req.user?.userId || req.user?.user_id;
-    if (jwtUserId && String(jwtUserId) !== String(user_id)) {
-      return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     if (hours < 1 || hours > 24) {
@@ -363,8 +356,15 @@ router.post('/extend-contract', authenticateToken, async (req, res) => {
       connection.release();
       connection = null; // 标记连接已释放
 
-      // 注意：积分奖励、广告观看记录、邀请人奖励统一由客户端调用 /api/ad/watch 处理
-      // 本接口只负责合约延长，防止双重发放积分
+      // 4. 记录广告观看积分与次数（在事务提交并释放连接后调用，避免双连接占用连接池）
+      // 兼容旧版客户端：广告页实际调用的是 extend-contract，因此这里必须同步发放 AD_VIEW 积分。
+      // 注意：此处在事务外，若发放积分失败不影响合约延长的成功响应，但会记录错误日志便于补发。
+      try {
+        await AdPointsService.recordAdViewAndReward(user_id);
+      } catch (adPointsErr) {
+        console.error(`❌ [extend-contract] 广告积分发放失败 userId=${user_id}:`, adPointsErr.message);
+        // 积分失败不影响合约延长的成功，继续返回成功响应
+      }
 
       const now = new Date();
       const remainingSeconds = Math.max(0, Math.floor((newEndTime - now) / 1000));

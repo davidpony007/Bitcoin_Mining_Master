@@ -8,7 +8,8 @@ const pool = require('../config/database_native'); // 使用原生MySQL连接池
 const PointsService = require('../services/pointsService');
 const InvitationPointsService = require('../services/invitationPointsService');
 const ContractRewardService = require('../services/contractRewardService');
-const RealtimeBalanceService = require('../services/realtimeBalanceService');const { startAdMobSyncJob } = require('./admobSyncJob');
+const RealtimeBalanceService = require('../services/realtimeBalanceService');
+const { startAdMobSyncJob } = require('./admobSyncJob');
 /**
  * 每日签到加成过期清理任务
  * 每分钟执行一次，清理已过期的加成用户
@@ -457,6 +458,187 @@ function startContractRewardDistribution() {
 }
 
 /**
+ * 待处理 Apple 通知重试任务
+ * 每2小时执行一次：重新处理因 appAccountToken=null 或用户未找到而暂存的 Apple S2S 通知。
+ * 若 appAccountToken 对应的用户已通过 verify-purchase 写入 apple_app_account_token，则可自动恢复。
+ */
+function startPendingAppleNotificationsRetry() {
+  cron.schedule('15 */2 * * *', async () => {
+    try {
+      // 兼容旧表：补充 retry_count 列（幂等，若列已存在 MySQL 8+ 报 ER_DUP_FIELDNAME 需忽略）
+      await pool.execute(
+        "ALTER TABLE pending_apple_notifications ADD COLUMN IF NOT EXISTS retry_count INT DEFAULT 0"
+      ).catch(() => {});
+      const [rows] = await pool.execute(`
+        SELECT id, notification_type, original_transaction_id, product_id,
+               purchase_date, expires_date, app_account_token, reason
+        FROM pending_apple_notifications
+        WHERE resolved = 0
+          AND retry_count < 10
+          AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ORDER BY id ASC
+        LIMIT 50
+      `);
+      if (rows.length === 0) return;
+      console.log(`[定时任务] 开始重试 ${rows.length} 条待处理 Apple 通知...`);
+
+      const { UserInformation, UserOrder, MiningContract } = require('../models');
+      const paidContractService = require('../services/paidContractService');
+      const SubscriptionPointsService = require('../services/subscriptionPointsService');
+      const { deriveAppleAccountToken } = require('../utils/deriveAppleAccountToken');
+      const PRODUCT_MAP = {
+        'appstore04.99': 'p0499', 'appstore06.99': 'p0699',
+        'appstore09.99': 'p0999', 'appstore19.99': 'p1999',
+      };
+
+      let resolved = 0;
+      for (const row of rows) {
+        try {
+          // 标记重试次数
+          await pool.execute('UPDATE pending_apple_notifications SET retry_count = retry_count + 1 WHERE id = ?', [row.id]);
+
+          let initUser = null;
+          if (row.app_account_token) {
+            // 先直接查
+            initUser = await UserInformation.findOne({
+              where: { apple_app_account_token: row.app_account_token },
+              attributes: ['user_id', 'email', 'apple_account'],
+            });
+            // 若未命中，尝试批量补全 token 后再查
+            if (!initUser) {
+              const [missing] = await pool.execute(
+                "SELECT user_id FROM user_information WHERE (apple_app_account_token IS NULL OR apple_app_account_token = '') LIMIT 5000"
+              );
+              const matched = missing.find(r => deriveAppleAccountToken(r.user_id) === row.app_account_token);
+              if (matched) {
+                await pool.execute('UPDATE user_information SET apple_app_account_token = ? WHERE user_id = ?', [row.app_account_token, matched.user_id]);
+                initUser = await UserInformation.findOne({ where: { user_id: matched.user_id }, attributes: ['user_id', 'email', 'apple_account'] });
+              }
+            }
+          }
+          if (!initUser) continue; // 仍找不到用户，留待下次重试
+
+          const backendProductId = PRODUCT_MAP[row.product_id];
+          if (!backendProductId) {
+            await pool.execute('UPDATE pending_apple_notifications SET resolved = 1 WHERE id = ?', [row.id]);
+            continue;
+          }
+
+          // 检查是否已存在订单（防重）
+          const existingOrder = await UserOrder.findOne({ where: { payment_gateway_id: row.original_transaction_id } });
+          if (!existingOrder) {
+            const PaidProductService = require('../services/paidProductService');
+            const productInfo = await PaidProductService.getProductInfo(backendProductId);
+            const expiresDate = row.expires_date ? new Date(row.expires_date) : null;
+            const safeExpires = (expiresDate && expiresDate.getTime() > Date.now() + 3600000) ? expiresDate : null;
+
+            await UserOrder.create({
+              user_id: initUser.user_id,
+              email: initUser.email || '',
+              apple_account: initUser.apple_account || null,
+              product_id: backendProductId,
+              product_name: productInfo?.product_name || row.product_id,
+              product_price: String(productInfo?.product_price || 0),
+              hashrate: productInfo?.hashrate_raw || 0,
+              order_creation_time: row.purchase_date ? new Date(row.purchase_date) : new Date(),
+              payment_time: row.purchase_date ? new Date(row.purchase_date) : new Date(),
+              currency_type: 'USD',
+              payment_gateway_id: row.original_transaction_id,
+              payment_network_id: row.original_transaction_id,
+              order_status: 'active',
+            });
+            await paidContractService.createPaidContract(
+              initUser.user_id, backendProductId, row.original_transaction_id, safeExpires, 'ios', row.original_transaction_id
+            );
+          }
+
+          // 补发积分（幂等）
+          try {
+            await SubscriptionPointsService.awardSubscriptionPoints(initUser.user_id, backendProductId);
+          } catch (_) {}
+
+          await pool.execute('UPDATE pending_apple_notifications SET resolved = 1 WHERE id = ?', [row.id]);
+          resolved++;
+          console.log(`✅ [定时任务] 补录 Apple 待处理通知: user=${initUser.user_id} product=${backendProductId} original_tx=${row.original_transaction_id}`);
+        } catch (rowErr) {
+          console.warn(`⚠️ [定时任务] 补录 Apple 通知失败 id=${row.id}: ${rowErr.message}`);
+        }
+      }
+      if (resolved > 0) console.log(`[定时任务] Apple 通知补录完成，本次处理 ${resolved} 条`);
+    } catch (err) {
+      // 表不存在或连接失败时不影响其他任务
+      if (err.code !== 'ER_NO_SUCH_TABLE') {
+        console.error('[定时任务] Apple 通知重试失败:', err.message);
+      }
+    }
+  });
+  console.log('✓ Apple 待处理通知重试任务已启动（每2小时）');
+}
+
+/**
+ * 订单-合约一致性检查任务（每天 UTC 06:00）
+ * 场景：verify-purchase 在创建 UserOrder 后、创建 MiningContract 前崩溃 → 有订单无合约
+ * 扫描近 7 天内的活跃 Android/iOS 订单，补建缺失的合约，并补发缺失的积分。
+ */
+function startOrderContractConsistencyCheck() {
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      console.log('[定时任务] 开始订单-合约一致性检查...');
+      const { UserOrder, MiningContract } = require('../models');
+      const paidContractService = require('../services/paidContractService');
+      const SubscriptionPointsService = require('../services/subscriptionPointsService');
+      const { Op } = require('sequelize');
+
+      // 查找 7 天内、order_status=active 的首购订单（续订 renewing/renewed 不补建合约）
+      const recentOrders = await UserOrder.findAll({
+        where: {
+          order_status: 'active',
+          order_creation_time: { [Op.gte]: new Date(Date.now() - 7 * 24 * 3600 * 1000) },
+        },
+        order: [['id', 'ASC']],
+        limit: 500,
+      });
+
+      let contractFixed = 0;
+      let pointsFixed = 0;
+      for (const order of recentOrders) {
+        try {
+          // 检查合约
+          const contract = await MiningContract.findOne({
+            where: {
+              user_id: order.user_id,
+              product_id: order.product_id,
+              contract_type: 'paid contract',
+              is_cancelled: 0,
+            },
+          });
+          if (!contract) {
+            const platform = order.payment_gateway_id?.startsWith('GPA.') ? 'android' : 'ios';
+            const purchaseToken = order.payment_network_id || null;
+            await paidContractService.createPaidContract(
+              order.user_id, order.product_id,
+              order.payment_gateway_id, null,
+              platform, purchaseToken,
+            );
+            contractFixed++;
+            console.log(`✅ [定时任务] 补建合约: user=${order.user_id} product=${order.product_id} orderId=${order.payment_gateway_id}`);
+          }
+          // 无论合约是否补建，都尝试补发积分（幂等）
+          const pointsResult = await SubscriptionPointsService.awardSubscriptionPoints(order.user_id, order.product_id);
+          if (pointsResult?.awarded) pointsFixed++;
+        } catch (rowErr) {
+          console.warn(`⚠️ [定时任务] 一致性检查订单 id=${order.id} 失败: ${rowErr.message}`);
+        }
+      }
+      console.log(`[定时任务] 订单-合约一致性检查完成: 补建合约 ${contractFixed} 个，补发积分 ${pointsFixed} 个`);
+    } catch (err) {
+      console.error('[定时任务] 订单-合约一致性检查失败:', err.message);
+    }
+  });
+  console.log('✓ 订单-合约一致性检查任务已启动（每天 UTC 06:00）');
+}
+
+/**
  * 启动所有定时任务
  * 在PM2 cluster模式下，只在第一个实例（instance_id=0）运行定时任务
  * 避免重复执行导致余额重复更新等问题
@@ -481,9 +663,11 @@ function startAllScheduledTasks() {
   startInvitationProgressSync();     // 邀请进度同步（每6小时）
   startReferralAdCountSync();        // 推荐人广告计数同步（每小时）
   startPointsCacheCleanup();         // 积分缓存清理（每天凌晨4点）
-  startAutoReferralRewards();        // 邀请奖励自动发放（每2小时）
-  startContractRewardDistribution(); // 合约奖励发放（每2小时UTC整点）
-  startAdMobSyncJob();               // AdMob 数据自动同步（每天 UTC 02:00）
+  startAutoReferralRewards();                  // 邀请奖励自动发放（每2小时）
+  startContractRewardDistribution();           // 合约奖励发放（每2小时UTC整点）
+  startAdMobSyncJob();                         // AdMob 数据自动同步（每天 UTC 02:00）
+  startPendingAppleNotificationsRetry();       // iOS 待处理通知补录（每2小时）
+  startOrderContractConsistencyCheck();        // 订单-合约一致性检查（每天 UTC 06:00）
   
   // 启动实时余额更新服务（每秒执行）
   RealtimeBalanceService.startRealtimeUpdates();
@@ -518,5 +702,7 @@ module.exports = {
   startReferralAdCountSync,
   startPointsCacheCleanup,
   startAutoReferralRewards,
-  startContractRewardDistribution
+  startContractRewardDistribution,
+  startPendingAppleNotificationsRetry,
+  startOrderContractConsistencyCheck,
 };

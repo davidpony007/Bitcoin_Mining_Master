@@ -791,6 +791,7 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
          SUM(withdrawal_status = 'success')                 AS success,
          SUM(withdrawal_status = 'rejected')                AS rejected,
          COALESCE(SUM(withdrawal_request_amount), 0)        AS totalAmount,
+         COALESCE(SUM(CASE WHEN withdrawal_status='pending'  THEN withdrawal_request_amount ELSE 0 END), 0) AS pendingAmount,
          COALESCE(SUM(CASE WHEN withdrawal_status='success' THEN withdrawal_request_amount ELSE 0 END), 0) AS paidAmount
        FROM withdrawal_records`
     );
@@ -798,12 +799,13 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
     res.json({
       success: true,
       data: {
-        total:       Number(s.total),
-        pending:     Number(s.pending),
-        success:     Number(s.success),
-        rejected:    Number(s.rejected),
-        totalAmount: parseFloat(s.totalAmount),
-        paidAmount:  parseFloat(s.paidAmount),
+        total:         Number(s.total),
+        pending:       Number(s.pending),
+        success:       Number(s.success),
+        rejected:      Number(s.rejected),
+        totalAmount:   parseFloat(s.totalAmount),
+        pendingAmount: parseFloat(s.pendingAmount),
+        paidAmount:    parseFloat(s.paidAmount),
       },
     });
   } catch (error) {

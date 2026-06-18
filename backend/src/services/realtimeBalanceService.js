@@ -306,24 +306,20 @@ class RealtimeBalanceService {
         };
       }
 
-      // 2. 批量计算和更新
+      // 2. 分批并发更新（每批 20 个，避免连接池耗尽）
+      const BATCH_SIZE = 20;
       let updatedCount = 0;
-      const updatePromises = [];
 
-      for (const userId of activeUsers) {
-        const promise = (async () => {
+      for (let i = 0; i < activeUsers.length; i += BATCH_SIZE) {
+        const batch = activeUsers.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (userId) => {
           const revenue = await this.calculateUserPerSecondRevenue(userId);
           if (revenue > 0) {
             const updated = await this.updateUserBalance(userId, revenue);
             if (updated) updatedCount++;
           }
-        })();
-        
-        updatePromises.push(promise);
+        }));
       }
-
-      // 并发执行所有更新
-      await Promise.all(updatePromises);
 
       const executionTime = Date.now() - startTime;
 

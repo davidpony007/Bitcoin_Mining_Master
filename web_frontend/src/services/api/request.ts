@@ -45,9 +45,15 @@ instance.interceptors.response.use(
       return data;
     }
     
-    // 业务错误
-    message.error(data.message || '请求失败');
-    return Promise.reject(new Error(data.message || '请求失败'));
+    // 特定错误码由调用方处理，不触发全局 message.error
+    const SILENT_BUSINESS_CODES = ['ADMOB_AUTH_EXPIRED'];
+    if (!SILENT_BUSINESS_CODES.includes(data.code)) {
+      message.error(data.message || '请求失败');
+    }
+    // 保留 response.data，以便调用方可通过 err.response.data.code 识别具体错误
+    const businessError: any = new Error(data.message || '请求失败');
+    businessError.response = { data };
+    return Promise.reject(businessError);
   },
   (error) => {
     // HTTP错误处理

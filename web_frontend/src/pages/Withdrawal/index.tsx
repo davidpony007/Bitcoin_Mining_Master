@@ -84,11 +84,13 @@ const Withdrawal: React.FC = () => {
   const [bulkRejectForm] = Form.useForm();
 
   // 全局统计（已成功总BTC，不受筛选影响）
-  const [globalStats, setGlobalStats] = useState<{ paidAmount: number } | null>(null);
+  const [globalStats, setGlobalStats] = useState<{ total: number; pending: number; success: number; rejected: number; pendingAmount: number; paidAmount: number } | null>(null);
 
-  // 时间范围筛选
+  // 时间范围筛选（picker 显示值 + 已提交的查询值）
   const [startDate, setStartDate] = useState<dayjs.Dayjs | null>(null);
   const [endDate,   setEndDate]   = useState<dayjs.Dayjs | null>(null);
+  const [appliedStart, setAppliedStart] = useState<dayjs.Dayjs | null>(null);
+  const [appliedEnd,   setAppliedEnd]   = useState<dayjs.Dayjs | null>(null);
 
   // 币安批量打款
   const [payoutPreviewVisible, setPayoutPreviewVisible] = useState(false);
@@ -184,20 +186,34 @@ const Withdrawal: React.FC = () => {
           search: searchText || undefined,
           limit: pageSize,
           offset: (page - 1) * pageSize,
-          startDate: startDate ? startDate.format('YYYY-MM-DD') : undefined,
-          endDate:   endDate   ? endDate.format('YYYY-MM-DD')   : undefined,
+          startDate: appliedStart ? appliedStart.format('YYYY-MM-DD') : undefined,
+          endDate:   appliedEnd   ? appliedEnd.format('YYYY-MM-DD')   : undefined,
         }),
         withdrawalAPI.stats(),
       ]);
       setRecords(listRes.data?.withdrawals ?? []);
       setTotal(listRes.data?.total ?? 0);
-      if (statsRes?.success) setGlobalStats({ paidAmount: statsRes.data.paidAmount ?? 0 });
+      if (statsRes?.success) setGlobalStats({
+        total:         statsRes.data.total    ?? 0,
+        pending:       statsRes.data.pending  ?? 0,
+        success:       statsRes.data.success  ?? 0,
+        rejected:      statsRes.data.rejected ?? 0,
+        pendingAmount: statsRes.data.pendingAmount ?? 0,
+        paidAmount:    statsRes.data.paidAmount ?? 0,
+      });
     } catch {
       // request.ts 拦截器已弹错误提示
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, searchText, page, pageSize, startDate, endDate]);
+  }, [statusFilter, searchText, page, pageSize, appliedStart, appliedEnd]);
+
+  // ── 点击搜索按钮：提交日期并触发查询 ──
+  const handleSearch = () => {
+    setAppliedStart(startDate);
+    setAppliedEnd(endDate);
+    setPage(1);
+  };
 
   useEffect(() => { fetchList(); }, [fetchList]);
 
@@ -418,7 +434,7 @@ const Withdrawal: React.FC = () => {
           <Card>
             <Statistic
               title="总提现笔数"
-              value={total}
+              value={globalStats?.total ?? total}
               prefix={<WalletOutlined />}
               valueStyle={{ color: '#1677ff' }}
             />
@@ -428,7 +444,7 @@ const Withdrawal: React.FC = () => {
           <Card>
             <Statistic
               title={<Badge status="warning" text=" 待处理" />}
-              value={pendingCount}
+              value={globalStats?.pending ?? pendingCount}
               prefix={<ClockCircleOutlined />}
               valueStyle={{ color: '#fa8c16' }}
             />
@@ -438,7 +454,7 @@ const Withdrawal: React.FC = () => {
           <Card>
             <Statistic
               title={<Badge status="success" text=" 已完成" />}
-              value={successCount}
+              value={globalStats?.success ?? successCount}
               prefix={<CheckCircleOutlined />}
               valueStyle={{ color: '#52c41a' }}
             />
@@ -448,7 +464,7 @@ const Withdrawal: React.FC = () => {
           <Card>
             <Statistic
               title={<Badge status="error" text=" 已拒绝" />}
-              value={rejectedCount}
+              value={globalStats?.rejected ?? rejectedCount}
               prefix={<CloseCircleOutlined />}
               valueStyle={{ color: '#ff4d4f' }}
             />
@@ -463,9 +479,9 @@ const Withdrawal: React.FC = () => {
             <DollarOutlined style={{ fontSize: 28, color: '#fa8c16' }} />
           </Col>
           <Col>
-            <div style={{ fontSize: 13, color: '#8c8c8c' }}>当前列表总申请 BTC</div>
+            <div style={{ fontSize: 13, color: '#8c8c8c' }}>待处理申请 BTC 统计</div>
             <div style={{ fontSize: 24, fontWeight: 700, color: '#fa8c16', fontFamily: 'monospace' }}>
-              {totalBTC.toFixed(8)} BTC
+              {globalStats ? globalStats.pendingAmount.toFixed(8) : '—'} BTC
             </div>
           </Col>
           <Col style={{ borderLeft: '1px solid #ffe58f', paddingLeft: 32 }}>
@@ -505,7 +521,7 @@ const Withdrawal: React.FC = () => {
             <DatePicker
               placeholder="申请开始日期"
               value={startDate}
-              onChange={d => { setStartDate(d); setPage(1); }}
+              onChange={d => setStartDate(d)}
               format="YYYY-MM-DD"
               allowClear
             />
@@ -515,10 +531,15 @@ const Withdrawal: React.FC = () => {
             <DatePicker
               placeholder="申请结束日期"
               value={endDate}
-              onChange={d => { setEndDate(d); setPage(1); }}
+              onChange={d => setEndDate(d)}
               format="YYYY-MM-DD"
               allowClear
             />
+          </Col>
+          <Col>
+            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
+              搜索
+            </Button>
           </Col>
           <Col>
             <Button icon={<ReloadOutlined />} onClick={() => fetchList()}>

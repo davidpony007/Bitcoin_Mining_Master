@@ -8,9 +8,32 @@ const CountryMiningService = require('../services/countryMiningService'); // 国
 const MiningConfigService = require('../services/miningConfigService'); // 基础挖矿速率配置服务
 const pool = require('../config/database_native');
 const sequelize = require('../config/database');
+
+/** 带超时的连接获取，防止连接池耗尽时请求无限排队
+ *  修复：超时后如果连接最终被分配，立即释放，避免连接泄漏死循环
+ */
+async function getConn(timeoutMs = 8000) {
+  let timedOut = false;
+  // 包装 getConnection，超时后若连接到达则立即释放
+  const connPromise = pool.getConnection().then(conn => {
+    if (timedOut) {
+      conn.release();
+      throw Object.assign(new Error('数据库连接池繁忙，请稍后重试'), { code: 'POOL_TIMEOUT' });
+    }
+    return conn;
+  });
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => {
+      timedOut = true;
+      reject(Object.assign(new Error('数据库连接池繁忙，请稍后重试'), { code: 'POOL_TIMEOUT' }));
+    }, timeoutMs)
+  );
+  return Promise.race([connPromise, timeoutPromise]);
+}
 const { QueryTypes } = require('sequelize');
 const PointsService = require('../services/pointsService');
 const AdPointsService = require('../services/adPointsService');
+const refundReclaimService = require('../services/refundReclaimService');
 const jwt = require('jsonwebtoken');
 const bitcoinPriceService = require('../services/bitcoinPriceService');
 
@@ -55,13 +78,13 @@ router.get('/dashboard/stats', authenticateToken, requireAdmin, async (req, res)
       "SELECT COUNT(*) AS cnt FROM user_status WHERE DATE(last_login_time) = ?", [yesterday]
     );
     const [[firstSubRevRow]] = await conn.query(
-      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS val FROM user_orders WHERE order_status NOT IN ('renewing', 'refund successful', 'error')"
+      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS val FROM user_orders WHERE order_status NOT IN ('renewing', 'renewed', 'plan_switch', 'refund successful', 'error') AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)"
     );
     const [[renewalRevRow]] = await conn.query(
-      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS val FROM user_orders WHERE order_status = 'renewing'"
+      "SELECT COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS val FROM user_orders WHERE order_status IN ('renewing','renewed') AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)"
     );
     const [[todayOrdersRow]] = await conn.query(
-      "SELECT COUNT(*) AS cnt FROM user_orders WHERE DATE(order_creation_time) = ?", [today]
+      "SELECT COUNT(*) AS cnt FROM user_orders WHERE DATE(order_creation_time) = ? AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)", [today]
     );
     const [[newUsersRow]] = await conn.query(
       "SELECT COUNT(*) AS cnt FROM user_information WHERE DATE(user_creation_time) = ?", [today]
@@ -120,10 +143,11 @@ router.get('/dashboard/trend', authenticateToken, requireAdmin, async (req, res)
     );
     const [orders] = await conn.query(
       `SELECT DATE(order_creation_time) AS d, COUNT(*) AS cnt,
-              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
+              COALESCE(ROUND(SUM(CASE WHEN order_status NOT IN ('renewing','renewed','plan_switch','refund successful','error')
+                THEN CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2)) ELSE 0 END) * 0.85, 2), 0) AS revenue
        FROM user_orders
        WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-         AND order_status NOT IN ('refund successful', 'error')
+         AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)
        GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
     );
 
@@ -198,7 +222,8 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
         params.push(search, search, search, search, search);
       }
     }
-    if (status) { where += ' AND us.user_status = ?'; params.push(status); }
+    if (status === 'banned') { where += ' AND ui.is_banned = 1'; }
+    else if (status) { where += ' AND us.user_status = ?'; params.push(status); }
     if (system) { where += ' AND ui.`system` = ?'; params.push(system); }
     const acquisition = req.query.acquisition || null;
     if (acquisition) {
@@ -207,6 +232,10 @@ router.get('/users/list', authenticateToken, requireAdmin, async (req, res) => {
     }
     if (country) { where += ' AND ui.country_code = ?'; params.push(country); }
     if (level !== null && !isNaN(level)) { where += ' AND ui.user_level = ?'; params.push(level); }
+    const regStartDate = req.query.regStartDate || null;
+    const regEndDate   = req.query.regEndDate   || null;
+    if (regStartDate) { where += ' AND ui.user_creation_time >= ?'; params.push(regStartDate + ' 00:00:00'); }
+    if (regEndDate)   { where += ' AND ui.user_creation_time <= ?'; params.push(regEndDate   + ' 23:59:59'); }
 
     const [[{ total }]] = await conn.query(
       `SELECT COUNT(*) AS total FROM user_information ui LEFT JOIN user_status us ON ui.user_id = us.user_id ${where}`, params
@@ -258,15 +287,21 @@ router.get('/users/stats', authenticateToken, requireAdmin, async (req, res) => 
   const conn = await pool.getConnection();
   try {
     const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information');
-    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_status WHERE user_status = 'active within 3 days'");
+    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_status WHERE last_login_time >= DATE_SUB(NOW(), INTERVAL 3 DAY)");
     const [[todayRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE DATE(user_creation_time) = CURDATE()');
     const [[weekRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)');
     const [[iosRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE `system` = 'iOS'");
     const [[androidRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE `system` = 'Android'");
-    const [[invitedRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE acquisition_channel = 'invited'");
-    const [[organicRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE acquisition_channel = 'organic'");
-    const [[paidRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_information WHERE acquisition_channel LIKE 'paid_%'");
-    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt, iosCount: iosRow.cnt, androidCount: androidRow.cnt, invitedCount: invitedRow.cnt, organicCount: organicRow.cnt, paidCount: paidRow.cnt } });
+    const [[invitedRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM invitation_relationship");
+    const [[organicRow]] = await conn.query(`
+      SELECT COUNT(*) AS cnt FROM user_information ui
+      WHERE (ui.acquisition_channel IS NULL OR (ui.acquisition_channel != 'invited' AND ui.acquisition_channel NOT LIKE 'paid%'))
+        AND NOT EXISTS (SELECT 1 FROM invitation_relationship ir WHERE ir.user_id = ui.user_id)
+    `);
+    const [[promotionRow]] = await conn.query("SELECT COALESCE(SUM(ad_new_users), 0) AS cnt FROM daily_ad_stats");
+    const [[paidRow]] = await conn.query("SELECT COUNT(DISTINCT user_id) AS cnt FROM mining_contracts WHERE contract_type = 'paid contract' AND contract_end_time > NOW() AND is_cancelled = 0");
+    const [[bannedRow]] = await conn.query('SELECT COUNT(*) AS cnt FROM user_information WHERE is_banned = 1');
+    res.json({ success: true, data: { total: totalRow.cnt, active: activeRow.cnt, newToday: todayRow.cnt, newThisWeek: weekRow.cnt, iosCount: iosRow.cnt, androidCount: androidRow.cnt, invitedCount: invitedRow.cnt, organicCount: organicRow.cnt, promotionCount: promotionRow.cnt, paidCount: paidRow.cnt, bannedCount: bannedRow.cnt } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally {
@@ -275,6 +310,79 @@ router.get('/users/stats', authenticateToken, requireAdmin, async (req, res) => 
 });
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/orders/export
+ * 导出指定时间范围内的订单数据（不分页，上限 10000 条）
+ */
+router.get('/orders/export', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const search      = req.query.search      ? `%${req.query.search}%` : null;
+    const uid         = req.query.uid         ? `%${req.query.uid}%`    : null;
+    const searchKw    = search || uid;
+    const status      = req.query.status      || null;
+    const platform    = req.query.platform    || null;
+    const startDate   = req.query.startDate   || null;
+    const endDate     = req.query.endDate     || null;
+    const productName = req.query.productName || null;
+    const country     = req.query.country     ? `%${req.query.country}%` : null;
+    const orderType   = req.query.orderType   || null;
+
+    const fromClause = 'FROM user_orders o LEFT JOIN user_information ui ON ui.user_id = o.user_id';
+    let where = 'WHERE 1=1';
+    const params = [];
+
+    if (searchKw)   { where += ' AND (o.user_id LIKE ? OR o.payment_network_id LIKE ? OR o.payment_gateway_id LIKE ?)'; params.push(searchKw, searchKw, searchKw); }
+    if (status === 'expired') { where += " AND o.order_status IN ('expired', 'renewed')"; }
+    else if (status) { where += ' AND o.order_status = ?'; params.push(status); }
+    if (platform === 'Android') { where += " AND o.payment_gateway_id LIKE 'GPA.%'"; }
+    if (platform === 'iOS')     { where += " AND o.payment_gateway_id NOT LIKE 'GPA.%'"; }
+    if (startDate)  { where += ' AND DATE(o.payment_time) >= ?'; params.push(startDate); }
+    if (endDate)    { where += ' AND DATE(o.payment_time) <= ?'; params.push(endDate); }
+    if (productName){ where += ' AND o.product_name = ?'; params.push(productName); }
+    if (country)    { where += ' AND (COALESCE(o.country_code, ui.country_code) LIKE ? OR ui.country_name_cn LIKE ?)'; params.push(country, country); }
+    if (orderType === 'new_user_first') {
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_f WHERE uo_f.user_id = o.user_id AND uo_f.product_id = o.product_id
+                       AND (uo_f.order_creation_time < o.order_creation_time OR (uo_f.order_creation_time = o.order_creation_time AND uo_f.id <= o.id))) = 1`;
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_u WHERE uo_u.user_id = o.user_id
+                       AND (uo_u.order_creation_time < o.order_creation_time OR (uo_u.order_creation_time = o.order_creation_time AND uo_u.id <= o.id))) = 1`;
+    } else if (orderType === 'cross_product') {
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_f WHERE uo_f.user_id = o.user_id AND uo_f.product_id = o.product_id
+                       AND (uo_f.order_creation_time < o.order_creation_time OR (uo_f.order_creation_time = o.order_creation_time AND uo_f.id <= o.id))) = 1`;
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_u WHERE uo_u.user_id = o.user_id
+                       AND (uo_u.order_creation_time < o.order_creation_time OR (uo_u.order_creation_time = o.order_creation_time AND uo_u.id <= o.id))) > 1`;
+    } else if (orderType === 'renewal') {
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_r WHERE uo_r.user_id = o.user_id AND uo_r.product_id = o.product_id
+                       AND (uo_r.order_creation_time < o.order_creation_time OR (uo_r.order_creation_time = o.order_creation_time AND uo_r.id <= o.id))) > 1`;
+    }
+
+    const [rows] = await conn.query(
+      `SELECT o.id, o.user_id, o.email,
+              CASE WHEN o.payment_gateway_id LIKE 'GPA.%' THEN 'Android' ELSE 'iOS' END AS platform,
+              o.product_name,
+              CASE
+                WHEN o.order_status IN ('error', 'plan_switch') THEN '0.00'
+                ELSE o.product_price
+              END AS product_price,
+              o.order_status,
+              o.payment_time, o.order_creation_time,
+              COALESCE(o.country_code, ui.country_code) AS country_code,
+              ui.country_name_cn,
+              o.payment_gateway_id, o.payment_network_id
+       ${fromClause} ${where}
+       ORDER BY o.payment_time DESC, o.id DESC
+       LIMIT 10000`,
+      params
+    );
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('Orders export error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  } finally {
+    conn.release();
+  }
+});
 
 /**
  * GET /api/admin/orders/list?page=1&limit=20&status=&search=
@@ -298,17 +406,26 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
     const productName = req.query.productName || null;   // 标题筛选
     const country     = req.query.country     ? `%${req.query.country}%` : null;  // 国家筛选
     const orderType   = req.query.orderType   || null;   // 'first' | 'renewal'
+    // 排序：只允许 payment_time 字段，防止 SQL 注入
+    const SORT_WHITELIST = { payment_time: 'o.payment_time' };
+    const sortByRaw  = req.query.sortBy  || null;
+    const sortDirRaw = req.query.sortOrder === 'ascend' ? 'ASC' : 'DESC';
+    const sortField  = sortByRaw && SORT_WHITELIST[sortByRaw] ? SORT_WHITELIST[sortByRaw] : null;
+    const orderByClause = sortField
+      ? `ORDER BY ${sortField} ${sortDirRaw}, o.id DESC`
+      : 'ORDER BY o.payment_time DESC, o.id DESC';
 
     const fromClause = 'FROM user_orders o LEFT JOIN user_information ui ON ui.user_id = o.user_id';
     let where = 'WHERE 1=1';
     const params = [];
 
     if (searchKw)   { where += ' AND (o.user_id LIKE ? OR o.payment_network_id LIKE ? OR o.payment_gateway_id LIKE ?)'; params.push(searchKw, searchKw, searchKw); }
-    if (status)     { where += ' AND o.order_status = ?'; params.push(status); }
+    if (status === 'expired') { where += " AND o.order_status IN ('expired', 'renewed')"; }
+    else if (status) { where += ' AND o.order_status = ?'; params.push(status); }
     if (platform === 'Android') { where += " AND o.payment_gateway_id LIKE 'GPA.%'"; }
     if (platform === 'iOS')     { where += " AND o.payment_gateway_id NOT LIKE 'GPA.%'"; }
-    if (startDate)  { where += ' AND DATE(o.order_creation_time) >= ?'; params.push(startDate); }
-    if (endDate)    { where += ' AND DATE(o.order_creation_time) <= ?'; params.push(endDate); }
+    if (startDate)  { where += ' AND DATE(o.payment_time) >= ?'; params.push(startDate); }
+    if (endDate)    { where += ' AND DATE(o.payment_time) <= ?'; params.push(endDate); }
     if (productName){ where += ' AND o.product_name = ?'; params.push(productName); }
     if (country)    { where += ' AND (COALESCE(o.country_code, ui.country_code) LIKE ? OR ui.country_name_cn LIKE ?)'; params.push(country, country); }
     // orderType 过滤：通过子查询判断 sub_seq，first=1，renewal>1
@@ -332,11 +449,25 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
       // 兼容旧值：首购（同 new_user_first + cross_product）
       where += ` AND (SELECT COUNT(*) FROM user_orders uo_f WHERE uo_f.user_id = o.user_id AND uo_f.product_id = o.product_id
                        AND (uo_f.order_creation_time < o.order_creation_time OR (uo_f.order_creation_time = o.order_creation_time AND uo_f.id <= o.id))) = 1`;
+    } else if (orderType === 'invalid') {
+      // 无效：status=error
+      where += " AND o.order_status = 'error'";
+    } else if (orderType === 'refund_resub') {
+      // 退款重订：本单状态为 active/renewing，且同用户同档位存在更早的 refund successful 订单
+      where += " AND o.order_status IN ('active', 'renewing')";
+      where += ` AND (SELECT COUNT(*) FROM user_orders uo_rf WHERE uo_rf.user_id = o.user_id AND uo_rf.product_id = o.product_id
+                       AND uo_rf.order_status = 'refund successful'
+                       AND (uo_rf.order_creation_time < o.order_creation_time
+                            OR (uo_rf.order_creation_time = o.order_creation_time AND uo_rf.id < o.id))) > 0`;
     }
 
     const [[{ total }]] = await conn.query(`SELECT COUNT(*) AS total ${fromClause} ${where}`, params);
     const [rows] = await conn.query(
-      `SELECT o.id, o.user_id, o.email, o.google_account, o.product_id, o.product_name, o.product_price,
+      `SELECT o.id, o.user_id, o.email, o.google_account, o.product_id, o.product_name,
+              CASE
+                WHEN o.order_status IN ('error', 'plan_switch') THEN '0.00'
+                ELSE o.product_price
+              END AS product_price,
               o.order_status, o.order_creation_time, o.payment_time, o.currency_type,
               COALESCE(o.country_code, ui.country_code) AS country_code,
               ui.country_name_cn,
@@ -348,9 +479,14 @@ router.get('/orders/list', authenticateToken, requireAdmin, async (req, res) => 
               (SELECT COUNT(*) FROM user_orders uo3
                WHERE uo3.user_id = o.user_id
                  AND (uo3.order_creation_time < o.order_creation_time
-                      OR (uo3.order_creation_time = o.order_creation_time AND uo3.id <= o.id))) AS user_seq
+                      OR (uo3.order_creation_time = o.order_creation_time AND uo3.id <= o.id))) AS user_seq,
+              (SELECT COUNT(*) FROM user_orders uo_rf
+               WHERE uo_rf.user_id = o.user_id AND uo_rf.product_id = o.product_id
+                 AND uo_rf.order_status = 'refund successful'
+                 AND (uo_rf.order_creation_time < o.order_creation_time
+                      OR (uo_rf.order_creation_time = o.order_creation_time AND uo_rf.id < o.id))) AS has_prior_refund
        ${fromClause} ${where}
-       ORDER BY o.id DESC
+       ${orderByClause}
        LIMIT ? OFFSET ?`, [...params, limit, offset]
     );
     res.json({ success: true, data: { total, page, limit, list: rows } });
@@ -378,13 +514,17 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
       `SELECT COUNT(DISTINCT CONCAT(user_id,'-',product_name)) AS cnt
        FROM user_orders WHERE order_status IN ('active','renewing')`
     );
-    // 已取消订阅的用户总数（mining_contracts 中明确标记 is_cancelled=1 的唯一用户）
+    // 已取消订阅的用户总数（mining_contracts 中明确标记 is_cancelled=1 的唯一用户，排除封禁欺诈用户）
     const [[cancelledUsersRow]] = await conn.query(
-      `SELECT COUNT(DISTINCT user_id) AS cnt FROM mining_contracts WHERE is_cancelled = 1 AND contract_type = 'paid contract'`
+      `SELECT COUNT(DISTINCT user_id) AS cnt FROM mining_contracts
+       WHERE is_cancelled = 1 AND contract_type = 'paid contract'
+         AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)`
     );
-    // 已取消的plan总数
+    // 已取消的plan总数（排除封禁欺诈用户）
     const [[cancelledPlansRow]] = await conn.query(
-      `SELECT COUNT(*) AS cnt FROM mining_contracts WHERE is_cancelled = 1 AND contract_type = 'paid contract'`
+      `SELECT COUNT(*) AS cnt FROM mining_contracts
+       WHERE is_cancelled = 1 AND contract_type = 'paid contract'
+         AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)`
     );
     // 各档位活跃订阅数（user_orders 为权威来源）+ 历史总计订单数（含首购和续订）
     const [activeByPlan] = await conn.query(
@@ -394,13 +534,17 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
               (SELECT COUNT(*) FROM user_orders t2
                WHERE t2.product_name = t1.product_name
                  AND t2.product_price = t1.product_price
-                 AND t2.order_status != 'refund successful') AS total_cnt
+                 AND t2.order_status NOT IN ('refund successful', 'error', 'plan_switch')) AS total_cnt
        FROM user_orders t1
        WHERE order_status IN ('active','renewing')
        GROUP BY product_name, product_price
        ORDER BY CAST(product_price AS DECIMAL(10,2))`
     );
-    // 各档位已取消订阅数（与汇总数同源：mining_contracts.is_cancelled=1）
+    // 已退款的plan总数
+    const [[refundedPlansRow]] = await conn.query(
+      `SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status = 'refund successful'`
+    );
+    // 各档位已取消订阅数（排除封禁欺诈用户）
     const [cancelledByPlan] = await conn.query(
       `SELECT p.product_name, p.product_price,
               COUNT(DISTINCT mc.user_id) AS user_cnt,
@@ -412,6 +556,7 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
        )
        WHERE mc.is_cancelled = 1
          AND mc.contract_type = 'paid contract'
+         AND mc.user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)
        GROUP BY p.product_name, p.product_price
        ORDER BY CAST(p.product_price AS DECIMAL(10,2))`
     );
@@ -423,6 +568,7 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
           activePlans:    parseInt(activePlansRow.cnt),
           cancelledUsers: parseInt(cancelledUsersRow.cnt),
           cancelledPlans: parseInt(cancelledPlansRow.cnt),
+          refundedPlans:  parseInt(refundedPlansRow.cnt),
         },
         activeByPlan,
         cancelledByPlan,
@@ -442,10 +588,12 @@ router.get('/orders/subscription-stats', authenticateToken, requireAdmin, async 
 router.get('/orders/stats', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const [[totalRow]] = await conn.query('SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue FROM user_orders');
-    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status = 'active'");
-    const [[refundRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status IN ('refund request in progress','refund successful')");
-    const [[todayRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue FROM user_orders WHERE DATE(order_creation_time) = CURDATE()");
+    // 总订单数 & 真实收益（排除套餐切换renewing、退款、封禁用户）
+    const [[totalRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(CASE WHEN order_status NOT IN ('renewing','refund successful','error') THEN CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2)) ELSE 0 END),0) AS revenue FROM user_orders WHERE user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)");
+    const [[activeRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status = 'active' AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)");
+    const [[refundRow]] = await conn.query("SELECT COUNT(*) AS cnt FROM user_orders WHERE order_status IN ('refund request in progress','refund successful') AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)");
+    // 今日订单：排除套餐切换renewing（不产生实际收费）
+    const [[todayRow]] = await conn.query("SELECT COUNT(*) AS cnt, COALESCE(SUM(CASE WHEN order_status NOT IN ('renewing','refund successful','error') THEN CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2)) ELSE 0 END),0) AS revenue FROM user_orders WHERE DATE(order_creation_time) = CURDATE() AND user_id NOT IN (SELECT user_id FROM user_information WHERE is_banned = 1)");
     res.json({
       success: true,
       data: {
@@ -471,6 +619,32 @@ router.delete('/orders/:id', authenticateToken, requireAdmin, async (req, res) =
     if (!id) return res.status(400).json({ success: false, message: '无效ID' });
     await conn.query('DELETE FROM user_orders WHERE id = ?', [id]);
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  } finally { conn.release(); }
+});
+
+/**
+ * POST /api/admin/orders/bulk-mark-invalid  批量将订单标记为无效
+ * Body: { ids: number[] }
+ * 将指定订单的 order_status 置为 'error'、product_price 置为 '0'
+ */
+router.post('/orders/bulk-mark-invalid', authenticateToken, requireAdmin, async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0)
+      return res.status(400).json({ success: false, message: 'ids不能为空' });
+    // 只允许整数 ID，防止 SQL 注入
+    const safeIds = ids.map(id => parseInt(id)).filter(id => Number.isFinite(id) && id > 0);
+    if (safeIds.length === 0)
+      return res.status(400).json({ success: false, message: '无有效ID' });
+    const placeholders = safeIds.map(() => '?').join(',');
+    const [result] = await conn.query(
+      `UPDATE user_orders SET order_status = 'error', product_price = '0' WHERE id IN (${placeholders})`,
+      safeIds
+    );
+    res.json({ success: true, updated: result.affectedRows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally { conn.release(); }
@@ -521,6 +695,343 @@ router.post('/orders/add', authenticateToken, requireAdmin, async (req, res) => 
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   } finally { conn.release(); }
+});
+
+/**
+ * POST /api/admin/orders/sync-status
+ * 通过 Google Play / App Store API 同步订单状态
+ * Body: { platform?: 'all'|'android'|'ios', daysBack?: number }
+ *
+ * 同步逻辑:
+ *   Android: Voided Purchases API → 退款; subscriptions.get → 已取消
+ *   iOS:     App Store Server API  → 退款; 订阅状态 → 已取消
+ *
+ * 返回: { success, results: { android: {...}, ios: {...} } }
+ */
+router.post('/orders/sync-status', authenticateToken, requireAdmin, async (req, res) => {
+  // 此接口需逐笔调用 Apple/Google API，耗时可能超过全局 connect-timeout(330s)
+  // 使用 req.clearTimeout() 解除该请求的超时限制（仅管理员可调用，无滥用风险）
+  if (typeof req.clearTimeout === 'function') req.clearTimeout();
+
+  let conn;
+  try {
+    conn = await pool.getConnection();
+    const { platform = 'all', daysBack = 90 } = req.body;
+
+    const googleService = require('../services/googlePlayVerifyService');
+    const appleService  = require('../services/appleAppStoreService');
+
+    // Google Play 订阅 productId 映射: DB product_id → GP subscriptionId
+    const GPLAY_PRODUCT_MAP = {
+      p0499: 'p04.99',
+      p0699: 'p06.99',
+      p0999: 'p09.99',
+      p1999: 'p19.99',
+    };
+
+    const results = {
+      android: {
+        checked:     0,
+        refunded:    0,
+        cancelled:   0,
+        priceFixed:  0,
+        errors:      0,
+        updated:     [],
+        configError: null,
+      },
+      ios: {
+        checked:     0,
+        refunded:    0,
+        cancelled:   0,
+        priceFixed:  0,
+        errors:      0,
+        updated:     [],
+        configError: null,
+      },
+      repair: {
+        refundedChecked: 0,
+        contractsStopped: 0,
+        reclaimChecked: 0,
+        reclaimApplied: 0,
+        reclaimedBtcTotal: 0,
+        reclaimedPointsTotal: 0,
+      },
+    };
+
+    const reclaimedTxProcessed = new Set();
+
+    const toSafeNumber = (v) => {
+      const n = parseFloat(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const ensureRefundedContractStoppedAndReclaimed = async (originalTxId, sourceTag) => {
+      if (!originalTxId) return;
+
+      const [stopRes] = await conn.query(
+        `UPDATE mining_contracts
+            SET is_cancelled = 1,
+                cancelled_at = COALESCE(cancelled_at, NOW()),
+                contract_end_time = CASE
+                  WHEN contract_end_time IS NULL OR contract_end_time > NOW() THEN NOW()
+                  ELSE contract_end_time
+                END
+          WHERE original_transaction_id = ?
+            AND contract_type = 'paid contract'
+            AND (
+              is_cancelled = 0
+              OR contract_end_time IS NULL
+              OR contract_end_time > NOW()
+            )`,
+        [originalTxId]
+      );
+
+      const stopped = stopRes?.affectedRows || 0;
+      if (stopped > 0) {
+        results.repair.contractsStopped += stopped;
+      }
+
+      if (reclaimedTxProcessed.has(originalTxId)) return;
+      reclaimedTxProcessed.add(originalTxId);
+
+      results.repair.reclaimChecked++;
+      try {
+        const reclaimRes = await refundReclaimService.reclaimForOriginalTransactionId(originalTxId, sourceTag);
+        const btc = toSafeNumber(reclaimRes?.deductedBtcTotal);
+        const pts = toSafeNumber(reclaimRes?.deductedPointsTotal);
+        results.repair.reclaimedBtcTotal += btc;
+        results.repair.reclaimedPointsTotal += pts;
+        if (btc > 0 || pts > 0) results.repair.reclaimApplied++;
+      } catch (reclaimErr) {
+        console.error(`❌ 退款追回失败 tx=${String(originalTxId).substring(0, 40)} err=${reclaimErr.message}`);
+      }
+    };
+
+    // ── Android: Google Play ────────────────────────────────────────────────
+    if (platform === 'all' || platform === 'android') {
+      if (!googleService.isInitialized) {
+        results.android.configError = 'Google Play 服务未初始化，请检查 google-service-account.json';
+      } else {
+        // 1. Voided Purchases API（批量退款检测）
+        const startTimeMs  = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+        const voidedResult = await googleService.getVoidedPurchases(startTimeMs, 500);
+
+        if (voidedResult.success) {
+          for (const vp of voidedResult.purchases) {
+            if (!vp.purchaseToken) continue;
+            const [[order]] = await conn.query(
+              `SELECT id, order_status FROM user_orders WHERE payment_network_id = ? LIMIT 1`,
+              [vp.purchaseToken]
+            );
+            if (!order) continue;
+
+            if (!['refund successful', 'refund request in progress'].includes(order.order_status)) {
+              await conn.query(
+                `UPDATE user_orders SET order_status = 'refund successful', refunded_at = NOW() WHERE id = ?`,
+                [order.id]
+              );
+              results.android.refunded++;
+              results.android.updated.push({
+                id:        order.id,
+                oldStatus: order.order_status,
+                newStatus: 'refund successful',
+                reason:    `Google Play 已退款 (orderId: ${vp.orderId || '-'})`,
+              });
+            }
+
+            await ensureRefundedContractStoppedAndReclaimed(vp.purchaseToken, 'admin_sync_android');
+          }
+        }
+
+        // 2. 逐条检查 active/renewing Android 订单是否已取消
+        const [androidOrders] = await conn.query(
+          `SELECT id, product_id, payment_network_id, order_status, product_price
+             FROM user_orders
+            WHERE payment_gateway_id LIKE 'GPA.%'
+              AND order_status IN ('active','renewing')
+            LIMIT 200`
+        );
+
+        // 每批 5 条并发，避免串行等待（原串行 ~200s → 并发 ~40s）
+        const ANDROID_BATCH = 5;
+        for (let _i = 0; _i < androidOrders.length; _i += ANDROID_BATCH) {
+          await Promise.all(androidOrders.slice(_i, _i + ANDROID_BATCH).map(async (order) => {
+            results.android.checked++;
+            const subscriptionId = GPLAY_PRODUCT_MAP[order.product_id] || order.product_id;
+            const purchaseToken  = order.payment_network_id;
+            if (!purchaseToken) { results.android.errors++; return; }
+
+            const subInfo = await googleService.checkSubscriptionCancelled(subscriptionId, purchaseToken);
+            if (!subInfo) { results.android.errors++; return; }
+            if (subInfo.notFound) return;
+
+            const isZeroPaid = subInfo.paymentState === 2 || String(subInfo.priceAmountMicros || '') === '0';
+            if (isZeroPaid && toSafeNumber(order.product_price) !== 0) {
+              await conn.query(`UPDATE user_orders SET product_price = '0' WHERE id = ?`, [order.id]);
+              results.android.priceFixed++;
+              results.android.updated.push({
+                id:        order.id,
+                oldStatus: order.order_status,
+                newStatus: order.order_status,
+                reason:    'Google Play API 显示实际支付金额为 0，已修正实付金额',
+              });
+            }
+
+            if (subInfo.autoRenewing === false) {
+              await conn.query(
+                `UPDATE user_orders SET order_status = 'complete' WHERE id = ?`,
+                [order.id]
+              );
+              results.android.cancelled++;
+              results.android.updated.push({
+                id:        order.id,
+                oldStatus: order.order_status,
+                newStatus: 'complete',
+                reason:    `Google Play 已取消订阅 (cancelReason=${subInfo.cancelReason ?? '-'})`,
+              });
+            }
+          }));
+        }
+      }
+    }
+
+    // ── iOS: Apple App Store ────────────────────────────────────────────────
+    if (platform === 'all' || platform === 'ios') {
+      if (!appleService.isConfigured) {
+        results.ios.configError =
+          '需要在服务器环境变量中配置: APPLE_APP_STORE_API_KEY_ID, APPLE_APP_STORE_ISSUER_ID, APPLE_APP_STORE_PRIVATE_KEY, APPLE_BUNDLE_ID';
+      } else {
+        // 获取 active/renewing 的 iOS 订单
+        // 只查真实 Apple 数字型 transaction ID（纯数字 ≥ 10 位），
+        // 排除 GPA.* (Android)、MANUAL-*、ADMIN_COMP_* 等非真实 Apple 订单
+        const [iosOrders] = await conn.query(
+          `SELECT id, payment_gateway_id, payment_network_id, order_status, product_price
+             FROM user_orders
+            WHERE payment_gateway_id REGEXP '^[0-9]{10,}$'
+              AND order_status IN ('active','renewing')
+            LIMIT 200`
+        );
+
+        // 每批 5 条并发，避免串行等待（原串行 ~400s → 并发 ~80s）
+        const IOS_BATCH = 5;
+        for (let _j = 0; _j < iosOrders.length; _j += IOS_BATCH) {
+          await Promise.all(iosOrders.slice(_j, _j + IOS_BATCH).map(async (order) => {
+          results.ios.checked++;
+          // payment_network_id 存放 original_transaction_id，也必须为纯数字；
+          // 若为非数字（补单占位符如 MSHNTX9BD7），回退到已过滤的 payment_gateway_id
+          const pnid = order.payment_network_id;
+          const originalTxId = (pnid && /^\d{10,}$/.test(pnid))
+            ? pnid
+            : order.payment_gateway_id;
+          if (!originalTxId) { results.ios.errors++; return; }
+
+          // 先检查退款（active/renewing 订单才做退款检查，避免重复更新）
+          if (['active', 'renewing'].includes(order.order_status)) {
+            const refundRes = await appleService.getRefundHistory(originalTxId);
+            if (!refundRes.success && !refundRes.hasRefund !== undefined) {
+              results.ios.errors++;
+              return;
+            }
+            if (refundRes.hasRefund) {
+              await conn.query(
+                `UPDATE user_orders SET order_status = 'refund successful', refunded_at = NOW() WHERE id = ?`,
+                [order.id]
+              );
+              await ensureRefundedContractStoppedAndReclaimed(originalTxId, 'admin_sync_ios');
+              results.ios.refunded++;
+              results.ios.updated.push({
+                id:        order.id,
+                oldStatus: order.order_status,
+                newStatus: 'refund successful',
+                reason:    `Apple 已退款 (${refundRes.refundCount} 笔)`,
+              });
+              return;
+            }
+
+            const txInfo = await appleService.getTransactionInfo(originalTxId);
+            if (txInfo?.success) {
+              const rawPrice = txInfo.price ?? txInfo.priceAmountMicros;
+              const normalizedPrice = String(rawPrice || '').trim();
+              const isZeroPaid = normalizedPrice === '0' || normalizedPrice === '0.0' || normalizedPrice === '0.00';
+              if (isZeroPaid && toSafeNumber(order.product_price) !== 0) {
+                await conn.query(`UPDATE user_orders SET product_price = '0' WHERE id = ?`, [order.id]);
+                results.ios.priceFixed++;
+                results.ios.updated.push({
+                  id:        order.id,
+                  oldStatus: order.order_status,
+                  newStatus: order.order_status,
+                  reason:    'Apple API 显示实际支付金额为 0，已修正实付金额',
+                });
+              }
+            }
+          }
+
+          // 再检查订阅取消状态（active/renewing 才更新）
+          if (['active', 'renewing'].includes(order.order_status)) {
+            const subRes = await appleService.getSubscriptionStatus(originalTxId);
+            // notFound: Apple 无此订阅记录（沙盒/测试订单），跳过不计错误
+            if (!subRes.success) {
+              if (!subRes.notFound) results.ios.errors++;
+              return;
+            }
+
+            const isCancelled = subRes.autoRenewStatus === 0;
+            const isExpired   = subRes.status === 2 || subRes.status === 5;
+
+            if (isCancelled || isExpired) {
+              await conn.query(
+                `UPDATE user_orders SET order_status = 'complete' WHERE id = ?`,
+                [order.id]
+              );
+              results.ios.cancelled++;
+              results.ios.updated.push({
+                id:        order.id,
+                oldStatus: order.order_status,
+                newStatus: 'complete',
+                reason:    isCancelled
+                  ? `Apple 已取消订阅 (expirationIntent=${subRes.expirationIntent ?? '-'})`
+                  : `Apple 订阅已过期 (status=${subRes.status})`,
+              });
+            }
+          }
+          }));  // end Promise.all batch
+        }
+      }
+    }
+
+    // ── 兜底巡检：对“已退款订单”再次核查合约停止 + BTC/积分追回（幂等）───────────────
+    const [refundedOrders] = await conn.query(
+      `SELECT id, payment_network_id, payment_gateway_id
+         FROM user_orders
+        WHERE order_status = 'refund successful'
+          AND order_creation_time >= DATE_SUB(NOW(), INTERVAL ? DAY)
+        ORDER BY id DESC
+        LIMIT 2000`,
+      [daysBack]
+    );
+
+    for (const order of refundedOrders) {
+      results.repair.refundedChecked++;
+      const tokens = [order.payment_network_id, order.payment_gateway_id].filter(Boolean);
+      for (const token of [...new Set(tokens)]) {
+        await ensureRefundedContractStoppedAndReclaimed(token, 'admin_sync_refund_repair');
+      }
+    }
+
+    results.repair.reclaimedBtcTotal = Number(results.repair.reclaimedBtcTotal.toFixed(18));
+    results.repair.reclaimedPointsTotal = Number(results.repair.reclaimedPointsTotal.toFixed(2));
+
+    if (!res.headersSent) {
+      res.json({ success: true, results });
+    }
+  } catch (err) {
+    console.error('❌ 同步订单状态失败:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  } finally {
+    if (conn) conn.release();
+  }
 });
 
 // ─── Mining ───────────────────────────────────────────────────────────────────
@@ -765,7 +1276,8 @@ router.get('/geography/data', authenticateToken, requireAdmin, async (req, res) 
     const [revenueRows] = await conn.query(
       `SELECT COALESCE(country_code,'Unknown') AS country,
               COUNT(*) AS orders,
-              COALESCE(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue
+              COALESCE(SUM(CASE WHEN order_status NOT IN ('renewing','renewed','plan_switch','refund successful','error')
+                THEN CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2)) ELSE 0 END),0) AS revenue
        FROM user_orders GROUP BY country_code ORDER BY revenue DESC LIMIT 50`
     );
     // 合并
@@ -792,25 +1304,26 @@ router.get('/geography/data', authenticateToken, requireAdmin, async (req, res) 
  * 多维度趋势分析（用户/收入/订单）
  */
 router.get('/analytics/trend', authenticateToken, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await getConn(8000);
     const days = Math.min(parseInt(req.query.days) || 30, 365);
     const [newUsers] = await conn.query(
-      `SELECT DATE(user_creation_time) AS d, COUNT(*) AS users
+      { sql: `SELECT DATE(user_creation_time) AS d, COUNT(*) AS users
        FROM user_information WHERE user_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY DATE(user_creation_time) ORDER BY d`, [days]
+       GROUP BY DATE(user_creation_time) ORDER BY d`, timeout: 20000 }, [days]
     );
     const [orders] = await conn.query(
-      `SELECT DATE(order_creation_time) AS d, COUNT(*) AS orders,
-              COALESCE(ROUND(SUM(CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
+      { sql: `SELECT DATE(order_creation_time) AS d, COUNT(*) AS orders,
+              COALESCE(ROUND(SUM(CASE WHEN order_status NOT IN ('renewing','renewed','plan_switch','refund successful','error')
+                THEN CAST(CONVERT(product_price, CHAR) AS DECIMAL(10,2)) ELSE 0 END) * 0.85, 2), 0) AS revenue
        FROM user_orders WHERE order_creation_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-         AND order_status NOT IN ('refund successful', 'error')
-       GROUP BY DATE(order_creation_time) ORDER BY d`, [days]
+       GROUP BY DATE(order_creation_time) ORDER BY d`, timeout: 20000 }, [days]
     );
     const [checkins] = await conn.query(
-      `SELECT check_in_date AS d, COUNT(*) AS checkins
+      { sql: `SELECT check_in_date AS d, COUNT(*) AS checkins
        FROM user_check_in WHERE check_in_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-       GROUP BY check_in_date ORDER BY d`, [days]
+       GROUP BY check_in_date ORDER BY d`, timeout: 20000 }, [days]
     );
 
     const map = {};
@@ -826,9 +1339,10 @@ router.get('/analytics/trend', authenticateToken, requireAdmin, async (req, res)
     }
     res.json({ success: true, data: result });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const status = err.code === 'POOL_TIMEOUT' ? 503 : 500;
+    res.status(status).json({ success: false, message: err.message });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 });
 
@@ -837,22 +1351,38 @@ router.get('/analytics/trend', authenticateToken, requireAdmin, async (req, res)
  * 国家排名（用户数 + 收入）
  */
 router.get('/analytics/country-rank', authenticateToken, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn;
   try {
-    const [rows] = await conn.query(
-      `SELECT COALESCE(ui.country_code,'Unknown') AS country,
-              COUNT(DISTINCT ui.user_id) AS users,
-              COALESCE(ROUND(SUM(CAST(CONVERT(uo.product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
-       FROM user_information ui
-       LEFT JOIN user_orders uo ON ui.user_id = uo.user_id
-         AND uo.order_status NOT IN ('refund successful', 'error')
-       GROUP BY country ORDER BY users DESC LIMIT 20`
+    conn = await getConn(8000);
+    // 拆分两个轻量查询代替大 LEFT JOIN 全表扫描
+    const [userRows] = await conn.query(
+      { sql: `SELECT COALESCE(country_code,'Unknown') AS country, COUNT(*) AS users
+       FROM user_information GROUP BY country_code ORDER BY users DESC LIMIT 20`, timeout: 20000 }
     );
+    const topCountries = userRows.map(r => r.country);
+    let revenueMap = {};
+    if (topCountries.length > 0) {
+      const placeholders = topCountries.map(() => '?').join(',');
+      const [revRows] = await conn.query(
+        { sql: `SELECT COALESCE(ui.country_code,'Unknown') AS country,
+                COALESCE(ROUND(SUM(CASE WHEN uo.order_status NOT IN ('renewing','renewed','plan_switch','refund successful','error')
+                  THEN CAST(CONVERT(uo.product_price,CHAR) AS DECIMAL(10,2)) ELSE 0 END)*0.85,2),0) AS revenue
+         FROM user_orders uo
+         JOIN user_information ui ON uo.user_id = ui.user_id
+         WHERE 1=1
+           AND COALESCE(ui.country_code,'Unknown') IN (${placeholders})
+         GROUP BY COALESCE(ui.country_code,'Unknown')`, timeout: 20000 },
+        topCountries
+      );
+      revRows.forEach(r => { revenueMap[r.country] = parseFloat(r.revenue); });
+    }
+    const rows = userRows.map(r => ({ country: r.country, users: r.users, revenue: revenueMap[r.country] || 0 }));
     res.json({ success: true, data: rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const status = err.code === 'POOL_TIMEOUT' ? 503 : 500;
+    res.status(status).json({ success: false, message: err.message });
   } finally {
-    conn.release();
+    if (conn) conn.release();
   }
 });
 
@@ -993,7 +1523,7 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
 
     // 首次订阅订单：每个订阅生命周期(payment_network_id)只取最早一笔，避免取消重订同一 original_transaction_id 被重复计入
     const [orders] = await conn.query(
-      `SELECT DATE(o.order_creation_time) AS d,
+      `SELECT DATE(o.payment_time) AS d,
               COUNT(*) AS cnt,
               COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))), 0) AS salesAmount,
               COALESCE(ROUND(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))) * 0.85, 2), 0) AS revenue
@@ -1001,22 +1531,23 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
        INNER JOIN (
          SELECT MIN(id) AS first_id
          FROM user_orders
-         WHERE order_status NOT IN ('renewing', 'refund successful', 'error')
+         WHERE order_status NOT IN ('renewing', 'renewed', 'plan_switch', 'refund successful', 'error')
          GROUP BY COALESCE(payment_network_id, CAST(id AS CHAR))
        ) fst ON o.id = fst.first_id
        ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = o.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
-       WHERE DATE(o.order_creation_time) BETWEEN ? AND ?
-       GROUP BY DATE(o.order_creation_time)`,
+       WHERE DATE(o.payment_time) BETWEEN ? AND ?
+       GROUP BY DATE(o.payment_time)`,
+
       hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
-    // 续期订单
+    // 续期订单（renewing=app内续订, renewed=RTDN自动续订）
     const [renewalOrders] = await conn.query(
       `SELECT DATE(o.order_creation_time) AS d, COUNT(*) AS cnt,
               COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))), 0) AS amount
        FROM user_orders o
        ${hasPlatformFilter ? 'INNER JOIN user_information ui ON ui.user_id COLLATE utf8mb4_unicode_ci = o.user_id COLLATE utf8mb4_unicode_ci AND ui.`system` = ?' : ''}
        WHERE DATE(o.order_creation_time) BETWEEN ? AND ?
-         AND o.order_status = 'renewing'
+         AND o.order_status IN ('renewing', 'renewed')
        GROUP BY DATE(o.order_creation_time)`,
       hasPlatformFilter ? [platform, startDate, endDate] : [startDate, endDate]);
 
@@ -1110,12 +1641,13 @@ router.get('/datacenter/daily', authenticateToken, requireAdmin, async (req, res
  * GET /api/admin/datacenter/daily-report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&platform=Android
  */
 router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (req, res) => {
-  const conn = await pool.getConnection();
+  let conn;
   try {
+    conn = await getConn(15000); // 给复杂报表更长的等待时间
     const platformRaw = req.query.platform || 'all';
     const platform = ['all', 'Android', 'iOS'].includes(platformRaw) ? platformRaw : 'all';
-    const endDate   = (req.query.endDate   || new Date().toISOString().slice(0, 10));
-    const startDate = (req.query.startDate || new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
+    const endDate      = (req.query.endDate   || new Date().toISOString().slice(0, 10));
+    const startDate    = (req.query.startDate || new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
 
     const toKey = d => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10));
 
@@ -1142,7 +1674,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
 
     // 3. 首次订阅订单（按平台过滤，JOIN user_information）
     const [ordRows] = await conn.query(
-      `SELECT DATE(o.order_creation_time) AS d,
+      `SELECT DATE(o.payment_time) AS d,
               COUNT(*) AS cnt,
               COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))),0) AS revenue
        FROM user_orders o
@@ -1150,13 +1682,13 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
        INNER JOIN (
          SELECT MIN(id) AS first_id
          FROM user_orders
-         WHERE order_status NOT IN ('renewing', 'refund successful', 'error')
+         WHERE order_status NOT IN ('renewing', 'renewed', 'plan_switch', 'error')
          GROUP BY COALESCE(payment_network_id, CAST(id AS CHAR))
        ) fst ON o.id = fst.first_id
-       WHERE DATE(o.order_creation_time) BETWEEN ? AND ?${sysFilter}
-       GROUP BY DATE(o.order_creation_time)`, [startDate, endDate]);
+       WHERE DATE(o.payment_time) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(o.payment_time)`, [startDate, endDate]);
 
-    // 3b. 续期订单（按平台过滤，JOIN user_information）
+    // 3b. 续期订单（renewing=app内续订, renewed=RTDN自动续订，按平台过滤）
     const [renewOrdRows] = await conn.query(
       `SELECT DATE(o.order_creation_time) AS d,
               COUNT(*) AS cnt,
@@ -1164,34 +1696,58 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
        FROM user_orders o
        JOIN user_information ui ON ui.user_id = o.user_id
        WHERE DATE(o.order_creation_time) BETWEEN ? AND ?
-         AND o.order_status = 'renewing'${sysFilter}
+         AND o.order_status IN ('renewing', 'renewed')${sysFilter}
        GROUP BY DATE(o.order_creation_time)`, [startDate, endDate]);
 
     // 4. 取消订阅（mining_contracts.platform 枚举过滤）
     const [cancelRows] = await conn.query(
-      `SELECT DATE(mc.cancelled_at) AS d, COUNT(*) AS cnt
-       FROM mining_contracts mc
-       WHERE DATE(mc.cancelled_at) BETWEEN ? AND ?
-         AND mc.is_cancelled = 1
-         AND mc.contract_type = 'paid contract'${mcFilter}
-       GROUP BY DATE(mc.cancelled_at)`, [startDate, endDate]);
+      `SELECT DATE(o.order_creation_time) AS d, COUNT(*) AS cnt
+       FROM user_orders o
+       JOIN user_information ui ON ui.user_id = o.user_id
+       WHERE o.order_status = 'complete'
+         AND DATE(o.order_creation_time) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(o.order_creation_time)`, [startDate, endDate]);
+
+    // 4b. 已退款订单（按原始支付日期统计，JOIN user_information 用于平台过滤）
+    const [refundRows] = await conn.query(
+      `SELECT DATE(o.payment_time) AS d,
+              COUNT(*) AS cnt,
+              COALESCE(SUM(CAST(CONVERT(o.product_price, CHAR) AS DECIMAL(10,2))), 0) AS amount
+       FROM user_orders o
+       JOIN user_information ui ON ui.user_id = o.user_id
+       WHERE o.order_status = 'refund successful'
+         AND DATE(o.payment_time) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(o.payment_time)`, [startDate, endDate]);
+
+    // 4c. 无效订单（status=error，按支付时间统计，JOIN user_information 用于平台过滤）
+    const [invalidRows] = await conn.query(
+      `SELECT DATE(o.payment_time) AS d, COUNT(*) AS cnt
+       FROM user_orders o
+       JOIN user_information ui ON ui.user_id = o.user_id
+       WHERE o.order_status = 'error'
+         AND DATE(o.payment_time) BETWEEN ? AND ?${sysFilter}
+       GROUP BY DATE(o.payment_time)`, [startDate, endDate]);
 
     // 5. 广告投放数据（platform=all 时聚合所有平台）
+    // 未配置 AdMob App ID 时，同步任务只能拉账户全量数据；历史上可能被写入 Android/iOS 两行。
+    // 这种情况下展示/收入取 MAX 去重，避免“全部”视图把同一份 AdMob 数据翻倍。
     const adSql = platform === 'all'
       ? `SELECT stat_date,
                 SUM(google_spend) AS google_spend, SUM(applovin_spend) AS applovin_spend,
                 SUM(mintegral_spend) AS mintegral_spend,
-                SUM(ad_new_users) AS ad_new_users, SUM(new_users_m1) AS new_users_m1,
+                SUM(ad_new_users) AS ad_new_users, SUM(mintegral_installs) AS mintegral_installs,
+                SUM(new_users_m1) AS new_users_m1,
                 SUM(new_users_m2) AS new_users_m2,
                 SUM(cancel_count) AS cancel_count, SUM(renewal_count) AS renewal_count,
                 SUM(renewal_amount) AS renewal_amount, SUM(renewal_revenue) AS renewal_revenue,
-                SUM(ad_count) AS ad_count, SUM(ad_revenue) AS ad_revenue,
+                SUM(ad_count) AS ad_count,
+                SUM(ad_revenue) AS ad_revenue,
                 AVG(NULLIF(btc_avg_price, 0)) AS btc_avg_price
          FROM daily_ad_stats
          WHERE stat_date BETWEEN ? AND ?
          GROUP BY stat_date`
       : `SELECT stat_date, google_spend, applovin_spend, mintegral_spend,
-                ad_new_users, new_users_m1, new_users_m2,
+                ad_new_users, mintegral_installs, new_users_m1, new_users_m2,
                 cancel_count, renewal_count, renewal_amount,
                 renewal_revenue, ad_count, ad_revenue, btc_avg_price
          FROM daily_ad_stats
@@ -1279,13 +1835,15 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     };
 
     // 构建 map
-    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, adMap = {}, adViewMap = {}, btcSentMap = {}, wdDailyMap = {}, retentionMap = {};
-    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; adMap; adViewMap; btcSentMap; wdDailyMap; retentionMap; // prevent unused warning
+    const nuMap = {}, dauMap = {}, ordMap = {}, renewOrdMap = {}, cancelMap = {}, refundMap = {}, invalidMap = {}, adMap = {}, adViewMap = {}, btcSentMap = {}, wdDailyMap = {}, retentionMap = {};
+    nuMap; dauMap; ordMap; renewOrdMap; cancelMap; refundMap; invalidMap; adMap; adViewMap; btcSentMap; wdDailyMap; retentionMap; // prevent unused warning
     nuRows.forEach(r     => { nuMap[toKey(r.d)]     = parseInt(r.cnt); });
     dauRows.forEach(r    => { dauMap[toKey(r.d)]    = parseInt(r.cnt); });
     ordRows.forEach(r    => { ordMap[toKey(r.d)]    = { cnt: parseInt(r.cnt), revenue: parseFloat(r.revenue) }; });
     renewOrdRows.forEach(r => { renewOrdMap[toKey(r.d)] = { cnt: parseInt(r.cnt), amount: parseFloat(r.amount) }; });
     cancelRows.forEach(r => { cancelMap[toKey(r.d)] = parseInt(r.cnt); });
+    refundRows.forEach(r => { refundMap[toKey(r.d)] = { cnt: parseInt(r.cnt), amount: parseFloat(r.amount) }; });
+    invalidRows.forEach(r => { invalidMap[toKey(r.d)] = parseInt(r.cnt); });
     adRows.forEach(r     => { adMap[toKey(r.stat_date)] = r; });
     adViewRows.forEach(r => { adViewMap[toKey(r.d)] = parseInt(r.total_views || 0); });
     btcSentRows.forEach(r  => { btcSentMap[toKey(r.d)]  = parseFloat(r.sent || 0); });
@@ -1309,16 +1867,29 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const applovinSpend   = parseFloat(ad.applovin_spend  || 0);
       const mintegralSpend  = parseFloat(ad.mintegral_spend || 0);
       const totalSpend      = parseFloat((googleSpend + applovinSpend + mintegralSpend).toFixed(2));
-      const adNewUsers      = parseInt(ad.ad_new_users  || 0);
-      const newUsersM1      = parseInt(ad.new_users_m1  || 0);
-      const newUsersM2      = parseInt(ad.new_users_m2  || 0);
-      const totalNewUsers   = nuMap[d]  || 0;
+      // 投放新增只使用 ad_new_users（手动录入），不再叠加 mintegral_installs（旧 Publisher API 遗留字段）
+      const rawAdNewUsers   = parseInt(ad.ad_new_users || 0);
+      const newUsersM1      = parseInt(ad.new_users_m1 || 0);
+      const rawNewUsersM2   = parseInt(ad.new_users_m2 || 0);
+      const rawTotalNewUsers = nuMap[d] || 0;
+      // 投放新增：直接使用手动录入值，不做任何截断
+      const adNewUsers      = rawAdNewUsers;
+      // 总新增：始终使用 user_information 实际注册数为准
+      const totalNewUsers   = rawTotalNewUsers > 0 ? rawTotalNewUsers : (adNewUsers + newUsersM1 + rawNewUsersM2);
+      // 自然量新增：总新增 - 投放新增 - 邀请新增，不足补 0
+      const newUsersM2      = rawTotalNewUsers > 0
+        ? Math.max(rawTotalNewUsers - adNewUsers - newUsersM1, 0)
+        : rawNewUsersM2;
       const dauVal          = dauMap[d] || 0;
       const ord             = ordMap[d] || {};
       const subOrders       = ord.cnt     || 0;
       const salesAmount     = parseFloat((ord.revenue || 0).toFixed(2));
       const subRevenue      = parseFloat((salesAmount * 0.85).toFixed(2));
       const cancelCount     = (cancelMap[d] || 0) + parseInt(ad.cancel_count || 0);
+      const refundOrd       = refundMap[d] || {};
+      const refundCount     = refundOrd.cnt    || 0;
+      const refundAmount    = parseFloat((refundOrd.amount || 0).toFixed(2));
+      const invalidCount    = invalidMap[d] || 0;
       const renewOrd        = renewOrdMap[d] || {};
       const renewalCount    = renewOrd.cnt    || 0;
       const renewalAmount   = parseFloat((renewOrd.amount || 0).toFixed(2));
@@ -1332,14 +1903,15 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       const withdrawalBtcAmount= wdDailyMap[d] || 0;
       const adPerUser          = dauVal   > 0 ? parseFloat((adCount / dauVal).toFixed(2)) : 0;
       const ecpm               = adCount  > 0 ? parseFloat(((adRevenue / adCount) * 1000).toFixed(2)) : 0;
-      const totalRevenue       = parseFloat((subRevenue + adRevenue + renewalRevenue).toFixed(2));
+      const totalRevenue       = parseFloat(((salesAmount + renewalAmount - refundAmount) * 0.85 + adRevenue).toFixed(2));
       const btcSentValue       = parseFloat((btcSentAmount    * btcAvgPrice).toFixed(2));
       const withdrawalBtcValue = parseFloat((withdrawalBtcAmount * btcAvgPrice).toFixed(2));
-      const actualCost         = totalSpend;
-      const profitSent         = parseFloat((totalRevenue - actualCost - btcSentValue).toFixed(2));
-      const profitWithdraw     = parseFloat((totalRevenue - actualCost - withdrawalBtcValue).toFixed(2));
-      const roi                = actualCost > 0 ? ((profitSent / actualCost) * 100).toFixed(2) + '%' : '0%';
-      const roiWithdraw        = actualCost > 0 ? ((profitWithdraw / actualCost) * 100).toFixed(2) + '%' : '0%';
+      const actualCost         = parseFloat((btcSentValue + totalSpend).toFixed(2));
+      const profitSent         = parseFloat((totalRevenue - actualCost).toFixed(2));
+      const profitWithdraw     = parseFloat((totalRevenue - totalSpend - withdrawalBtcValue).toFixed(2));
+      const roi                = actualCost > 0 ? ((totalRevenue / actualCost) * 100).toFixed(2) + '%' : '0%';
+      const roiWithdrawDenom   = parseFloat((totalSpend + withdrawalBtcValue).toFixed(2));
+      const roiWithdraw        = roiWithdrawDenom > 0 ? ((totalRevenue / roiWithdrawDenom) * 100).toFixed(2) + '%' : '0%';
       const cpa     = totalNewUsers > 0 ? parseFloat((totalSpend / totalNewUsers).toFixed(2)) : 0;
       const adCpa   = adNewUsers    > 0 ? parseFloat((totalSpend / adNewUsers).toFixed(2))    : 0;
       const subCost = subOrders     > 0 ? parseFloat((totalSpend / subOrders).toFixed(2))     : 0;
@@ -1355,7 +1927,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
         adNewUsers, newUsersM1, newUsersM2, totalNewUsers,
         retentionRate: retentionCount, retentionRatePct: retentionPct, dau: dauVal, cpa, adCpa,
         subOrders, subCost, subRate, salesAmount, subRevenue, arppu,
-        cancelCount, cancelRate, renewalCount, renewalAmount,
+        cancelCount, cancelRate, refundCount, refundAmount, invalidCount, renewalCount, renewalAmount,
         renewalRevenue, adCount, adPerUser, ecpm, adRevenue, totalRevenue,
         btcSentAmount, btcSentValue, btcAvgPrice,
         withdrawalBtcAmount, withdrawalBtcValue, actualCost, profitSent, profitWithdraw, roi, roiWithdraw,
@@ -1374,12 +1946,13 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     const ttlAdRevenue       = parseFloat(sum('adRevenue').toFixed(2));
     const ttlAdCount         = sum('adCount');
     const ttlRenewalRevenue  = parseFloat(sum('renewalRevenue').toFixed(2));
-    const ttlTotalRevenue    = parseFloat((ttlSubRevenue + ttlAdRevenue + ttlRenewalRevenue).toFixed(2));
+    const ttlRefundAmount    = parseFloat(sum('refundAmount').toFixed(2));
+    const ttlTotalRevenue    = parseFloat(((ttlRev + parseFloat(sum('renewalAmount').toFixed(2)) - ttlRefundAmount) * 0.85 + ttlAdRevenue).toFixed(2));
     const ttlBtcSent         = sum('btcSentAmount');
     const ttlBtcSentValue    = parseFloat(sum('btcSentValue').toFixed(2));
     const ttlWdBtc           = sum('withdrawalBtcAmount');
     const ttlWdBtcValue      = parseFloat(sum('withdrawalBtcValue').toFixed(2));
-    const ttlProfitSent      = parseFloat((ttlTotalRevenue - ttlSpend - ttlBtcSentValue).toFixed(2));
+    const ttlProfitSent      = parseFloat((ttlTotalRevenue - ttlBtcSentValue - ttlSpend).toFixed(2));
     const ttlProfitWithdraw  = parseFloat((ttlTotalRevenue - ttlSpend - ttlWdBtcValue).toFixed(2));
     const totalRow = {
       date: '总计',
@@ -1396,6 +1969,9 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       arppu:      ttlSub > 0 ? parseFloat((ttlRev / ttlSub).toFixed(2)) : 0,
       cancelCount: ttlCancel,
       cancelRate:  ttlSub > 0 ? ((ttlCancel / ttlSub) * 100).toFixed(2) + '%' : '0%',
+      refundCount: parseFloat(sum('refundCount').toFixed(0)),
+      refundAmount: parseFloat(sum('refundAmount').toFixed(2)),
+      invalidCount: sum('invalidCount'),
       renewalCount: sum('renewalCount'), renewalAmount: parseFloat(sum('renewalAmount').toFixed(2)),
       renewalRevenue: ttlRenewalRevenue,
       adCount: ttlAdCount,
@@ -1405,9 +1981,9 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
       btcSentAmount: ttlBtcSent, btcSentValue: ttlBtcSentValue,
       btcAvgPrice: '-',
       withdrawalBtcAmount: ttlWdBtc, withdrawalBtcValue: ttlWdBtcValue,
-      actualCost: ttlSpend, profitSent: ttlProfitSent, profitWithdraw: ttlProfitWithdraw,
-      roi:        ttlSpend > 0 ? ((ttlProfitSent     / ttlSpend) * 100).toFixed(2) + '%' : '0%',
-      roiWithdraw: ttlSpend > 0 ? ((ttlProfitWithdraw / ttlSpend) * 100).toFixed(2) + '%' : '0%',
+      actualCost: parseFloat((ttlBtcSentValue + ttlSpend).toFixed(2)), profitSent: ttlProfitSent, profitWithdraw: ttlProfitWithdraw,
+      roi:        (ttlBtcSentValue + ttlSpend) > 0 ? ((ttlTotalRevenue / (ttlBtcSentValue + ttlSpend)) * 100).toFixed(2) + '%' : '0%',
+      roiWithdraw: (ttlSpend + ttlWdBtcValue) > 0 ? ((ttlTotalRevenue / (ttlSpend + ttlWdBtcValue)) * 100).toFixed(2) + '%' : '0%',
     };
 
     res.json({ success: true, data: [totalRow, ...rows], summary });
@@ -1415,7 +1991,34 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
     console.error('DataCenter daily-report error:', err);
     res.status(500).json({ success: false, message: err.message });
   } finally {
-    conn.release();
+    if (conn) conn.release();
+  }
+});
+
+/**
+ * POST /api/admin/datacenter/btc-price-sync
+ * 独立更新指定日期范围内所有行的 btc_avg_price（从 OKX 拉取，不依赖 AdMob）
+ * body: { startDate?: 'YYYY-MM-DD', endDate?: 'YYYY-MM-DD' }
+ */
+router.post('/datacenter/btc-price-sync', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { updateBtcPricesForRange } = require('../jobs/admobSyncJob');
+    const { startDate: startStr, endDate: endStr } = req.body;
+
+    const end   = endStr   ? new Date(endStr   + 'T00:00:00Z') : new Date(Date.now() - 86400000);
+    const start = startStr ? new Date(startStr + 'T00:00:00Z') : new Date(end.getTime() - 6 * 86400000);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ success: false, message: '日期格式无效，请使用 YYYY-MM-DD' });
+    }
+
+    await updateBtcPricesForRange(start, end);
+    if (res.headersSent) return;
+    res.json({ success: true, message: `BTC 价格更新完成：${startStr || '自动'} ~ ${endStr || '自动'}` });
+  } catch (err) {
+    if (res.headersSent) return;
+    console.error('[BtcPriceSync] 失败:', err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -1426,6 +2029,7 @@ router.get('/datacenter/daily-report', authenticateToken, requireAdmin, async (r
  */
 router.post('/datacenter/admob-sync', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    if (typeof req.clearTimeout === 'function') req.clearTimeout();
     const { syncAdMobData } = require('../jobs/admobSyncJob');
     const { startDate: startStr, endDate: endStr, platform } = req.body;
 
@@ -1439,10 +2043,24 @@ router.post('/datacenter/admob-sync', authenticateToken, requireAdmin, async (re
       return res.status(400).json({ success: false, message: 'endDate 格式无效，请使用 YYYY-MM-DD' });
     }
 
-    const result = await syncAdMobData({ startDate, endDate, platform });
+    const normalizedPlatform = ['Android', 'iOS'].includes(platform) ? platform : undefined;
+    const result = await syncAdMobData({ startDate, endDate, platform: normalizedPlatform });
+    if (res.headersSent) return;
     res.json(result);
   } catch (err) {
+    if (res.headersSent) return;
     console.error('[AdMobSync] 手动触发失败:', err.message);
+    // 配置缺失 / OAuth 过期：返回 200 + code，避免触发前端全局 500 错误提示
+    if (err.message === 'invalid_grant' || err.code === 'invalid_grant') {
+      return res.status(200).json({
+        success: false,
+        message: 'AdMob OAuth token 已过期，请重新授权（invalid_grant）',
+        code: 'ADMOB_AUTH_EXPIRED',
+      });
+    }
+    if (err.message.includes('配置缺失')) {
+      return res.status(200).json({ success: false, message: err.message, code: 'CONFIG_MISSING' });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -1453,16 +2071,20 @@ router.post('/datacenter/admob-sync', authenticateToken, requireAdmin, async (re
 router.post('/datacenter/ad-spend', authenticateToken, requireAdmin, async (req, res) => {
   const conn = await pool.getConnection();
   try {
-    const { statDate, platform = 'Android', googleSpend = 0, applovinSpend = 0, mintegralSpend = 0 } = req.body;
+    const { statDate, platform = 'Android', googleSpend = 0, applovinSpend = 0, mintegralSpend = 0, adNewUsers } = req.body;
     if (!statDate) return res.status(400).json({ success: false, message: '日期不能为空' });
+    // 统一写入（同时清零 mintegral_installs，避免旧 Publisher API 遗留数据干扰投放新增计算）
+    const newUsersVal = adNewUsers !== undefined ? adNewUsers : 0;
     await conn.query(
-      `INSERT INTO daily_ad_stats (stat_date, platform, google_spend, applovin_spend, mintegral_spend)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO daily_ad_stats (stat_date, platform, google_spend, applovin_spend, mintegral_spend, ad_new_users, mintegral_installs)
+       VALUES (?, ?, ?, ?, ?, ?, 0)
        ON DUPLICATE KEY UPDATE
-         google_spend    = VALUES(google_spend),
-         applovin_spend  = VALUES(applovin_spend),
-         mintegral_spend = VALUES(mintegral_spend)`,
-      [statDate, platform, googleSpend, applovinSpend, mintegralSpend]);
+         google_spend        = VALUES(google_spend),
+         applovin_spend      = VALUES(applovin_spend),
+         mintegral_spend     = VALUES(mintegral_spend),
+         ad_new_users        = VALUES(ad_new_users),
+         mintegral_installs  = 0`,
+      [statDate, platform, googleSpend, applovinSpend, mintegralSpend, newUsersVal]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -2134,12 +2756,25 @@ router.get('/users/:userId/contracts', authenticateToken, requireAdmin, async (r
     // 1. mining_contracts（付费 + 系统颁发的免费合约）
     // product_id 有值时按 product_id JOIN；为 NULL 时按 hashrate_raw 精确匹配
     const [paidRows] = await conn.query(
-      `SELECT mc.id, mc.contract_type, mc.product_id, mc.platform,
+            `SELECT mc.id, mc.contract_type, mc.product_id, mc.platform,
               mc.contract_creation_time, mc.contract_end_time, mc.contract_duration,
               mc.hashrate, mc.is_cancelled, mc.is_renewal, mc.order_id,
+              uo.order_status,
               p.product_name, p.product_price,
               TIMESTAMPDIFF(SECOND, NOW(), mc.contract_end_time) AS remaining_seconds
        FROM mining_contracts mc
+             LEFT JOIN user_orders uo ON uo.id = (
+               SELECT uo2.id FROM user_orders uo2
+               WHERE uo2.user_id = mc.user_id AND (
+                 uo2.payment_gateway_id = mc.order_id
+                 OR (mc.original_transaction_id IS NOT NULL AND mc.original_transaction_id <> '' AND (
+                   uo2.payment_network_id = mc.original_transaction_id
+                   OR uo2.payment_gateway_id = mc.original_transaction_id
+                 ))
+               )
+               ORDER BY (uo2.payment_gateway_id = mc.order_id) DESC
+               LIMIT 1
+             )
        LEFT JOIN paid_products_list_config p ON
          p.product_id = COALESCE(
            mc.product_id,
@@ -2192,10 +2827,11 @@ router.get('/users/:userId/contracts', authenticateToken, requireAdmin, async (r
         is_cancelled: row.is_cancelled,
         is_renewal: row.is_renewal,
         order_id: row.order_id || null,
+        order_status: row.order_status || null,
       };
-      if (row.is_cancelled && row.remaining_seconds > 0) {
-        // 已取消自动续期，但合约仍在有效期内 → 归入运行中，标记 cancelled
-        active.push({ ...item, status: 'cancelled' });
+      if (row.order_status === 'refund successful') {
+        // 已退款订单优先展示“已退款”，并按停止状态归入已过期分组
+        expired.push({ ...item, status: 'refunded' });
       } else if (row.is_cancelled) {
         // 已取消且已过期
         expired.push({ ...item, status: 'cancelled' });

@@ -258,34 +258,30 @@ router.post('/deduct', authenticate, requireAdmin, async (req, res) => {
  * @access  Private
  */
 router.post('/claim-app-rating', authenticate, async (req, res) => {
-  const pool = require('../config/database_native');
   try {
     const user_id = req.user.user_id;
 
-    // 服务端幂等：检查是否已领取过（points_transaction 表）
-    const connection = await pool.getConnection();
-    try {
-      const [existing] = await connection.query(
-        "SELECT id FROM points_transaction WHERE user_id = ? AND points_type = 'APP_RATING' LIMIT 1",
-        [user_id]
-      );
-      if (existing.length > 0) {
-        return res.status(400).json({ success: false, message: 'App rating reward already claimed' });
-      }
-    } finally {
-      connection.release();
-    }
-
+    // 唯一性检查在 addPoints 事务的 FOR UPDATE 锁内执行，防止竞态条件重复领取
     const result = await PointsService.addPoints(
       user_id,
       10,
       PointsService.POINTS_TYPES.APP_RATING,
       'App rating reward',
-      null
+      null,
+      {
+        uniquenessCheck: {
+          query: "SELECT id FROM points_transaction WHERE user_id = ? AND points_type = 'APP_RATING' LIMIT 1",
+          params: [user_id],
+          errorCode: 'ALREADY_CLAIMED',
+        },
+      }
     );
 
     res.json({ success: true, data: result, message: '+10 points added' });
   } catch (error) {
+    if (error.code === 'ALREADY_CLAIMED') {
+      return res.status(400).json({ success: false, message: 'App rating reward already claimed' });
+    }
     console.error('领取评分积分失败:', error);
     res.status(500).json({ success: false, message: '领取评分积分失败', error: error.message });
   }
